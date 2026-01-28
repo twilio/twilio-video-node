@@ -1,0 +1,78 @@
+#include "audio_frame_sink.h"
+#include <chrono>
+
+namespace twilio_video_node {
+
+AudioFrameSink::AudioFrameSink(Napi::Env env, Napi::Function callback)
+    : env_(env)
+    , callback_(Napi::Persistent(callback))
+    , asyncContext_(std::make_unique<AsyncContext>(env)) {
+}
+
+AudioFrameSink::~AudioFrameSink() {
+    close();
+}
+
+void AudioFrameSink::close() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) return;
+    closed_ = true;
+    if (asyncContext_) {
+        asyncContext_->close();
+    }
+    callback_.Reset();
+}
+
+void AudioFrameSink::OnData(const void* audio_data,
+                            int bits_per_sample,
+                            int sample_rate,
+                            size_t number_of_channels,
+                            size_t number_of_frames) {
+    if (closed_) return;
+
+    AudioFrameData frameData;
+    frameData.bitsPerSample = bits_per_sample;
+    frameData.sampleRate = sample_rate;
+    frameData.numberOfChannels = number_of_channels;
+    frameData.numberOfFrames = number_of_frames;
+
+    auto now = std::chrono::high_resolution_clock::now();
+    frameData.timestampUs = std::chrono::duration_cast<std::chrono::microseconds>(
+        now.time_since_epoch()).count();
+
+    size_t sampleCount = number_of_frames * number_of_channels;
+    frameData.samples.resize(sampleCount);
+
+    if (bits_per_sample == 16) {
+        const int16_t* src = static_cast<const int16_t*>(audio_data);
+        memcpy(frameData.samples.data(), src, sampleCount * sizeof(int16_t));
+    } else {
+        memset(frameData.samples.data(), 0, sampleCount * sizeof(int16_t));
+    }
+
+    deliverFrame(std::move(frameData));
+}
+
+void AudioFrameSink::deliverFrame(AudioFrameData frameData) {
+    if (closed_ || !asyncContext_) return;
+
+    asyncContext_->dispatch([this, frameData = std::move(frameData)](Napi::Env env) {
+        if (closed_ || callback_.IsEmpty()) return;
+
+        Napi::HandleScope scope(env);
+
+        size_t byteLength = frameData.samples.size() * sizeof(int16_t);
+        auto samplesBuffer = Napi::Buffer<int16_t>::Copy(env, frameData.samples.data(), frameData.samples.size());
+
+        auto metadata = Napi::Object::New(env);
+        metadata.Set("bitsPerSample", Napi::Number::New(env, frameData.bitsPerSample));
+        metadata.Set("sampleRate", Napi::Number::New(env, frameData.sampleRate));
+        metadata.Set("numberOfChannels", Napi::Number::New(env, static_cast<uint32_t>(frameData.numberOfChannels)));
+        metadata.Set("numberOfFrames", Napi::Number::New(env, static_cast<uint32_t>(frameData.numberOfFrames)));
+        metadata.Set("timestampUs", Napi::Number::New(env, static_cast<double>(frameData.timestampUs)));
+
+        callback_.Call({samplesBuffer, metadata});
+    });
+}
+
+}

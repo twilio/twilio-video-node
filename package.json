@@ -1,0 +1,39 @@
+{
+  "name": "twilio-video-sdk",
+  "version": "1.0.0",
+  "description": "Twilio Video Media Streams SDK for Node.js - Server-side access to decoded video/audio frames",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "install": "cmake-js compile",
+    "build": "cmake-js build",
+    "build:debug": "cmake-js build --debug",
+    "rebuild": "cmake-js rebuild",
+    "clean": "cmake-js clean"
+  },
+  "dependencies": {
+    "cmake-js": "^7.3.0",
+    "node-addon-api": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "keywords": [
+    "twilio",
+    "video",
+    "webrtc",
+    "media-streams",
+    "real-time"
+  ],
+  "license": "MIT"
+}
