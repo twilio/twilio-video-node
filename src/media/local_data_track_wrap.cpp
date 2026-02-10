@@ -4,6 +4,10 @@ namespace twilio_video_node {
 
 Napi::FunctionReference LocalDataTrackWrap::constructor_;
 
+bool LocalDataTrackWrap::IsInstance(Napi::Object obj) {
+    return obj.InstanceOf(constructor_.Value());
+}
+
 void LocalDataTrackWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "LocalDataTrack", {
         InstanceAccessor("name", &LocalDataTrackWrap::GetName, nullptr),

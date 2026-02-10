@@ -9,11 +9,6 @@
 #include "../common/async_context.h"
 #include <map>
 
-#ifdef __APPLE__
-#include <dispatch/dispatch.h>
-#include <CoreFoundation/CoreFoundation.h>
-#endif
-
 namespace twilio_video_node {
 
 class RoomWrap : public Napi::ObjectWrap<RoomWrap> {
@@ -45,11 +40,7 @@ private:
     std::shared_ptr<RoomObserverWrap> observer_;
     std::map<std::string, std::vector<Napi::FunctionReference>> eventListeners_;
     std::unique_ptr<AsyncContext> asyncContext_;
-
-#ifdef __APPLE__
-    dispatch_queue_t notifier_queue_ = nullptr;
-    uv_timer_t* runloop_timer_ = nullptr;
-#endif
+    void* notifier_queue_ = nullptr;  // dispatch_queue_t on macOS
 };
 
 }

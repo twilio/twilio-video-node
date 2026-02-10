@@ -4,8 +4,40 @@
 #include <twilio/media/media_factory.h>
 #include <twilio/media/track.h>
 #include <twilio/media/audio_track_options.h>
+#include <webrtc/api/media_stream_interface.h>
+#include <webrtc/api/notifier.h>
+#include <webrtc/api/scoped_refptr.h>
+#include <webrtc/rtc_base/time_utils.h>
+#include <list>
+#include <mutex>
 
 namespace twilio_video_node {
+
+class PushableAudioSource : public webrtc::Notifier<webrtc::AudioSourceInterface>,
+                            public webrtc::AudioTrackSinkInterface {
+public:
+    PushableAudioSource() = default;
+    ~PushableAudioSource() override = default;
+
+    void PushSamples(const int16_t* data, int bits_per_sample,
+                     int sample_rate, size_t number_of_channels,
+                     size_t number_of_frames);
+
+    // AudioSourceInterface
+    SourceState state() const override { return kLive; }
+    bool remote() const override { return false; }
+    void AddSink(webrtc::AudioTrackSinkInterface* sink) override;
+    void RemoveSink(webrtc::AudioTrackSinkInterface* sink) override;
+
+    // AudioTrackSinkInterface
+    void OnData(const void* audio_data, int bits_per_sample,
+                int sample_rate, size_t number_of_channels,
+                size_t number_of_frames) override;
+
+private:
+    std::mutex sink_lock_;
+    std::list<webrtc::AudioTrackSinkInterface*> sinks_;
+};
 
 class LocalAudioTrackWrap : public Napi::ObjectWrap<LocalAudioTrackWrap> {
 public:
@@ -13,6 +45,7 @@ public:
     static Napi::Object NewInstance(Napi::Env env,
                                     std::shared_ptr<twilio::media::MediaFactory> factory,
                                     const twilio::media::AudioTrackOptions& options);
+    static bool IsInstance(Napi::Object obj);
 
     LocalAudioTrackWrap(const Napi::CallbackInfo& info);
     ~LocalAudioTrackWrap();
@@ -26,9 +59,11 @@ private:
     Napi::Value GetName(const Napi::CallbackInfo& info);
     Napi::Value IsEnabled(const Napi::CallbackInfo& info);
     void SetEnabled(const Napi::CallbackInfo& info, const Napi::Value& value);
+    Napi::Value PushSamples(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::media::LocalAudioTrack> track_;
     std::shared_ptr<twilio::media::MediaFactory> factory_;
+    rtc::scoped_refptr<PushableAudioSource> audioSource_;
 };
 
 }

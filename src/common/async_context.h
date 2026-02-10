@@ -20,7 +20,7 @@ private:
     static void onAsync(uv_async_t* handle);
     void drain();
 
-    uv_async_t async_;
+    uv_async_t* async_;
     std::mutex mutex_;
     std::queue<std::function<void(Napi::Env)>> queue_;
     Napi::Env env_;

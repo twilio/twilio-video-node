@@ -1,13 +1,17 @@
 #include "room_wrap.h"
 #include "local_participant_wrap.h"
 #include "remote_participant_wrap.h"
+#include "../media/media_factory_wrap.h"
 #include "../media/local_video_track_wrap.h"
 #include "../media/local_audio_track_wrap.h"
 #include "../media/local_data_track_wrap.h"
 #include "../common/error.h"
-#include "../common/notifier_bridge.h"
 
 #include "twilio/log.h"
+
+#ifdef __APPLE__
+#include <dispatch/dispatch.h>
+#endif
 
 namespace twilio_video_node {
 
@@ -35,6 +39,8 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
 }
 
 Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
+    printf("[C++] RoomWrap::Connect() ENTERED\n");
+    fflush(stdout);
     Napi::Env env = info.Env();
 
     if (info.Length() < 1 || !info[0].IsObject()) {
@@ -65,9 +71,20 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         builder.setRoomName(optionsObj.Get("roomName").As<Napi::String>().Utf8Value());
     }
 
-    // CRITICAL: Pass the same MediaFactory that created the tracks
     std::shared_ptr<twilio::media::MediaFactory> mediaFactory;
-    if (optionsObj.Has("videoTracks") && optionsObj.Get("videoTracks").IsArray()) {
+
+    // Accept mediaFactory directly (needed when connecting without tracks)
+    if (optionsObj.Has("mediaFactory") && optionsObj.Get("mediaFactory").IsObject()) {
+        auto factoryObj = optionsObj.Get("mediaFactory").As<Napi::Object>();
+        auto* factoryWrap = Napi::ObjectWrap<MediaFactoryWrap>::Unwrap(factoryObj);
+        if (factoryWrap) {
+            mediaFactory = factoryWrap->getFactory();
+            builder.setMediaFactory(mediaFactory);
+        }
+    }
+
+    // Fallback: extract MediaFactory from tracks if not provided directly
+    if (!mediaFactory && optionsObj.Has("videoTracks") && optionsObj.Get("videoTracks").IsArray()) {
         auto tracks = optionsObj.Get("videoTracks").As<Napi::Array>();
         if (tracks.Length() > 0) {
             auto trackObj = tracks.Get(uint32_t(0)).As<Napi::Object>();
@@ -75,7 +92,6 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
             if (trackWrap) {
                 mediaFactory = trackWrap->getFactory();
                 if (mediaFactory) {
-                    fprintf(stderr, "[C++] Setting MediaFactory from video track: %p\n", mediaFactory.get());
                     builder.setMediaFactory(mediaFactory);
                 }
             }
@@ -89,12 +105,16 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
             if (trackWrap) {
                 mediaFactory = trackWrap->getFactory();
                 if (mediaFactory) {
-                    fprintf(stderr, "[C++] Setting MediaFactory from audio track: %p\n", mediaFactory.get());
                     builder.setMediaFactory(mediaFactory);
                 }
             }
         }
     }
+
+    fprintf(stderr, "[C++] About to set builder options...\n");
+
+    // Disable insights for now to simplify demo
+    builder.enableInsights(false);
 
     if (optionsObj.Has("enableInsights")) {
         builder.enableInsights(optionsObj.Get("enableInsights").As<Napi::Boolean>().Value());
@@ -116,6 +136,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         builder.setRegion(optionsObj.Get("region").As<Napi::String>().Utf8Value());
     }
 
+    fprintf(stderr, "[C++] Setting platform info...\n");
     twilio::PlatformInfo platformInfo;
     platformInfo.sdkVersion = "1.0.0";
     platformInfo.platformName = "nodejs";
@@ -131,11 +152,9 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         if (pi.Has("platformVersion")) platformInfo.platformVersion = pi.Get("platformVersion").As<Napi::String>().Utf8Value();
     }
     builder.setPlatformInfo(platformInfo);
+    fprintf(stderr, "[C++] Platform info set\n");
 
-    // NOTE: Not setting custom notifier queue due to setNotifierQueue() segfault
-    // Using default (dispatch_get_main_queue) for now
-    fprintf(stderr, "[C++] Using default notifier queue (dispatch_get_main_queue)\n");
-
+    fprintf(stderr, "[C++] About to add tracks...\n");
     // Add video tracks
     if (optionsObj.Has("videoTracks") && optionsObj.Get("videoTracks").IsArray()) {
         auto tracks = optionsObj.Get("videoTracks").As<Napi::Array>();
@@ -194,36 +213,6 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    // TEST: Manually dispatch to verify AsyncContext works
-    fprintf(stderr, "[C++] TEST: Manually dispatching test event...\n");
-    roomWrap->asyncContext_->dispatch([roomWrap](Napi::Env env) {
-        fprintf(stderr, "[C++] TEST: Manual dispatch executing on JS thread!\n");
-        roomWrap->emitEvent("testEvent", env.Undefined());
-    });
-    fprintf(stderr, "[C++] TEST: Manual dispatch queued\n");
-
-#ifdef __APPLE__
-    // CRITICAL: Start periodic CFRunLoop processing to drain dispatch_get_main_queue()
-    // Node.js doesn't process GCD main queue, so we must manually run CFRunLoop
-    fprintf(stderr, "[C++] Starting periodic CFRunLoop processing...\n");
-    roomWrap->runloop_timer_ = new uv_timer_t;
-    uv_timer_init(uv_default_loop(), roomWrap->runloop_timer_);
-    roomWrap->runloop_timer_->data = roomWrap;
-
-    uv_timer_start(roomWrap->runloop_timer_, [](uv_timer_t* timer) {
-        static int counter = 0;
-        // Process GCD main queue callbacks
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, false);  // Non-blocking
-
-        // Log every 5 seconds to verify timer is still running
-        if (++counter % 500 == 0) {  // 500 * 10ms = 5 seconds
-            fprintf(stderr, "[C++] CFRunLoop timer heartbeat (still processing...)\n");
-        }
-    }, 0, 10);  // Every 10ms
-
-    fprintf(stderr, "[C++] CFRunLoop timer started (every 10ms)\n");
-#endif
-
     return obj;
 }
 
@@ -241,18 +230,6 @@ RoomWrap::~RoomWrap() {
     if (asyncContext_) {
         asyncContext_->close();
     }
-#ifdef __APPLE__
-    // Stop and close CFRunLoop processing timer
-    if (runloop_timer_) {
-        uv_timer_stop(runloop_timer_);
-        uv_close(reinterpret_cast<uv_handle_t*>(runloop_timer_), [](uv_handle_t* handle) {
-            delete reinterpret_cast<uv_timer_t*>(handle);
-        });
-        runloop_timer_ = nullptr;
-    }
-    // No need to release global queue - it's managed by the system
-    notifier_queue_ = nullptr;
-#endif
 }
 
 void RoomWrap::emitEvent(const std::string& eventName, Napi::Value arg) {

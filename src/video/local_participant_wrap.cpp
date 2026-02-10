@@ -119,20 +119,20 @@ Napi::Value LocalParticipantWrap::PublishTrack(const Napi::CallbackInfo& info) {
 
     auto trackObj = info[0].As<Napi::Object>();
 
-    auto* videoTrack = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(trackObj);
-    if (videoTrack) {
+    if (LocalVideoTrackWrap::IsInstance(trackObj)) {
+        auto* videoTrack = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(trackObj);
         bool result = participant_->publishTrack(videoTrack->getTrack());
         return Napi::Boolean::New(env, result);
     }
 
-    auto* audioTrack = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(trackObj);
-    if (audioTrack) {
+    if (LocalAudioTrackWrap::IsInstance(trackObj)) {
+        auto* audioTrack = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(trackObj);
         bool result = participant_->publishTrack(audioTrack->getTrack());
         return Napi::Boolean::New(env, result);
     }
 
-    auto* dataTrack = Napi::ObjectWrap<LocalDataTrackWrap>::Unwrap(trackObj);
-    if (dataTrack) {
+    if (LocalDataTrackWrap::IsInstance(trackObj)) {
+        auto* dataTrack = Napi::ObjectWrap<LocalDataTrackWrap>::Unwrap(trackObj);
         bool result = participant_->publishTrack(dataTrack->getTrack());
         return Napi::Boolean::New(env, result);
     }
@@ -149,20 +149,20 @@ Napi::Value LocalParticipantWrap::UnpublishTrack(const Napi::CallbackInfo& info)
 
     auto trackObj = info[0].As<Napi::Object>();
 
-    auto* videoTrack = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(trackObj);
-    if (videoTrack) {
+    if (LocalVideoTrackWrap::IsInstance(trackObj)) {
+        auto* videoTrack = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(trackObj);
         bool result = participant_->unpublishTrack(videoTrack->getTrack());
         return Napi::Boolean::New(env, result);
     }
 
-    auto* audioTrack = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(trackObj);
-    if (audioTrack) {
+    if (LocalAudioTrackWrap::IsInstance(trackObj)) {
+        auto* audioTrack = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(trackObj);
         bool result = participant_->unpublishTrack(audioTrack->getTrack());
         return Napi::Boolean::New(env, result);
     }
 
-    auto* dataTrack = Napi::ObjectWrap<LocalDataTrackWrap>::Unwrap(trackObj);
-    if (dataTrack) {
+    if (LocalDataTrackWrap::IsInstance(trackObj)) {
+        auto* dataTrack = Napi::ObjectWrap<LocalDataTrackWrap>::Unwrap(trackObj);
         bool result = participant_->unpublishTrack(dataTrack->getTrack());
         return Napi::Boolean::New(env, result);
     }

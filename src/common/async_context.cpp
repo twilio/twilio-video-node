@@ -5,8 +5,9 @@ namespace twilio_video_node {
 AsyncContext::AsyncContext(Napi::Env env) : env_(env) {
     uv_loop_t* loop;
     napi_get_uv_event_loop(env, &loop);
-    uv_async_init(loop, &async_, onAsync);
-    async_.data = this;
+    async_ = new uv_async_t;
+    uv_async_init(loop, async_, onAsync);
+    async_->data = this;
 }
 
 AsyncContext::~AsyncContext() {
@@ -19,14 +20,16 @@ void AsyncContext::dispatch(std::function<void(Napi::Env)> fn) {
         if (closed_) return;
         queue_.push(std::move(fn));
     }
-    uv_async_send(&async_);
+    uv_async_send(async_);
 }
 
 void AsyncContext::close() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (closed_) return;
     closed_ = true;
-    uv_close(reinterpret_cast<uv_handle_t*>(&async_), nullptr);
+    uv_close(reinterpret_cast<uv_handle_t*>(async_), [](uv_handle_t* h) {
+        delete reinterpret_cast<uv_async_t*>(h);
+    });
 }
 
 void AsyncContext::onAsync(uv_async_t* handle) {

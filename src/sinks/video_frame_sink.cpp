@@ -22,6 +22,7 @@ void VideoFrameSink::close() {
     callback_.Reset();
 }
 
+// This should return right away and not do any heavy tasks
 void VideoFrameSink::OnFrame(const webrtc::VideoFrame& frame) {
     if (closed_) return;
 

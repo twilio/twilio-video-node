@@ -13,6 +13,7 @@ public:
     static Napi::Object NewInstance(Napi::Env env,
                                     std::shared_ptr<twilio::media::MediaFactory> factory,
                                     const twilio::media::DataTrackOptions& options);
+    static bool IsInstance(Napi::Object obj);
 
     LocalDataTrackWrap(const Napi::CallbackInfo& info);
     ~LocalDataTrackWrap();

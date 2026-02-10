@@ -71,6 +71,7 @@ export interface LocalAudioTrack {
     readonly name: string;
     readonly sid: string;
     enabled: boolean;
+    pushSamples(samples: Buffer, sampleRate: number, channels: number): void;
 }
 
 export interface LocalDataTrack {

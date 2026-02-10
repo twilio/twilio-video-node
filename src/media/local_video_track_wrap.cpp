@@ -3,33 +3,32 @@
 namespace twilio_video_node {
 
 void PushableVideoSource::PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffer, int64_t timestampUs) {
+    auto system_timestamp = rtc::TimeMicros();
+    auto translated_timestamp = timestamp_aligner_.TranslateTimestamp(timestampUs, system_timestamp);
+
     int adapted_width, adapted_height, crop_width, crop_height, crop_x, crop_y;
 
-    if (!AdaptFrame(buffer->width(), buffer->height(), timestampUs,
+    if (!AdaptFrame(buffer->width(), buffer->height(), translated_timestamp,
                     &adapted_width, &adapted_height, &crop_width, &crop_height, &crop_x, &crop_y)) {
-        // Frame dropped by adaptation
         return;
     }
 
     rtc::scoped_refptr<webrtc::I420Buffer> adapted_buffer;
     if (adapted_width == buffer->width() && adapted_height == buffer->height()) {
-        // No adaptation necessary
         adapted_buffer = buffer;
     } else {
-        // Adapt by cropping and scaling
         adapted_buffer = webrtc::I420Buffer::Create(adapted_width, adapted_height);
         adapted_buffer->CropAndScaleFrom(*buffer.get(), crop_x, crop_y, crop_width, crop_height);
     }
 
-    webrtc::VideoFrame frame = webrtc::VideoFrame::Builder()
-        .set_video_frame_buffer(adapted_buffer)
-        .set_timestamp_us(timestampUs)
-        .set_rotation(webrtc::kVideoRotation_0)
-        .build();
-    OnFrame(frame);
+    OnFrame(webrtc::VideoFrame(adapted_buffer, webrtc::kVideoRotation_0, translated_timestamp));
 }
 
 Napi::FunctionReference LocalVideoTrackWrap::constructor_;
+
+bool LocalVideoTrackWrap::IsInstance(Napi::Object obj) {
+    return obj.InstanceOf(constructor_.Value());
+}
 
 void LocalVideoTrackWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "LocalVideoTrack", {
@@ -101,20 +100,11 @@ Napi::Value LocalVideoTrackWrap::PushFrame(const Napi::CallbackInfo& info) {
     int width = info[3].As<Napi::Number>().Int32Value();
     int height = info[4].As<Napi::Number>().Int32Value();
 
-    // Generate relative timestamps (not from epoch)
-    static int64_t base_timestamp_us = 0;
-    static auto start_time = std::chrono::steady_clock::now();
-
-    int64_t timestampUs = 0;
+    int64_t timestampUs;
     if (info.Length() > 5 && info[5].IsNumber()) {
         timestampUs = static_cast<int64_t>(info[5].As<Napi::Number>().DoubleValue());
     } else {
-        if (base_timestamp_us == 0) {
-            base_timestamp_us = 1000; // Start at 1ms like TestVideoSource
-            start_time = std::chrono::steady_clock::now();
-        }
-        auto elapsed = std::chrono::steady_clock::now() - start_time;
-        timestampUs = base_timestamp_us + std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+        timestampUs = rtc::TimeMicros();
     }
 
     auto i420Buffer = webrtc::I420Buffer::Create(width, height);

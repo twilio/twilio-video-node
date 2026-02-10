@@ -7,6 +7,8 @@
 #include <webrtc/api/video/video_source_interface.h>
 #include <webrtc/media/base/adapted_video_track_source.h>
 #include <webrtc/api/video/i420_buffer.h>
+#include <webrtc/rtc_base/timestamp_aligner.h>
+#include <webrtc/rtc_base/time_utils.h>
 
 namespace twilio_video_node {
 
@@ -21,6 +23,10 @@ public:
     bool remote() const override { return false; }
     bool is_screencast() const override { return false; }
     absl::optional<bool> needs_denoising() const override { return false; }
+
+private:
+    rtc::TimestampAligner timestamp_aligner_;
+    int64_t next_timestamp_us_ = rtc::kNumMicrosecsPerMillisec;
 };
 
 class LocalVideoTrackWrap : public Napi::ObjectWrap<LocalVideoTrackWrap> {
@@ -29,6 +35,7 @@ public:
     static Napi::Object NewInstance(Napi::Env env,
                                     std::shared_ptr<twilio::media::MediaFactory> factory,
                                     const twilio::media::VideoTrackOptions& options);
+    static bool IsInstance(Napi::Object obj);
 
     LocalVideoTrackWrap(const Napi::CallbackInfo& info);
     ~LocalVideoTrackWrap();
