@@ -1,11 +1,18 @@
 /**
- * Simplified Virtual Camera Example - Video only
+ * Virtual Camera Example - pushes frames from generated_video.mp4 via ffmpeg
  */
 
+const { spawn } = require('child_process');
+const path = require('path');
 const { connect, MediaFactory } = require('../lib');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';
 const TOKEN = process.env.TWILIO_ACCESS_TOKEN;
+const WIDTH = 1280;
+const HEIGHT = 720;
+const FRAME_SIZE = WIDTH * HEIGHT * 3 / 2; // YUV420p
+const FPS = 24;
+const VIDEO_PATH = path.join(__dirname, 'generated_video.mp4');
 
 if (!TOKEN) {
     console.error('Error: TWILIO_ACCESS_TOKEN environment variable is required');
@@ -19,7 +26,6 @@ async function main() {
     const videoTrack = mediaFactory.createVideoTrack({ name: 'virtual-camera' });
     console.log('Created video track:', videoTrack.name);
 
-    console.log('Calling connect()...');
     const room = await connect({
         token: TOKEN,
         roomName: ROOM_NAME,
@@ -28,10 +34,10 @@ async function main() {
     });
 
     console.log('Connected! Room:', room.name, 'SID:', room.sid);
-    const publishInterval = startPublishing(videoTrack);
+    const publisher = startPublishing(videoTrack);
 
     room.on('disconnected', (error) => {
-        clearInterval(publishInterval);
+        publisher.stop();
         console.log('Disconnected', error ? error.message : '');
         process.exit(0);
     });
@@ -41,25 +47,64 @@ async function main() {
     }, 5000);
 
     process.on('SIGINT', () => {
-        clearInterval(publishInterval);
+        publisher.stop();
         room.disconnect();
         setTimeout(() => process.exit(0), 1000);
     });
 }
 
 function startPublishing(videoTrack) {
-    const width = 640, height = 480;
-    let frame = 0;
+    let ffmpeg = null;
+    let pushTimer = null;
+    let stopped = false;
+    let frameCount = 0;
+    let buffer = Buffer.alloc(0);
+    const frameQueue = [];
 
-    console.log('Starting frame push loop...');
-    return setInterval(() => {
-        const y = Buffer.alloc(width * height, 128 + Math.sin(frame * 0.1) * 50);
-        const u = Buffer.alloc(width * height / 4, 85);
-        const v = Buffer.alloc(width * height / 4, 85);
-        videoTrack.pushFrame(y, u, v, width, height);
-        frame++;
-        if (frame % 30 === 0) console.log('Pushed frame', frame);
-    }, 33);
+    function spawnFfmpeg() {
+        ffmpeg = spawn('ffmpeg', [
+            '-i', VIDEO_PATH,
+            '-f', 'rawvideo',
+            '-pix_fmt', 'yuv420p',
+            'pipe:1',
+        ], { stdio: ['ignore', 'pipe', 'ignore'] });
+
+        ffmpeg.stdout.on('data', (chunk) => {
+            buffer = Buffer.concat([buffer, chunk]);
+            while (buffer.length >= FRAME_SIZE) {
+                frameQueue.push(buffer.subarray(0, FRAME_SIZE));
+                buffer = buffer.subarray(FRAME_SIZE);
+            }
+        });
+
+        ffmpeg.on('close', () => {
+            if (!stopped) spawnFfmpeg();
+        });
+    }
+
+    spawnFfmpeg();
+    console.log('Starting frame push loop from', VIDEO_PATH);
+
+    pushTimer = setInterval(() => {
+        if (frameQueue.length === 0) return;
+        const frame = frameQueue.shift();
+        const ySize = WIDTH * HEIGHT;
+        const uvSize = ySize / 4;
+        const y = frame.subarray(0, ySize);
+        const u = frame.subarray(ySize, ySize + uvSize);
+        const v = frame.subarray(ySize + uvSize, ySize + uvSize + uvSize);
+        videoTrack.pushFrame(y, u, v, WIDTH, HEIGHT);
+        frameCount++;
+        if (frameCount % FPS === 0) console.log('Pushed frame', frameCount);
+    }, 1000 / FPS);
+
+    return {
+        stop() {
+            stopped = true;
+            if (pushTimer) clearInterval(pushTimer);
+            if (ffmpeg) ffmpeg.kill('SIGTERM');
+        },
+    };
 }
 
 main().catch(err => {
