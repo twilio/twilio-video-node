@@ -19,36 +19,29 @@ async function main() {
     const videoTrack = mediaFactory.createVideoTrack({ name: 'virtual-camera' });
     console.log('Created video track:', videoTrack.name);
 
-    console.log('About to call connect()...');
-    const room = connect({
+    console.log('Calling connect()...');
+    const room = await connect({
         token: TOKEN,
         roomName: ROOM_NAME,
         mediaFactory: mediaFactory,
+        videoTracks: [videoTrack],
     });
-    console.log('connect() returned');
 
-    room.on('connected', () => {
-        console.log('CONNECTED! Room:', room.name, 'SID:', room.sid);
-        room.localParticipant.publishTrack(videoTrack);
-        startPublishing(videoTrack);
-    });
+    console.log('Connected! Room:', room.name, 'SID:', room.sid);
+    const publishInterval = startPublishing(videoTrack);
 
     room.on('disconnected', (error) => {
+        clearInterval(publishInterval);
         console.log('Disconnected', error ? error.message : '');
         process.exit(0);
     });
 
-    room.on('connectFailure', (error) => {
-        console.log('Connect failed:', error.message);
-        process.exit(1);
-    });
-
-    // Keep alive
     setInterval(() => {
         console.log('[tick] state:', room.state);
     }, 5000);
 
     process.on('SIGINT', () => {
+        clearInterval(publishInterval);
         room.disconnect();
         setTimeout(() => process.exit(0), 1000);
     });
@@ -58,7 +51,8 @@ function startPublishing(videoTrack) {
     const width = 640, height = 480;
     let frame = 0;
 
-    setInterval(() => {
+    console.log('Starting frame push loop...');
+    return setInterval(() => {
         const y = Buffer.alloc(width * height, 128 + Math.sin(frame * 0.1) * 50);
         const u = Buffer.alloc(width * height / 4, 85);
         const v = Buffer.alloc(width * height / 4, 85);

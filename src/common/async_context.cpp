@@ -2,7 +2,8 @@
 
 namespace twilio_video_node {
 
-AsyncContext::AsyncContext(Napi::Env env) : env_(env) {
+AsyncContext::AsyncContext(Napi::Env env, size_t maxQueueDepth)
+    : env_(env), maxQueueDepth_(maxQueueDepth) {
     uv_loop_t* loop;
     napi_get_uv_event_loop(env, &loop);
     async_ = new uv_async_t;
@@ -17,16 +18,28 @@ AsyncContext::~AsyncContext() {
 void AsyncContext::dispatch(std::function<void(Napi::Env)> fn) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_) return;
+        if (closed_.load(std::memory_order_acquire)) return;
+
+        // Drop oldest items when queue exceeds max depth (backpressure)
+        // maxQueueDepth_ == 0 means unlimited (no dropping)
+        while (maxQueueDepth_ > 0 && queue_.size() >= maxQueueDepth_) {
+            queue_.pop();
+        }
         queue_.push(std::move(fn));
     }
     uv_async_send(async_);
 }
 
 void AsyncContext::close() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (closed_) return;
-    closed_ = true;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire)) return;
+        closed_.store(true, std::memory_order_release);
+
+        // Drain pending items so lambdas capturing shared_ptrs are freed
+        std::queue<std::function<void(Napi::Env)>> empty;
+        std::swap(queue_, empty);
+    }
     uv_close(reinterpret_cast<uv_handle_t*>(async_), [](uv_handle_t* h) {
         delete reinterpret_cast<uv_async_t*>(h);
     });
@@ -41,16 +54,25 @@ void AsyncContext::drain() {
     std::queue<std::function<void(Napi::Env)>> toProcess;
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire)) return;
         std::swap(toProcess, queue_);
     }
 
     while (!toProcess.empty()) {
+        if (closed_.load(std::memory_order_acquire)) return;
+
         auto fn = std::move(toProcess.front());
         toProcess.pop();
 
-        // CRITICAL: Create HandleScope before calling into JavaScript
         Napi::HandleScope scope(env_);
-        fn(env_);
+        // Catch JS exceptions to prevent corrupting native state
+        try {
+            fn(env_);
+        } catch (const Napi::Error& e) {
+            // JS exception already pending, just continue draining
+        } catch (...) {
+            // Swallow unexpected C++ exceptions from callbacks
+        }
     }
 }
 

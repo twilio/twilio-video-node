@@ -11,6 +11,12 @@ public:
     RemoteParticipantObserverImpl(RemoteParticipantWrap* wrap, AsyncContext* ctx)
         : wrap_(wrap), ctx_(ctx) {}
 
+    void close() {
+        closed_.store(true, std::memory_order_release);
+        wrap_ = nullptr;
+        ctx_ = nullptr;
+    }
+
     void onAudioTrackPublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>) override {}
     void onAudioTrackUnpublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>) override {}
     void onAudioTrackEnabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>) override {}
@@ -18,8 +24,9 @@ public:
 
     void onAudioTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
                                 std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
-        if (!ctx_ || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
         ctx_->dispatch([this, track](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
             wrap_->emitEvent("trackSubscribed", RemoteAudioTrackWrap::NewInstance(env, track));
         });
     }
@@ -29,8 +36,9 @@ public:
 
     void onAudioTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
                                   std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
-        if (!ctx_ || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
         ctx_->dispatch([this, track](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
             wrap_->emitEvent("trackUnsubscribed", RemoteAudioTrackWrap::NewInstance(env, track));
         });
     }
@@ -45,8 +53,9 @@ public:
 
     void onVideoTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
                                 std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
-        if (!ctx_ || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
         ctx_->dispatch([this, track](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
             wrap_->emitEvent("trackSubscribed", RemoteVideoTrackWrap::NewInstance(env, track));
         });
     }
@@ -56,8 +65,9 @@ public:
 
     void onVideoTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
                                   std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
-        if (!ctx_ || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
         ctx_->dispatch([this, track](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
             wrap_->emitEvent("trackUnsubscribed", RemoteVideoTrackWrap::NewInstance(env, track));
         });
     }
@@ -70,8 +80,9 @@ public:
 
     void onDataTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
                                std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
-        if (!ctx_ || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
         ctx_->dispatch([this, track](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
             wrap_->emitEvent("trackSubscribed", RemoteDataTrackWrap::NewInstance(env, track));
         });
     }
@@ -81,8 +92,9 @@ public:
 
     void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
                                  std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
-        if (!ctx_ || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
         ctx_->dispatch([this, track](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
             wrap_->emitEvent("trackUnsubscribed", RemoteDataTrackWrap::NewInstance(env, track));
         });
     }
@@ -93,6 +105,7 @@ public:
 private:
     RemoteParticipantWrap* wrap_;
     AsyncContext* ctx_;
+    std::atomic<bool> closed_{false};
 };
 
 Napi::FunctionReference RemoteParticipantWrap::constructor_;
@@ -119,7 +132,7 @@ Napi::Object RemoteParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<t
     Napi::Object obj = constructor_.New({});
     RemoteParticipantWrap* wrap = Napi::ObjectWrap<RemoteParticipantWrap>::Unwrap(obj);
     wrap->participant_ = participant;
-    wrap->asyncContext_ = std::make_unique<AsyncContext>(env);
+    wrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
     wrap->observer_ = std::make_shared<RemoteParticipantObserverImpl>(wrap, wrap->asyncContext_.get());
     participant->setObserver(wrap->observer_);
 
@@ -131,6 +144,9 @@ RemoteParticipantWrap::RemoteParticipantWrap(const Napi::CallbackInfo& info)
 }
 
 RemoteParticipantWrap::~RemoteParticipantWrap() {
+    if (observer_) {
+        observer_->close();
+    }
     if (participant_) {
         participant_->setObserver(std::weak_ptr<twilio::video::RemoteParticipantObserver>());
     }

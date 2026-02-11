@@ -42,41 +42,40 @@ async function main() {
     const audioTrack = mediaFactory.createAudioTrack({ name: 'pushable-audio' });
     console.log('Created audio track:', audioTrack.name);
 
-    const room = connect({
+    const room = await connect({
         token: TOKEN,
         roomName: ROOM_NAME,
         mediaFactory: mediaFactory,
+        audioTracks: [audioTrack],
     });
 
-    room.on('connected', () => {
-        console.log('Connected! Room:', room.name, 'SID:', room.sid);
-        room.localParticipant.publishTrack(audioTrack);
-        startPushingAudio(audioTrack);
-    });
+    console.log('Connected! Room:', room.name, 'SID:', room.sid);
+    startPushingAudio(audioTrack);
 
     room.on('disconnected', (error) => {
         console.log('Disconnected', error ? error.message : '');
         process.exit(0);
     });
 
-    room.on('connectFailure', (error) => {
-        console.log('Connect failed:', error.message);
-        process.exit(1);
-    });
+    // Subscribe to remote audio via participant events
+    function handleParticipant(participant) {
+        console.log('Participant connected:', participant.identity);
+        let remoteFrames = 0;
+        participant.on('trackSubscribed', (track) => {
+            if (track.onData) {
+                console.log('Subscribed to remote audio from', participant.identity);
+                track.onData((samples, metadata) => {
+                    remoteFrames++;
+                    if (remoteFrames % 100 === 0) {
+                        console.log(`Remote audio: ${remoteFrames} callbacks, ${metadata.sampleRate}Hz ${metadata.numberOfChannels}ch ${metadata.numberOfFrames} frames`);
+                    }
+                });
+            }
+        });
+    }
 
-    // Remote audio receive
-    room.on('trackSubscribed', (track, publication, participant) => {
-        if (track.kind === 'audio') {
-            console.log('Subscribed to remote audio from', participant.identity);
-            let remoteFrames = 0;
-            track.onData((data, bitsPerSample, sampleRate, channels, frames) => {
-                remoteFrames++;
-                if (remoteFrames % 100 === 0) {
-                    console.log(`Remote audio: ${remoteFrames} callbacks, ${sampleRate}Hz ${channels}ch ${frames} frames`);
-                }
-            });
-        }
-    });
+    room.remoteParticipants.forEach(handleParticipant);
+    room.on('participantConnected', handleParticipant);
 
     setInterval(() => {
         console.log('[tick] state:', room.state);

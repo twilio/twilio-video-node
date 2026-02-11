@@ -7,10 +7,10 @@
 #include "../media/local_data_track_wrap.h"
 #include "../common/error.h"
 
-#include "twilio/log.h"
+#include <twilio/media/ice_options.h>
 
 #ifdef __APPLE__
-#include <dispatch/dispatch.h>
+#include <CoreFoundation/CoreFoundation.h>
 #endif
 
 namespace twilio_video_node {
@@ -39,8 +39,6 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
 }
 
 Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
-    printf("[C++] RoomWrap::Connect() ENTERED\n");
-    fflush(stdout);
     Napi::Env env = info.Env();
 
     if (info.Length() < 1 || !info[0].IsObject()) {
@@ -48,14 +46,12 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
+    // Create the Room JS object
     Napi::Object obj = constructor_.New({});
     RoomWrap* roomWrap = Napi::ObjectWrap<RoomWrap>::Unwrap(obj);
 
-    fprintf(stderr, "[C++] Creating RoomObserverWrap...\n");
     roomWrap->observer_ = std::make_shared<RoomObserverWrap>(env, roomWrap);
-    fprintf(stderr, "[C++] RoomObserverWrap created, use_count=%ld, ptr=%p\n",
-            roomWrap->observer_.use_count(), roomWrap->observer_.get());
-    roomWrap->asyncContext_ = std::make_unique<AsyncContext>(env);
+    roomWrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
 
     auto optionsObj = info[0].As<Napi::Object>();
 
@@ -71,9 +67,9 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         builder.setRoomName(optionsObj.Get("roomName").As<Napi::String>().Utf8Value());
     }
 
+    // MediaFactory
     std::shared_ptr<twilio::media::MediaFactory> mediaFactory;
 
-    // Accept mediaFactory directly (needed when connecting without tracks)
     if (optionsObj.Has("mediaFactory") && optionsObj.Get("mediaFactory").IsObject()) {
         auto factoryObj = optionsObj.Get("mediaFactory").As<Napi::Object>();
         auto* factoryWrap = Napi::ObjectWrap<MediaFactoryWrap>::Unwrap(factoryObj);
@@ -83,17 +79,15 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         }
     }
 
-    // Fallback: extract MediaFactory from tracks if not provided directly
+    // Fallback: extract MediaFactory from tracks
     if (!mediaFactory && optionsObj.Has("videoTracks") && optionsObj.Get("videoTracks").IsArray()) {
         auto tracks = optionsObj.Get("videoTracks").As<Napi::Array>();
         if (tracks.Length() > 0) {
             auto trackObj = tracks.Get(uint32_t(0)).As<Napi::Object>();
             auto* trackWrap = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(trackObj);
-            if (trackWrap) {
+            if (trackWrap && trackWrap->getFactory()) {
                 mediaFactory = trackWrap->getFactory();
-                if (mediaFactory) {
-                    builder.setMediaFactory(mediaFactory);
-                }
+                builder.setMediaFactory(mediaFactory);
             }
         }
     }
@@ -102,43 +96,74 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         if (tracks.Length() > 0) {
             auto trackObj = tracks.Get(uint32_t(0)).As<Napi::Object>();
             auto* trackWrap = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(trackObj);
-            if (trackWrap) {
+            if (trackWrap && trackWrap->getFactory()) {
                 mediaFactory = trackWrap->getFactory();
-                if (mediaFactory) {
-                    builder.setMediaFactory(mediaFactory);
-                }
+                builder.setMediaFactory(mediaFactory);
             }
         }
     }
 
-    fprintf(stderr, "[C++] About to set builder options...\n");
-
-    // Disable insights for now to simplify demo
     builder.enableInsights(false);
 
     if (optionsObj.Has("enableInsights")) {
         builder.enableInsights(optionsObj.Get("enableInsights").As<Napi::Boolean>().Value());
     }
-
     if (optionsObj.Has("enableAutomaticSubscription")) {
         builder.enableAutomaticSubscription(optionsObj.Get("enableAutomaticSubscription").As<Napi::Boolean>().Value());
     }
-
     if (optionsObj.Has("enableDominantSpeaker")) {
         builder.enableDominantSpeaker(optionsObj.Get("enableDominantSpeaker").As<Napi::Boolean>().Value());
     }
-
     if (optionsObj.Has("enableNetworkQuality")) {
         builder.enableNetworkQuality(optionsObj.Get("enableNetworkQuality").As<Napi::Boolean>().Value());
     }
-
     if (optionsObj.Has("region")) {
         builder.setRegion(optionsObj.Get("region").As<Napi::String>().Utf8Value());
     }
 
-    fprintf(stderr, "[C++] Setting platform info...\n");
+    // ICE options
+    if (optionsObj.Has("iceOptions") && optionsObj.Get("iceOptions").IsObject()) {
+        auto iceObj = optionsObj.Get("iceOptions").As<Napi::Object>();
+        twilio::media::IceOptions iceOptions;
+
+        if (iceObj.Has("transportPolicy")) {
+            std::string policy = iceObj.Get("transportPolicy").As<Napi::String>().Utf8Value();
+            if (policy == "relay") {
+                iceOptions.ice_transport_policy = twilio::media::IceTransportPolicy::kIceTransportPolicyRelay;
+            } else {
+                iceOptions.ice_transport_policy = twilio::media::IceTransportPolicy::kIceTransportPolicyAll;
+            }
+        }
+
+        if (iceObj.Has("iceServers") && iceObj.Get("iceServers").IsArray()) {
+            auto servers = iceObj.Get("iceServers").As<Napi::Array>();
+            twilio::media::IceServers iceServers;
+            for (uint32_t i = 0; i < servers.Length(); i++) {
+                auto serverObj = servers.Get(i).As<Napi::Object>();
+                twilio::media::IceServer server;
+                if (serverObj.Has("urls") && serverObj.Get("urls").IsArray()) {
+                    auto urls = serverObj.Get("urls").As<Napi::Array>();
+                    for (uint32_t j = 0; j < urls.Length(); j++) {
+                        server.urls.push_back(urls.Get(j).As<Napi::String>().Utf8Value());
+                    }
+                }
+                if (serverObj.Has("username")) {
+                    server.username = serverObj.Get("username").As<Napi::String>().Utf8Value();
+                }
+                if (serverObj.Has("credential")) {
+                    server.password = serverObj.Get("credential").As<Napi::String>().Utf8Value();
+                }
+                iceServers.push_back(server);
+            }
+            iceOptions.ice_servers = iceServers;
+        }
+
+        builder.setIceOptions(iceOptions);
+    }
+
+    // Platform info
     twilio::PlatformInfo platformInfo;
-    platformInfo.sdkVersion = "1.0.0";
+    platformInfo.sdkVersion = "0.1.0";
     platformInfo.platformName = "nodejs";
     platformInfo.platformVersion = "24.0.0";
     platformInfo.hwDeviceArch = "x86_64";
@@ -152,66 +177,65 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         if (pi.Has("platformVersion")) platformInfo.platformVersion = pi.Get("platformVersion").As<Napi::String>().Utf8Value();
     }
     builder.setPlatformInfo(platformInfo);
-    fprintf(stderr, "[C++] Platform info set\n");
 
-    fprintf(stderr, "[C++] About to add tracks...\n");
-    // Add video tracks
+    // Tracks
     if (optionsObj.Has("videoTracks") && optionsObj.Get("videoTracks").IsArray()) {
         auto tracks = optionsObj.Get("videoTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalVideoTrack>> videoTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
             auto trackObj = tracks.Get(i).As<Napi::Object>();
             auto* trackWrap = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(trackObj);
-            if (trackWrap) {
-                videoTracks.push_back(trackWrap->getTrack());
-            }
+            if (trackWrap) videoTracks.push_back(trackWrap->getTrack());
         }
         builder.setVideoTracks(videoTracks);
     }
 
-    // Add audio tracks
     if (optionsObj.Has("audioTracks") && optionsObj.Get("audioTracks").IsArray()) {
         auto tracks = optionsObj.Get("audioTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalAudioTrack>> audioTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
             auto trackObj = tracks.Get(i).As<Napi::Object>();
             auto* trackWrap = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(trackObj);
-            if (trackWrap) {
-                audioTracks.push_back(trackWrap->getTrack());
-            }
+            if (trackWrap) audioTracks.push_back(trackWrap->getTrack());
         }
         builder.setAudioTracks(audioTracks);
     }
 
-    // Add data tracks
     if (optionsObj.Has("dataTracks") && optionsObj.Get("dataTracks").IsArray()) {
         auto tracks = optionsObj.Get("dataTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalDataTrack>> dataTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
             auto trackObj = tracks.Get(i).As<Napi::Object>();
             auto* trackWrap = Napi::ObjectWrap<LocalDataTrackWrap>::Unwrap(trackObj);
-            if (trackWrap) {
-                dataTracks.push_back(trackWrap->getTrack());
-            }
+            if (trackWrap) dataTracks.push_back(trackWrap->getTrack());
         }
         builder.setDataTracks(dataTracks);
     }
 
     auto connectOptions = builder.build();
 
-    // connect() expects std::weak_ptr<RoomObserver>
-    // Cast to base class to ensure proper type conversion
-    std::shared_ptr<twilio::video::RoomObserver> observer = std::static_pointer_cast<twilio::video::RoomObserver>(roomWrap->observer_);
-    fprintf(stderr, "[C++] Calling twilio::video::connect with observer (use_count=%ld, observer_ptr=%p)\n",
-            observer.use_count(), observer.get());
-    setLogLevel(twilio::LogLevel::kDebug);  // Temporarily set to DEBUG to see observer callbacks
+    std::shared_ptr<twilio::video::RoomObserver> observer =
+        std::static_pointer_cast<twilio::video::RoomObserver>(roomWrap->observer_);
     roomWrap->room_ = twilio::video::connect(connectOptions, observer);
-    fprintf(stderr, "[C++] twilio::video::connect returned, room=%p\n", roomWrap->room_.get());
 
     if (!roomWrap->room_) {
         Napi::Error::New(env, "Failed to create room").ThrowAsJavaScriptException();
         return env.Undefined();
     }
+
+    // On macOS, rtc-cpp posts work to dispatch_get_main_queue() which Node.js
+    // doesn't pump. Start a libuv timer to drain all pending events frequently.
+#ifdef __APPLE__
+    uv_loop_t* loop;
+    napi_get_uv_event_loop(env, &loop);
+    roomWrap->mainQueueTimer_ = new uv_timer_t;
+    uv_timer_init(loop, roomWrap->mainQueueTimer_);
+    roomWrap->mainQueueTimer_->data = roomWrap;
+    uv_timer_start(roomWrap->mainQueueTimer_, [](uv_timer_t*) {
+        // Drain ALL pending main queue events, not just one
+        while (CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.0, true) == kCFRunLoopRunHandledSource) {}
+    }, 0, 10);
+#endif
 
     return obj;
 }
@@ -221,38 +245,42 @@ RoomWrap::RoomWrap(const Napi::CallbackInfo& info)
 }
 
 RoomWrap::~RoomWrap() {
-    if (observer_) {
-        observer_->close();
-    }
+    // Order: disconnect first (may trigger callbacks), then close observer, then close async
     if (room_) {
         room_->disconnect();
+    }
+    if (observer_) {
+        observer_->close();
     }
     if (asyncContext_) {
         asyncContext_->close();
     }
+    participantCache_.clear();
+
+#ifdef __APPLE__
+    if (mainQueueTimer_) {
+        uv_timer_stop(mainQueueTimer_);
+        uv_close(reinterpret_cast<uv_handle_t*>(mainQueueTimer_), [](uv_handle_t* h) {
+            delete reinterpret_cast<uv_timer_t*>(h);
+        });
+        mainQueueTimer_ = nullptr;
+    }
+#endif
 }
 
 void RoomWrap::emitEvent(const std::string& eventName, Napi::Value arg) {
-    fprintf(stderr, "[C++] RoomWrap::emitEvent('%s') called\n", eventName.c_str());
     auto it = eventListeners_.find(eventName);
-    if (it == eventListeners_.end()) {
-        fprintf(stderr, "[C++] RoomWrap::emitEvent('%s') - NO LISTENERS REGISTERED\n", eventName.c_str());
-        return;
-    }
+    if (it == eventListeners_.end()) return;
 
-    fprintf(stderr, "[C++] RoomWrap::emitEvent('%s') - found %zu listeners\n", eventName.c_str(), it->second.size());
     for (auto& listener : it->second) {
         if (!listener.IsEmpty()) {
-            fprintf(stderr, "[C++] RoomWrap::emitEvent('%s') - calling listener\n", eventName.c_str());
             if (arg.IsEmpty() || arg.IsUndefined()) {
                 listener.Call({});
             } else {
                 listener.Call({arg});
             }
-            fprintf(stderr, "[C++] RoomWrap::emitEvent('%s') - listener returned\n", eventName.c_str());
         }
     }
-    fprintf(stderr, "[C++] RoomWrap::emitEvent('%s') - all listeners called\n", eventName.c_str());
 }
 
 Napi::Value RoomWrap::GetName(const Napi::CallbackInfo& info) {
@@ -305,9 +333,31 @@ Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {
     auto participants = room_->getRemoteParticipants();
     auto array = Napi::Array::New(env, participants.size());
 
+    // Track which SIDs are still present
+    std::set<std::string> activeSids;
+
     uint32_t i = 0;
     for (const auto& pair : participants) {
-        array.Set(i++, RemoteParticipantWrap::NewInstance(env, pair.second));
+        const std::string& sid = pair.first;
+        activeSids.insert(sid);
+
+        auto cacheIt = participantCache_.find(sid);
+        if (cacheIt != participantCache_.end() && !cacheIt->second.IsEmpty()) {
+            array.Set(i++, cacheIt->second.Value());
+        } else {
+            auto participantObj = RemoteParticipantWrap::NewInstance(env, pair.second);
+            participantCache_[sid] = Napi::Persistent(participantObj);
+            array.Set(i++, participantObj);
+        }
+    }
+
+    // Evict stale entries
+    for (auto it = participantCache_.begin(); it != participantCache_.end(); ) {
+        if (activeSids.find(it->first) == activeSids.end()) {
+            it = participantCache_.erase(it);
+        } else {
+            ++it;
+        }
     }
 
     return array;
@@ -332,8 +382,6 @@ Napi::Value RoomWrap::On(const Napi::CallbackInfo& info) {
     auto callback = info[1].As<Napi::Function>();
 
     eventListeners_[eventName].push_back(Napi::Persistent(callback));
-    fprintf(stderr, "[C++] RoomWrap::On('%s') - listener registered (total: %zu)\n",
-            eventName.c_str(), eventListeners_[eventName].size());
 
     return info.This();
 }

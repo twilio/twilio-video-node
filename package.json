@@ -1,6 +1,6 @@
 {
   "name": "twilio-video-sdk",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Twilio Video Media Streams SDK for Node.js - Server-side access to decoded video/audio frames",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

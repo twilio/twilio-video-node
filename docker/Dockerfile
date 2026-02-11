@@ -6,7 +6,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && \
     npm install -g cmake-js
 
-# Install PulseAudio for virtual audio device (WebRTC requires ADM)
-RUN apt-get update && apt-get install -y pulseaudio && rm -rf /var/lib/apt/lists/*
+# WebRTC requires X11 libs (screen capture deps) and PulseAudio (audio device manager)
+RUN apt-get update && apt-get install -y \
+    pulseaudio \
+    libx11-dev libxext-dev libxdamage-dev libxfixes-dev \
+    libxcomposite-dev libxrandr-dev libxtst-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/twilio/twilio-video-node

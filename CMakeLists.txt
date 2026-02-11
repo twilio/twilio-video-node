@@ -119,5 +119,12 @@ else()
     target_link_libraries(${PROJECT_NAME}
         pthread
         dl
+        X11
+        Xext
+        Xdamage
+        Xfixes
+        Xcomposite
+        Xrandr
+        Xtst
     )
 endif()

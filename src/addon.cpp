@@ -12,10 +12,7 @@
 #include "media/remote_data_track_wrap.h"
 
 #include <twilio/video/video.h>
-
-#ifdef __APPLE__
-#include <CoreFoundation/CoreFoundation.h>
-#endif
+#include <twilio/log.h>
 
 namespace twilio_video_node {
 
@@ -23,23 +20,41 @@ Napi::String GetVersion(const Napi::CallbackInfo& info) {
     return Napi::String::New(info.Env(), twilio::video::getVersion());
 }
 
-#ifdef __APPLE__
-Napi::Value PumpMainQueue(const Napi::CallbackInfo& info) {
-    // Process pending work on the main dispatch queue
-    // rtc-cpp posts observer callbacks to dispatch_get_main_queue()
-    // Node.js doesn't pump this queue, so we do it manually
-    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, true);
-    return info.Env().Undefined();
+void SetLogLevel(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected log level argument").ThrowAsJavaScriptException();
+        return;
+    }
+
+    twilio::LogLevel level;
+    if (info[0].IsNumber()) {
+        level = static_cast<twilio::LogLevel>(info[0].As<Napi::Number>().Int32Value());
+    } else if (info[0].IsString()) {
+        std::string s = info[0].As<Napi::String>().Utf8Value();
+        if (s == "off") level = twilio::LogLevel::kOff;
+        else if (s == "fatal") level = twilio::LogLevel::kFatal;
+        else if (s == "error") level = twilio::LogLevel::kError;
+        else if (s == "warning") level = twilio::LogLevel::kWarning;
+        else if (s == "info") level = twilio::LogLevel::kInfo;
+        else if (s == "debug") level = twilio::LogLevel::kDebug;
+        else if (s == "trace") level = twilio::LogLevel::kTrace;
+        else if (s == "all") level = twilio::LogLevel::kAll;
+        else {
+            Napi::TypeError::New(env, "Invalid log level: " + s).ThrowAsJavaScriptException();
+            return;
+        }
+    } else {
+        Napi::TypeError::New(env, "Expected string or number").ThrowAsJavaScriptException();
+        return;
+    }
+
+    twilio::setLogLevel(level);
 }
-#endif
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
-    printf("[C++] Module Init() called\n");
-    fflush(stdout);
     exports.Set("getVersion", Napi::Function::New(env, GetVersion));
-#ifdef __APPLE__
-    exports.Set("pumpMainQueue", Napi::Function::New(env, PumpMainQueue));
-#endif
+    exports.Set("setLogLevel", Napi::Function::New(env, SetLogLevel));
 
     MediaFactoryWrap::Init(env, exports);
     ConnectOptionsWrap::Init(env, exports);

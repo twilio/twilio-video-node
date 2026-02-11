@@ -6,6 +6,7 @@
 #include <twilio/video/remote_participant.h>
 #include "../common/async_context.h"
 #include <functional>
+#include <atomic>
 
 namespace twilio_video_node {
 
@@ -37,7 +38,7 @@ private:
 
     RoomWrap* roomWrap_;
     std::unique_ptr<AsyncContext> asyncContext_;
-    bool closed_ = false;
+    std::atomic<bool> closed_{false};
     std::mutex mutex_;
 };
 

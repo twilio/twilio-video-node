@@ -40,7 +40,13 @@ private:
     std::shared_ptr<RoomObserverWrap> observer_;
     std::map<std::string, std::vector<Napi::FunctionReference>> eventListeners_;
     std::unique_ptr<AsyncContext> asyncContext_;
-    void* notifier_queue_ = nullptr;  // dispatch_queue_t on macOS
+
+    // Participant wrapper cache (keyed by SID)
+    std::map<std::string, Napi::ObjectReference> participantCache_;
+
+#ifdef __APPLE__
+    uv_timer_t* mainQueueTimer_ = nullptr;
+#endif
 };
 
 }

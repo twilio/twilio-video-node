@@ -45,6 +45,18 @@ export interface PlatformInfo {
     deviceModel?: string;
 }
 
+export interface IceServer {
+    urls: string[];
+    username?: string;
+    credential?: string;
+}
+
+export interface IceOptions {
+    /** 'all' (default) or 'relay' (force TURN) */
+    transportPolicy?: 'all' | 'relay';
+    iceServers?: IceServer[];
+}
+
 export interface ConnectOptions {
     token: string;
     roomName?: string;
@@ -58,25 +70,23 @@ export interface ConnectOptions {
     enableNetworkQuality?: boolean;
     region?: string;
     platformInfo?: PlatformInfo;
+    iceOptions?: IceOptions;
 }
 
 export interface LocalVideoTrack {
     readonly name: string;
-    readonly sid: string;
     enabled: boolean;
     pushFrame(yPlane: Buffer, uPlane: Buffer, vPlane: Buffer, width: number, height: number, timestampUs?: number): void;
 }
 
 export interface LocalAudioTrack {
     readonly name: string;
-    readonly sid: string;
     enabled: boolean;
     pushSamples(samples: Buffer, sampleRate: number, channels: number): void;
 }
 
 export interface LocalDataTrack {
     readonly name: string;
-    readonly sid: string;
     readonly maxPacketLifeTime: number;
     readonly maxRetransmits: number;
     readonly reliable: boolean;
@@ -176,6 +186,9 @@ export interface MediaFactoryOptions {
     platformInfo?: PlatformInfo;
 }
 
+export type LogLevel = 'off' | 'fatal' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'all';
+
 export function getVersion(): string;
-export function connect(options: ConnectOptions): Room;
+export function setLogLevel(level: LogLevel | number): void;
+export function connect(options: ConnectOptions): Promise<Room>;
 export { MediaFactory as MediaFactoryClass };

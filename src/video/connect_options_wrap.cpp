@@ -119,7 +119,7 @@ ConnectOptionsWrap::ConnectOptionsWrap(const Napi::CallbackInfo& info)
             platformInfo_.hwDeviceModel = platformInfo.Get("deviceModel").As<Napi::String>().Utf8Value();
         }
     } else {
-        platformInfo_.sdkVersion = "1.0.0";
+        platformInfo_.sdkVersion = "0.1.0";
         platformInfo_.platformName = "nodejs";
         platformInfo_.platformVersion = "24.0.0";
         platformInfo_.hwDeviceArch = "x86_64";
