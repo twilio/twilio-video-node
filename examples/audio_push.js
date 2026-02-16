@@ -5,7 +5,7 @@
  *   TWILIO_ACCESS_TOKEN=xxx node examples/audio_push.js [room-name]
  */
 
-const { connect, MediaFactory } = require('../lib');
+const { connect, createLocalAudioTrack } = require('../lib');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';
 const TOKEN = process.env.TWILIO_ACCESS_TOKEN;
@@ -38,14 +38,11 @@ function generateSineFrame(frameIndex) {
 async function main() {
     console.log('Connecting to room:', ROOM_NAME);
 
-    const mediaFactory = new MediaFactory();
-    const audioTrack = mediaFactory.createAudioTrack({ name: 'pushable-audio' });
+    const audioTrack = createLocalAudioTrack('pushable-audio');
     console.log('Created audio track:', audioTrack.name);
 
-    const room = await connect({
-        token: TOKEN,
-        roomName: ROOM_NAME,
-        mediaFactory: mediaFactory,
+    const room = await connect(TOKEN, {
+        name: ROOM_NAME,
         audioTracks: [audioTrack],
     });
 

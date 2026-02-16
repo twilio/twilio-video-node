@@ -5,7 +5,7 @@
  *   TWILIO_ACCESS_TOKEN=xxx node examples/video_mirror.js [room-name]
  */
 
-const { connect, MediaFactory } = require('../lib');
+const { connect, createLocalVideoTrack } = require('../lib');
 
 const ROOM_NAME = process.argv[2] || 'mirror-room';
 const TOKEN = process.env.TWILIO_ACCESS_TOKEN;
@@ -16,14 +16,11 @@ if (!TOKEN) {
 }
 
 async function main() {
-    const mediaFactory = new MediaFactory();
-    const videoTrack = mediaFactory.createVideoTrack({ name: 'mirror' });
+    const videoTrack = createLocalVideoTrack('mirror');
 
     console.log('Connecting to room:', ROOM_NAME);
-    const room = await connect({
-        token: TOKEN,
-        roomName: ROOM_NAME,
-        mediaFactory,
+    const room = await connect(TOKEN, {
+        name: ROOM_NAME,
         videoTracks: [videoTrack],
         enableAutomaticSubscription: true,
     });

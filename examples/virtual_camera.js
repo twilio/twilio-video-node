@@ -4,7 +4,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const { connect, MediaFactory } = require('../lib');
+const { connect, createLocalVideoTrack } = require('../lib');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';
 const TOKEN = process.env.TWILIO_ACCESS_TOKEN;
@@ -22,14 +22,11 @@ if (!TOKEN) {
 async function main() {
     console.log('Connecting to room:', ROOM_NAME);
 
-    const mediaFactory = new MediaFactory();
-    const videoTrack = mediaFactory.createVideoTrack({ name: 'virtual-camera' });
+    const videoTrack = createLocalVideoTrack('virtual-camera');
     console.log('Created video track:', videoTrack.name);
 
-    const room = await connect({
-        token: TOKEN,
-        roomName: ROOM_NAME,
-        mediaFactory: mediaFactory,
+    const room = await connect(TOKEN, {
+        name: ROOM_NAME,
         videoTracks: [videoTrack],
     });
 

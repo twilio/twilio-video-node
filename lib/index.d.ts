@@ -58,8 +58,7 @@ export interface IceOptions {
 }
 
 export interface ConnectOptions {
-    token: string;
-    roomName?: string;
+    name?: string;
     mediaFactory?: MediaFactory;
     videoTracks?: LocalVideoTrack[];
     audioTracks?: LocalAudioTrack[];
@@ -190,5 +189,7 @@ export type LogLevel = 'off' | 'fatal' | 'error' | 'warning' | 'info' | 'debug' 
 
 export function getVersion(): string;
 export function setLogLevel(level: LogLevel | number): void;
-export function connect(options: ConnectOptions): Promise<Room>;
+export function connect(token: string, options?: ConnectOptions): Promise<Room>;
+export function createLocalVideoTrack(name?: string): LocalVideoTrack;
+export function createLocalAudioTrack(name?: string): LocalAudioTrack;
 export { MediaFactory as MediaFactoryClass };

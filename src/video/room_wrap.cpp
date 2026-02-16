@@ -41,8 +41,8 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
 Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 1 || !info[0].IsObject()) {
-        Napi::TypeError::New(env, "Expected options object").ThrowAsJavaScriptException();
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "Token must be a string").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
@@ -53,18 +53,15 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     roomWrap->observer_ = std::make_shared<RoomObserverWrap>(env, roomWrap);
     roomWrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
 
-    auto optionsObj = info[0].As<Napi::Object>();
-
-    if (!optionsObj.Has("token") || !optionsObj.Get("token").IsString()) {
-        Napi::TypeError::New(env, "token is required").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    std::string token = optionsObj.Get("token").As<Napi::String>().Utf8Value();
+    std::string token = info[0].As<Napi::String>().Utf8Value();
     twilio::video::ConnectOptions::Builder builder(token);
 
-    if (optionsObj.Has("roomName")) {
-        builder.setRoomName(optionsObj.Get("roomName").As<Napi::String>().Utf8Value());
+    auto optionsObj = (info.Length() >= 2 && info[1].IsObject())
+        ? info[1].As<Napi::Object>()
+        : Napi::Object::New(env);
+
+    if (optionsObj.Has("name")) {
+        builder.setRoomName(optionsObj.Get("name").As<Napi::String>().Utf8Value());
     }
 
     // MediaFactory

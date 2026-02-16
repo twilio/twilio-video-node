@@ -7,9 +7,8 @@ async function connectToRoom(identity, roomName, opts = {}) {
     const mediaFactory = opts.mediaFactory || new MediaFactory();
     const token = generateToken(identity, roomName);
 
-    const roomPromise = connect({
-        token,
-        roomName,
+    const roomPromise = connect(token, {
+        name: roomName,
         mediaFactory,
         videoTracks: opts.videoTracks || [],
         audioTracks: opts.audioTracks || [],
