@@ -24,6 +24,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Prebuilt binaries and downloaded artifacts
+prebuilds/
+deps/
+
 # Environment
 .env
 .env.local

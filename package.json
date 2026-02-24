@@ -5,24 +5,34 @@
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
-    "install": "cmake-js compile",
+    "install": "node scripts/install.js",
     "build": "cmake-js build",
     "build:debug": "cmake-js build --debug",
+    "build:release": "cmake-js build --CDRTC_CPP_BUILD_TYPE=release",
     "rebuild": "cmake-js rebuild",
     "clean": "cmake-js clean",
+    "prebuild": "node scripts/prebuild.js",
+    "upload": "node scripts/upload.js",
+    "upload:darwin": "node scripts/upload.js darwin-x64",
+    "upload:linux": "node scripts/upload.js linux-x64",
+    "fetch-deps": "node scripts/fetch-deps.js",
     "test": "node test/run.js test/unit.test.js test/integration.test.js",
     "test:unit": "node test/run.js test/unit.test.js",
     "test:integration": "node test/run.js test/integration.test.js"
   },
-  "dependencies": {
-    "cmake-js": "^7.3.0",
-    "node-addon-api": "^8.0.0",
-    "twilio": "^5.12.1"
-  },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "cmake-js": "^7.3.0",
+    "node-addon-api": "^8.0.0",
+    "twilio": "^5.12.1",
     "typescript": "^5.0.0"
   },
+  "files": [
+    "lib",
+    "scripts/install.js",
+    "scripts/common.js",
+    "package.json"
+  ],
   "engines": {
     "node": ">=24.0.0"
   },
@@ -40,5 +50,9 @@
     "media-streams",
     "real-time"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://code.hq.twilio.com/client/twilio-video-node.git"
+  }
 }
