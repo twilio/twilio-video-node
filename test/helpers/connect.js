@@ -1,5 +1,5 @@
-const { connect, MediaFactory } = require('../../lib');
-const { generateToken } = require('./token');
+import { connect, MediaFactory } from '../../lib/index.js';
+import { generateToken } from './token.js';
 
 const CONNECTION_TIMEOUT = 15_000;
 
@@ -34,4 +34,4 @@ async function connectToRoom(identity, roomName, opts = {}) {
     };
 }
 
-module.exports = { connectToRoom };
+export { connectToRoom };

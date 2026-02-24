@@ -16,16 +16,17 @@
     "upload:darwin": "node scripts/upload.js darwin-x64",
     "upload:linux": "node scripts/upload.js linux-x64",
     "fetch-deps": "node scripts/fetch-deps.js",
-    "test": "node test/run.js test/unit.test.js test/integration.test.js",
-    "test:unit": "node test/run.js test/unit.test.js",
-    "test:integration": "node test/run.js test/integration.test.js"
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit.test.js",
+    "test:integration": "vitest run test/integration.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "cmake-js": "^7.3.0",
     "node-addon-api": "^8.0.0",
     "twilio": "^5.12.1",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.18"
   },
   "files": [
     "lib",

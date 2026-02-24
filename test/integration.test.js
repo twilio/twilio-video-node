@@ -1,13 +1,8 @@
-const { describe, it, before, after } = require('node:test');
-const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
-const { hasCredentials } = require('./helpers/token');
-const { connectToRoom } = require('./helpers/connect');
-const { generateI420Frame, generateAudioSamples } = require('./helpers/media');
-const { MediaFactory } = require('../lib');
-
-
-const SKIP = !hasCredentials();
+import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+import crypto from 'node:crypto';
+import { connectToRoom } from './helpers/connect.js';
+import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
+import { MediaFactory } from '../lib/index.js';
 const TRACK_SUBSCRIBE_TIMEOUT = 15_000;
 const MEDIA_FLOW_TIMEOUT = 10_000;
 // SDP renegotiation after publishTrack + trackSubscribed needs time to complete
@@ -48,40 +43,40 @@ async function connectPair(roomName, optsA = {}) {
     return { connA, connB, remoteB, remoteA };
 }
 
-describe('Integration: Room connect/disconnect', { skip: SKIP && 'Missing TWILIO_STAGE_* credentials' }, () => {
-    it('connects, verifies state, disconnects', { timeout: 45_000 }, async () => {
+describe('Integration: Room connect/disconnect', () => {
+    it('connects, verifies state, disconnects', async () => {
         const roomName = uniqueRoom();
         const { room, cleanup } = await connectToRoom('alice', roomName);
 
         try {
-            assert.equal(room.state, 'connected');
-            assert.equal(room.name, roomName);
-            assert.ok(room.sid, 'room should have a sid');
-            assert.ok(room.localParticipant, 'should have localParticipant');
-            assert.equal(room.localParticipant.identity, 'alice');
+            expect(room.state).toBe('connected');
+            expect(room.name).toBe(roomName);
+            expect(room.sid).toBeTruthy();
+            expect(room.localParticipant).toBeTruthy();
+            expect(room.localParticipant.identity).toBe('alice');
         } finally {
             await cleanup();
         }
     });
 });
 
-describe('Integration: Participant discovery', { skip: SKIP && 'Missing TWILIO_STAGE_* credentials' }, () => {
-    it('both participants see each other', { timeout: 45_000 }, async () => {
+describe('Integration: Participant discovery', () => {
+    it('both participants see each other', async () => {
         const roomName = uniqueRoom();
         const { connA, connB, remoteB, remoteA } = await connectPair(roomName);
 
         try {
-            assert.equal(remoteB.identity, 'bob');
-            assert.ok(remoteA, 'bob should see alice in remoteParticipants');
-            assert.equal(remoteA.identity, 'alice');
+            expect(remoteB.identity).toBe('bob');
+            expect(remoteA).toBeTruthy();
+            expect(remoteA.identity).toBe('alice');
         } finally {
             await Promise.all([connA.cleanup(), connB.cleanup()]);
         }
     });
 });
 
-describe('Integration: Video publish + receive', { skip: SKIP && 'Missing TWILIO_STAGE_* credentials' }, () => {
-    it('B receives video frames from A', { timeout: 60_000 }, async () => {
+describe('Integration: Video publish + receive', () => {
+    it('B receives video frames from A', async () => {
         const roomName = uniqueRoom();
         const mfA = new MediaFactory();
         const videoTrack = mfA.createVideoTrack({ name: 'test-cam' });
@@ -120,13 +115,13 @@ describe('Integration: Video publish + receive', { skip: SKIP && 'Missing TWILIO
         clearInterval(pushInterval);
 
         try {
-            assert.ok(receivedFrames.length >= 3, `Expected >= 3 frames, got ${receivedFrames.length}`);
+            expect(receivedFrames.length).toBeGreaterThanOrEqual(3);
             const frame = receivedFrames[0];
-            assert.ok(Buffer.isBuffer(frame.yBuf), 'Y plane should be a Buffer');
-            assert.ok(Buffer.isBuffer(frame.uBuf), 'U plane should be a Buffer');
-            assert.ok(Buffer.isBuffer(frame.vBuf), 'V plane should be a Buffer');
-            assert.ok(frame.metadata.width > 0, 'width should be > 0');
-            assert.ok(frame.metadata.height > 0, 'height should be > 0');
+            expect(Buffer.isBuffer(frame.yBuf)).toBe(true);
+            expect(Buffer.isBuffer(frame.uBuf)).toBe(true);
+            expect(Buffer.isBuffer(frame.vBuf)).toBe(true);
+            expect(frame.metadata.width).toBeGreaterThan(0);
+            expect(frame.metadata.height).toBeGreaterThan(0);
         } finally {
             remoteTrack.removeFrameCallback();
             await Promise.all([connA.cleanup(), connB.cleanup()]);
@@ -134,8 +129,8 @@ describe('Integration: Video publish + receive', { skip: SKIP && 'Missing TWILIO
     });
 });
 
-describe('Integration: Audio publish + receive', { skip: SKIP && 'Missing TWILIO_STAGE_* credentials' }, () => {
-    it('B receives audio samples from A', { timeout: 60_000 }, async () => {
+describe('Integration: Audio publish + receive', () => {
+    it('B receives audio samples from A', async () => {
         const roomName = uniqueRoom();
         const mfA = new MediaFactory();
         const audioTrack = mfA.createAudioTrack({ name: 'test-mic' });
@@ -176,12 +171,12 @@ describe('Integration: Audio publish + receive', { skip: SKIP && 'Missing TWILIO
         clearInterval(pushInterval);
 
         try {
-            assert.ok(receivedAudio.length >= 5, `Expected >= 5 audio callbacks, got ${receivedAudio.length}`);
+            expect(receivedAudio.length).toBeGreaterThanOrEqual(5);
             const frame = receivedAudio[0];
-            assert.ok(Buffer.isBuffer(frame.samples), 'samples should be a Buffer');
-            assert.ok(frame.metadata.sampleRate > 0, 'sampleRate should be > 0');
-            assert.ok(frame.metadata.numberOfChannels > 0, 'numberOfChannels should be > 0');
-            assert.ok(frame.metadata.numberOfFrames > 0, 'numberOfFrames should be > 0');
+            expect(Buffer.isBuffer(frame.samples)).toBe(true);
+            expect(frame.metadata.sampleRate).toBeGreaterThan(0);
+            expect(frame.metadata.numberOfChannels).toBeGreaterThan(0);
+            expect(frame.metadata.numberOfFrames).toBeGreaterThan(0);
         } finally {
             remoteTrack.removeDataCallback();
             await Promise.all([connA.cleanup(), connB.cleanup()]);
@@ -189,8 +184,8 @@ describe('Integration: Audio publish + receive', { skip: SKIP && 'Missing TWILIO
     });
 });
 
-describe('Integration: Multiple tracks', { skip: SKIP && 'Missing TWILIO_STAGE_* credentials' }, () => {
-    it('B receives both video and audio tracks from A', { timeout: 45_000 }, async () => {
+describe('Integration: Multiple tracks', () => {
+    it('B receives both video and audio tracks from A', async () => {
         const roomName = uniqueRoom();
         const mfA = new MediaFactory();
         const videoTrack = mfA.createVideoTrack({ name: 'multi-cam' });
@@ -219,9 +214,9 @@ describe('Integration: Multiple tracks', { skip: SKIP && 'Missing TWILIO_STAGE_*
         await tracksPromise;
 
         try {
-            assert.equal(tracks.length, 2, 'Should receive 2 tracks');
+            expect(tracks.length).toBe(2);
             const names = tracks.map(t => t.name).sort();
-            assert.deepEqual(names, ['multi-cam', 'multi-mic']);
+            expect(names).toEqual(['multi-cam', 'multi-mic']);
         } finally {
             await Promise.all([connA.cleanup(), connB.cleanup()]);
         }
