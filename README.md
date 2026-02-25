@@ -215,7 +215,6 @@ Audio is delivered as a single `Buffer` of interleaved 16-bit signed little-endi
   enableDominantSpeaker?: boolean;
   enableNetworkQuality?: boolean;
   region?: string;                      // e.g. 'us1', 'au1'
-  platformInfo?: PlatformInfo;
   iceOptions?: IceOptions;
   encodingParameters?: EncodingParameters;
 }
@@ -227,19 +226,6 @@ Audio is delivered as a single `Buffer` of interleaved 16-bit signed little-endi
 {
   transportPolicy?: 'all' | 'relay';  // 'relay' forces TURN
   iceServers?: IceServer[];
-}
-```
-
-### PlatformInfo
-
-```ts
-{
-  sdkVersion?: string;
-  platformName?: string;
-  platformVersion?: string;
-  deviceArchitecture?: string;
-  deviceManufacturer?: string;
-  deviceModel?: string;
 }
 ```
 
