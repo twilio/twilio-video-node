@@ -160,9 +160,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
 
     // Platform info
     twilio::PlatformInfo platformInfo;
-    platformInfo.sdkVersion = "0.1.0";
     platformInfo.platformName = "nodejs";
-    platformInfo.platformVersion = "24.0.0";
     platformInfo.hwDeviceArch = "x86_64";
     platformInfo.hwDeviceManufacturer = "Server";
     platformInfo.hwDeviceModel = "MediaStreams";
