@@ -33,6 +33,7 @@ private:
     Napi::Value GetLocalParticipant(const Napi::CallbackInfo& info);
     Napi::Value GetRemoteParticipants(const Napi::CallbackInfo& info);
     Napi::Value Disconnect(const Napi::CallbackInfo& info);
+    Napi::Value Dispose(const Napi::CallbackInfo& info);
     Napi::Value On(const Napi::CallbackInfo& info);
     Napi::Value Off(const Napi::CallbackInfo& info);
 

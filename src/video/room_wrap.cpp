@@ -27,6 +27,7 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("localParticipant", &RoomWrap::GetLocalParticipant, nullptr),
         InstanceAccessor("remoteParticipants", &RoomWrap::GetRemoteParticipants, nullptr),
         InstanceMethod("disconnect", &RoomWrap::Disconnect),
+        InstanceMethod("dispose", &RoomWrap::Dispose),
         InstanceMethod("on", &RoomWrap::On),
         InstanceMethod("off", &RoomWrap::Off),
     });
@@ -362,6 +363,35 @@ Napi::Value RoomWrap::Disconnect(const Napi::CallbackInfo& info) {
     if (room_) {
         room_->disconnect();
     }
+    return info.Env().Undefined();
+}
+
+Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
+    if (room_) {
+        room_->disconnect();
+    }
+    if (observer_) {
+        observer_->close();
+        observer_.reset();
+    }
+    eventListeners_.clear();
+    participantCache_.clear();
+    if (asyncContext_) {
+        asyncContext_->close();
+        asyncContext_.reset();
+    }
+    room_.reset();
+
+#ifdef __APPLE__
+    if (mainQueueTimer_) {
+        uv_timer_stop(mainQueueTimer_);
+        uv_close(reinterpret_cast<uv_handle_t*>(mainQueueTimer_), [](uv_handle_t* h) {
+            delete reinterpret_cast<uv_timer_t*>(h);
+        });
+        mainQueueTimer_ = nullptr;
+    }
+#endif
+
     return info.Env().Undefined();
 }
 

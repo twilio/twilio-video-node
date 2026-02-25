@@ -163,6 +163,7 @@ export interface Room {
     readonly localParticipant: LocalParticipant;
     readonly remoteParticipants: RemoteParticipant[];
     disconnect(): void;
+    dispose(): void;
     on(event: 'connected', handler: () => void): this;
     on(event: 'disconnected', handler: (error?: TwilioError) => void): this;
     on(event: 'connectFailure', handler: (error: TwilioError) => void): this;
