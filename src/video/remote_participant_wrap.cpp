@@ -19,8 +19,34 @@ public:
 
     void onAudioTrackPublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>) override {}
     void onAudioTrackUnpublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>) override {}
-    void onAudioTrackEnabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>) override {}
-    void onAudioTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>) override {}
+    void onAudioTrackEnabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        auto subscribed = pub->isTrackSubscribed();
+        ctx_->dispatch([this, sid, name, subscribed](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            obj.Set("isSubscribed", Napi::Boolean::New(env, subscribed));
+            wrap_->emitEvent("trackEnabled", obj);
+        });
+    }
+    void onAudioTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        auto subscribed = pub->isTrackSubscribed();
+        ctx_->dispatch([this, sid, name, subscribed](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            obj.Set("isSubscribed", Napi::Boolean::New(env, subscribed));
+            wrap_->emitEvent("trackDisabled", obj);
+        });
+    }
 
     void onAudioTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
                                 std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
@@ -54,8 +80,34 @@ public:
 
     void onVideoTrackPublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>) override {}
     void onVideoTrackUnpublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>) override {}
-    void onVideoTrackEnabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>) override {}
-    void onVideoTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>) override {}
+    void onVideoTrackEnabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        auto subscribed = pub->isTrackSubscribed();
+        ctx_->dispatch([this, sid, name, subscribed](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            obj.Set("isSubscribed", Napi::Boolean::New(env, subscribed));
+            wrap_->emitEvent("trackEnabled", obj);
+        });
+    }
+    void onVideoTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        auto subscribed = pub->isTrackSubscribed();
+        ctx_->dispatch([this, sid, name, subscribed](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            obj.Set("isSubscribed", Napi::Boolean::New(env, subscribed));
+            wrap_->emitEvent("trackDisabled", obj);
+        });
+    }
 
     void onVideoTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
                                 std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {

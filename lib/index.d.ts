@@ -149,6 +149,8 @@ export interface RemoteParticipant {
     on(event: 'trackSubscribed', handler: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void): this;
     on(event: 'trackUnsubscribed', handler: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void): this;
     on(event: 'trackSubscriptionFailed', handler: (error: TwilioError) => void): this;
+    on(event: 'trackEnabled', handler: (publication: RemoteTrackPublication) => void): this;
+    on(event: 'trackDisabled', handler: (publication: RemoteTrackPublication) => void): this;
     off(event: string): this;
 }
 
