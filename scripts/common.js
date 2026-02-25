@@ -27,7 +27,7 @@ function getGitHubInfo(pkg) {
     }
 
     repoUrl = repoUrl.replace(/^git\+/, '').replace(/\.git$/, '');
-    const match = repoUrl.match(/https?:\/\/([^\/]+)\/(.+)$/);
+    const match = repoUrl.match(/https?:\/\/([^/]+)\/(.+)$/);
     if (!match) {
         return null;
     }

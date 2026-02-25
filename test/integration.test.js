@@ -1,4 +1,4 @@
-import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
 import { connectToRoom } from './helpers/connect.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
@@ -81,7 +81,7 @@ describe('Video publish + receive', () => {
         const mfA = new MediaFactory();
         const videoTrack = mfA.createVideoTrack({ name: 'test-cam' });
 
-        const { connA, connB, remoteB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+        const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
 
         const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
         connA.room.localParticipant.publishTrack(videoTrack);
@@ -135,7 +135,7 @@ describe('Audio publish + receive', () => {
         const mfA = new MediaFactory();
         const audioTrack = mfA.createAudioTrack({ name: 'test-mic' });
 
-        const { connA, connB, remoteB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+        const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
 
         const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
         connA.room.localParticipant.publishTrack(audioTrack);
@@ -191,7 +191,7 @@ describe('Multiple tracks', () => {
         const videoTrack = mfA.createVideoTrack({ name: 'multi-cam' });
         const audioTrack = mfA.createAudioTrack({ name: 'multi-mic' });
 
-        const { connA, connB, remoteB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+        const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
 
         const tracks = [];
         const tracksPromise = new Promise((resolve, reject) => {
@@ -229,7 +229,7 @@ describe('Data track send/receive', () => {
         const mfA = new MediaFactory();
         const dataTrack = mfA.createDataTrack({ name: 'chat' });
 
-        const { connA, connB, remoteB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+        const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
 
         const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
         connA.room.localParticipant.publishTrack(dataTrack);
