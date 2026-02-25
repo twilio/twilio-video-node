@@ -4,8 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const http = require('http');
+const { execFileSync } = require('child_process');
 const { ADDON_NAME, ROOT, getPlatformDir, getPrebuiltPath, getPrebuiltName, getGitHubInfo, log } = require('./common');
 
 const platformDir = getPlatformDir();
@@ -40,44 +39,28 @@ if (!ghInfo) {
     exit('No repository info. Set GITHUB_REPOSITORY or add repository field to package.json');
 }
 
-const url = `https://${ghInfo.host}/${ghInfo.repo}/releases/download/${ghInfo.tag}/${getPrebuiltName(platformDir)}`;
+const assetName = getPrebuiltName(platformDir);
+const repo = `${ghInfo.host}/${ghInfo.repo}`;
 
-log('install', `Downloading ${platformDir}...`);
-log('install', url);
+log('install', `Downloading ${assetName} from ${repo} ${ghInfo.tag}...`);
 
-function download(url, dest, redirects = 0) {
-    if (redirects > 5) {
-        exit('Too many redirects');
+fs.mkdirSync(path.dirname(prebuiltPath), { recursive: true });
+
+try {
+    execFileSync('gh', [
+        'release', 'download', ghInfo.tag,
+        '--repo', repo,
+        '--pattern', assetName,
+        '--dir', path.dirname(prebuiltPath),
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    if (!fs.existsSync(prebuiltPath)) {
+        exit(`Asset ${assetName} not found in release ${ghInfo.tag}`);
     }
 
-    const client = url.startsWith('https') ? https : http;
-    const token = process.env.GITHUB_TOKEN;
-    const options = token ? {
-        ...new URL(url),
-        headers: { 'Authorization': `token ${token}` }
-    } : url;
-
-    client.get(options, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            return download(res.headers.location, dest, redirects + 1);
-        }
-
-        if (res.statusCode !== 200) {
-            exit(`Download failed: HTTP ${res.statusCode}. Try: TWILIO_VIDEO_NODE_SKIP_DOWNLOAD=1 npm install && npm run build`);
-        }
-
-        fs.mkdirSync(path.dirname(dest), { recursive: true });
-        const file = fs.createWriteStream(dest);
-        res.pipe(file);
-
-        file.on('finish', () => {
-            file.close();
-            const size = fs.statSync(dest).size;
-            log('install', `Downloaded ${(size / 1024 / 1024).toFixed(1)} MB`);
-        });
-    }).on('error', (err) => {
-        exit(`Download failed: ${err.message || err.code}`);
-    });
+    const size = fs.statSync(prebuiltPath).size;
+    log('install', `Downloaded ${(size / 1024 / 1024).toFixed(1)} MB`);
+} catch (err) {
+    const stderr = err.stderr?.toString() || err.message;
+    exit(`Download failed: ${stderr.trim()}`);
 }
-
-download(url, prebuiltPath);

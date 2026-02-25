@@ -51,7 +51,7 @@
     "media-streams",
     "real-time"
   ],
-  "license": "MIT",
+  "license": "BSD-3-Clause",
   "repository": {
     "type": "git",
     "url": "https://code.hq.twilio.com/client/twilio-video-node.git"
