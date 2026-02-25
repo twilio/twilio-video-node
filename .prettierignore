@@ -1,0 +1,9 @@
+build/
+cmake-build-debug/
+prebuilds/
+deps/
+node_modules/
+coverage/
+.claude/
+*.node
+package-lock.json

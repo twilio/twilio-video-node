@@ -20,7 +20,9 @@
     "test:unit": "vitest run test/unit.test.js",
     "test:integration": "vitest run test/integration.test.js",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -29,6 +31,7 @@
     "cmake-js": "^7.3.0",
     "eslint": "^10.0.2",
     "node-addon-api": "^8.0.0",
+    "prettier": "^3.8.1",
     "twilio": "^5.12.1",
     "typescript": "^5.0.0",
     "vitest": "^4.0.18"
