@@ -18,7 +18,8 @@
     "fetch-deps": "node scripts/fetch-deps.js",
     "test": "vitest run",
     "test:unit": "vitest run test/unit.test.js",
-    "test:integration": "vitest run test/integration.test.js"
+    "test:integration": "vitest run test/integration.test.js",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -26,6 +27,7 @@
     "node-addon-api": "^8.0.0",
     "twilio": "^5.12.1",
     "typescript": "^5.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "vitest": "^4.0.18"
   },
   "files": [

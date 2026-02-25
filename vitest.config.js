@@ -4,5 +4,10 @@ export default defineConfig({
   test: {
     testTimeout: 60000,
     hookTimeout: 30000,
+    coverage: {
+      provider: 'v8',
+      include: ['lib/**/*.js'],
+      reporter: ['text', 'lcov'],
+    },
   },
 });

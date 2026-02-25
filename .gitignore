@@ -28,6 +28,9 @@ yarn-error.log*
 prebuilds/
 deps/
 
+# Coverage
+coverage/
+
 # Environment
 .env
 .env.local
