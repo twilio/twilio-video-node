@@ -191,6 +191,33 @@ export interface MediaFactoryOptions {
 
 export type LogLevel = 'off' | 'fatal' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'all';
 
+export declare const ErrorCode: {
+    readonly ACCESS_TOKEN_INVALID: 20101;
+    readonly ACCESS_TOKEN_HEADER_INVALID: 20102;
+    readonly ACCESS_TOKEN_ISSUER_INVALID: 20103;
+    readonly ACCESS_TOKEN_EXPIRED: 20104;
+    readonly ACCESS_TOKEN_NOT_YET_VALID: 20105;
+    readonly ACCESS_TOKEN_GRANT_INVALID: 20106;
+    readonly ACCESS_TOKEN_SIGNATURE_INVALID: 20107;
+    readonly SIGNALING_CONNECTION_ERROR: 53000;
+    readonly SIGNALING_CONNECTION_DISCONNECTED: 53001;
+    readonly SIGNALING_CONNECTION_TIMEOUT: 53002;
+    readonly ROOM_NOT_FOUND: 53106;
+    readonly ROOM_CONNECT_FAILED: 53104;
+    readonly ROOM_MAX_PARTICIPANTS_EXCEEDED: 53105;
+    readonly ROOM_COMPLETED: 53118;
+    readonly PARTICIPANT_DUPLICATE_IDENTITY: 53205;
+    readonly TRACK_INVALID: 53300;
+    readonly TRACK_NAME_TOO_LONG: 53301;
+    readonly TRACK_NAME_CHARS_INVALID: 53303;
+    readonly MEDIA_CLIENT_LOCAL_DESC_FAILED: 53400;
+    readonly MEDIA_SERVER_LOCAL_DESC_FAILED: 53401;
+    readonly MEDIA_CLIENT_REMOTE_DESC_FAILED: 53402;
+    readonly MEDIA_SERVER_REMOTE_DESC_FAILED: 53403;
+    readonly MEDIA_NO_SUPPORTED_CODEC: 53404;
+    readonly MEDIA_CONNECTION_ERROR: 53405;
+};
+
 export function getVersion(): string;
 export function setLogLevel(level: LogLevel | number): void;
 export function connect(token: string, options?: ConnectOptions): Promise<Room>;
