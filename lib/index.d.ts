@@ -170,6 +170,8 @@ export interface Room {
     on(event: 'reconnected', handler: () => void): this;
     on(event: 'participantConnected', handler: (participant: RemoteParticipant) => void): this;
     on(event: 'participantDisconnected', handler: (participant: RemoteParticipant) => void): this;
+    on(event: 'participantReconnecting', handler: (participant: RemoteParticipant) => void): this;
+    on(event: 'participantReconnected', handler: (participant: RemoteParticipant) => void): this;
     on(event: 'recordingStarted', handler: () => void): this;
     on(event: 'recordingStopped', handler: () => void): this;
     on(event: 'dominantSpeakerChanged', handler: (participant: RemoteParticipant | null) => void): this;
