@@ -10,101 +10,100 @@ const ROOM_NAME = process.argv[2] || 'cpp-room';
 const TOKEN = process.env.TWILIO_ACCESS_TOKEN;
 const WIDTH = 1280;
 const HEIGHT = 720;
-const FRAME_SIZE = WIDTH * HEIGHT * 3 / 2; // YUV420p
+const FRAME_SIZE = (WIDTH * HEIGHT * 3) / 2; // YUV420p
 const FPS = 24;
 const VIDEO_PATH = path.join(__dirname, 'generated_video.mp4');
 
 if (!TOKEN) {
-    console.error('Error: TWILIO_ACCESS_TOKEN environment variable is required');
-    process.exit(1);
+  console.error('Error: TWILIO_ACCESS_TOKEN environment variable is required');
+  process.exit(1);
 }
 
 async function main() {
-    console.log('Connecting to room:', ROOM_NAME);
+  console.log('Connecting to room:', ROOM_NAME);
 
-    const videoTrack = createLocalVideoTrack('virtual-camera');
-    console.log('Created video track:', videoTrack.name);
+  const videoTrack = createLocalVideoTrack('virtual-camera');
+  console.log('Created video track:', videoTrack.name);
 
-    const room = await connect(TOKEN, {
-        name: ROOM_NAME,
-        videoTracks: [videoTrack],
-    });
+  const room = await connect(TOKEN, {
+    name: ROOM_NAME,
+    videoTracks: [videoTrack],
+  });
 
-    console.log('Connected! Room:', room.name, 'SID:', room.sid);
-    const publisher = startPublishing(videoTrack);
+  console.log('Connected! Room:', room.name, 'SID:', room.sid);
+  const publisher = startPublishing(videoTrack);
 
-    room.on('disconnected', (error) => {
-        publisher.stop();
-        console.log('Disconnected', error ? error.message : '');
-        process.exit(0);
-    });
+  room.on('disconnected', error => {
+    publisher.stop();
+    console.log('Disconnected', error ? error.message : '');
+    process.exit(0);
+  });
 
-    setInterval(() => {
-        console.log('[tick] state:', room.state);
-    }, 5000);
+  setInterval(() => {
+    console.log('[tick] state:', room.state);
+  }, 5000);
 
-    process.on('SIGINT', () => {
-        publisher.stop();
-        room.disconnect();
-        setTimeout(() => process.exit(0), 1000);
-    });
+  process.on('SIGINT', () => {
+    publisher.stop();
+    room.disconnect();
+    setTimeout(() => process.exit(0), 1000);
+  });
 }
 
 function startPublishing(videoTrack) {
-    let ffmpeg = null;
-    let pushTimer = null;
-    let stopped = false;
-    let frameCount = 0;
-    let buffer = Buffer.alloc(0);
-    const frameQueue = [];
+  let ffmpeg = null;
+  let pushTimer = null;
+  let stopped = false;
+  let frameCount = 0;
+  let buffer = Buffer.alloc(0);
+  const frameQueue = [];
 
-    function spawnFfmpeg() {
-        ffmpeg = spawn('ffmpeg', [
-            '-i', VIDEO_PATH,
-            '-f', 'rawvideo',
-            '-pix_fmt', 'yuv420p',
-            'pipe:1',
-        ], { stdio: ['ignore', 'pipe', 'ignore'] });
+  function spawnFfmpeg() {
+    ffmpeg = spawn(
+      'ffmpeg',
+      ['-i', VIDEO_PATH, '-f', 'rawvideo', '-pix_fmt', 'yuv420p', 'pipe:1'],
+      { stdio: ['ignore', 'pipe', 'ignore'] },
+    );
 
-        ffmpeg.stdout.on('data', (chunk) => {
-            buffer = Buffer.concat([buffer, chunk]);
-            while (buffer.length >= FRAME_SIZE) {
-                frameQueue.push(buffer.subarray(0, FRAME_SIZE));
-                buffer = buffer.subarray(FRAME_SIZE);
-            }
-        });
+    ffmpeg.stdout.on('data', chunk => {
+      buffer = Buffer.concat([buffer, chunk]);
+      while (buffer.length >= FRAME_SIZE) {
+        frameQueue.push(buffer.subarray(0, FRAME_SIZE));
+        buffer = buffer.subarray(FRAME_SIZE);
+      }
+    });
 
-        ffmpeg.on('close', () => {
-            if (!stopped) spawnFfmpeg();
-        });
-    }
+    ffmpeg.on('close', () => {
+      if (!stopped) spawnFfmpeg();
+    });
+  }
 
-    spawnFfmpeg();
-    console.log('Starting frame push loop from', VIDEO_PATH);
+  spawnFfmpeg();
+  console.log('Starting frame push loop from', VIDEO_PATH);
 
-    pushTimer = setInterval(() => {
-        if (frameQueue.length === 0) return;
-        const frame = frameQueue.shift();
-        const ySize = WIDTH * HEIGHT;
-        const uvSize = ySize / 4;
-        const y = frame.subarray(0, ySize);
-        const u = frame.subarray(ySize, ySize + uvSize);
-        const v = frame.subarray(ySize + uvSize, ySize + uvSize + uvSize);
-        videoTrack.pushFrame(y, u, v, WIDTH, HEIGHT);
-        frameCount++;
-        if (frameCount % FPS === 0) console.log('Pushed frame', frameCount);
-    }, 1000 / FPS);
+  pushTimer = setInterval(() => {
+    if (frameQueue.length === 0) return;
+    const frame = frameQueue.shift();
+    const ySize = WIDTH * HEIGHT;
+    const uvSize = ySize / 4;
+    const y = frame.subarray(0, ySize);
+    const u = frame.subarray(ySize, ySize + uvSize);
+    const v = frame.subarray(ySize + uvSize, ySize + uvSize + uvSize);
+    videoTrack.pushFrame(y, u, v, WIDTH, HEIGHT);
+    frameCount++;
+    if (frameCount % FPS === 0) console.log('Pushed frame', frameCount);
+  }, 1000 / FPS);
 
-    return {
-        stop() {
-            stopped = true;
-            if (pushTimer) clearInterval(pushTimer);
-            if (ffmpeg) ffmpeg.kill('SIGTERM');
-        },
-    };
+  return {
+    stop() {
+      stopped = true;
+      if (pushTimer) clearInterval(pushTimer);
+      if (ffmpeg) ffmpeg.kill('SIGTERM');
+    },
+  };
 }
 
 main().catch(err => {
-    console.error('Error:', err);
-    process.exit(1);
+  console.error('Error:', err);
+  process.exit(1);
 });

@@ -22,12 +22,7 @@ const args = process.argv.slice(2).filter(a => a !== 'stage' && a !== '--stage')
 const identity = args[0] || 'node-bot';
 const roomName = args[1] || undefined;
 
-const token = new AccessToken(
-  accountSid,
-  apiKey,
-  apiSecret,
-  { identity, ttl: 3600 }
-);
+const token = new AccessToken(accountSid, apiKey, apiSecret, { identity, ttl: 3600 });
 
 const videoGrant = new VideoGrant();
 if (roomName) {

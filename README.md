@@ -11,9 +11,10 @@ npm install git+ssh://git@code.hq.twilio.com/client/twilio-video-node.git
 A prebuilt native binary is downloaded automatically during `npm install` via the [GitHub CLI](https://cli.github.com/) (`gh`). No compilation required.
 
 **Requirements:**
- * Node.js >= 24
- * macOS x64 or Linux x64
- * [`gh` CLI](https://cli.github.com/) installed and authenticated (`gh auth login --hostname code.hq.twilio.com`)
+
+- Node.js >= 24
+- macOS x64 or Linux x64
+- [`gh` CLI](https://cli.github.com/) installed and authenticated (`gh auth login --hostname code.hq.twilio.com`)
 
 > **Apple Silicon:** The native binary is x64-only. Install Rosetta (`softwareupdate --install-rosetta`) and run Node under x64: `arch -x86_64 node ...`
 
@@ -35,8 +36,8 @@ console.log('Connected:', room.name, room.sid);
 videoTrack.pushFrame(yPlane, uPlane, vPlane, 1280, 720);
 
 // Receive remote video frames
-room.on('participantConnected', (participant) => {
-  participant.on('trackSubscribed', (track) => {
+room.on('participantConnected', participant => {
+  participant.on('trackSubscribed', track => {
     if (track.onFrame) {
       track.onFrame((yBuf, uBuf, vBuf, metadata) => {
         console.log(`${metadata.width}x${metadata.height}`);
@@ -53,49 +54,49 @@ room.disconnect();
 
 ### Top-level Functions
 
-| Function | Description |
-|---|---|
-| `connect(token, options?)` | Connect to a room. Returns `Promise<Room>`. |
-| `createLocalVideoTrack(name?)` | Create a pushable local video track. |
-| `createLocalAudioTrack(name?)` | Create a pushable local audio track. |
-| `setLogLevel(level)` | Set native log level (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`). |
-| `getVersion()` | Returns the native SDK version string. |
+| Function                       | Description                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `connect(token, options?)`     | Connect to a room. Returns `Promise<Room>`.                                                                               |
+| `createLocalVideoTrack(name?)` | Create a pushable local video track.                                                                                      |
+| `createLocalAudioTrack(name?)` | Create a pushable local audio track.                                                                                      |
+| `setLogLevel(level)`           | Set native log level (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`). |
+| `getVersion()`                 | Returns the native SDK version string.                                                                                    |
 
 ### Key Classes
 
-| Export | Description |
-|---|---|
-| `Room` | A connected video room. Emits events, exposes participants. |
-| `LocalParticipant` | The local participant. Publish/unpublish tracks. |
+| Export              | Description                                                        |
+| ------------------- | ------------------------------------------------------------------ |
+| `Room`              | A connected video room. Emits events, exposes participants.        |
+| `LocalParticipant`  | The local participant. Publish/unpublish tracks.                   |
 | `RemoteParticipant` | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`. |
-| `LocalVideoTrack` | Pushable video track (`pushFrame`). |
-| `LocalAudioTrack` | Pushable audio track (`pushSamples`). |
-| `LocalDataTrack` | Send arbitrary data (`send`). |
-| `RemoteVideoTrack` | Receive video frames (`onFrame`). |
-| `RemoteAudioTrack` | Receive audio samples (`onData`). |
-| `RemoteDataTrack` | Receive data messages (`onMessage`). |
-| `MediaFactory` | Factory for creating local tracks with shared platform info. |
+| `LocalVideoTrack`   | Pushable video track (`pushFrame`).                                |
+| `LocalAudioTrack`   | Pushable audio track (`pushSamples`).                              |
+| `LocalDataTrack`    | Send arbitrary data (`send`).                                      |
+| `RemoteVideoTrack`  | Receive video frames (`onFrame`).                                  |
+| `RemoteAudioTrack`  | Receive audio samples (`onData`).                                  |
+| `RemoteDataTrack`   | Receive data messages (`onMessage`).                               |
+| `MediaFactory`      | Factory for creating local tracks with shared platform info.       |
 
 ## Room Events
 
-| Event | Handler Signature |
-|---|---|
-| `connected` | `() => void` |
-| `disconnected` | `(error?: TwilioError) => void` |
-| `connectFailure` | `(error: TwilioError) => void` |
-| `reconnecting` | `(error: TwilioError) => void` |
-| `reconnected` | `() => void` |
-| `participantConnected` | `(participant: RemoteParticipant) => void` |
-| `participantDisconnected` | `(participant: RemoteParticipant) => void` |
-| `recordingStarted` | `() => void` |
-| `recordingStopped` | `() => void` |
-| `dominantSpeakerChanged` | `(participant: RemoteParticipant \| null) => void` |
+| Event                     | Handler Signature                                  |
+| ------------------------- | -------------------------------------------------- |
+| `connected`               | `() => void`                                       |
+| `disconnected`            | `(error?: TwilioError) => void`                    |
+| `connectFailure`          | `(error: TwilioError) => void`                     |
+| `reconnecting`            | `(error: TwilioError) => void`                     |
+| `reconnected`             | `() => void`                                       |
+| `participantConnected`    | `(participant: RemoteParticipant) => void`         |
+| `participantDisconnected` | `(participant: RemoteParticipant) => void`         |
+| `recordingStarted`        | `() => void`                                       |
+| `recordingStopped`        | `() => void`                                       |
+| `dominantSpeakerChanged`  | `(participant: RemoteParticipant \| null) => void` |
 
 ### RemoteParticipant Events
 
-| Event | Handler Signature |
-|---|---|
-| `trackSubscribed` | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
+| Event               | Handler Signature                                                          |
+| ------------------- | -------------------------------------------------------------------------- |
+| `trackSubscribed`   | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
 | `trackUnsubscribed` | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
 
 ## Track Types
@@ -158,7 +159,9 @@ track.removeDataCallback();
 Receive string or binary messages from a remote participant.
 
 ```js
-track.onMessage((data) => { /* string | Buffer */ });
+track.onMessage(data => {
+  /* string | Buffer */
+});
 track.removeMessageCallback();
 ```
 
@@ -168,11 +171,11 @@ track.removeMessageCallback();
 
 Frames are split into three separate `Buffer` planes:
 
-| Plane | Size | Description |
-|---|---|---|
-| Y | `width * height` | Luminance |
-| U | `width * height / 4` | Chrominance (Cb) |
-| V | `width * height / 4` | Chrominance (Cr) |
+| Plane | Size                 | Description      |
+| ----- | -------------------- | ---------------- |
+| Y     | `width * height`     | Luminance        |
+| U     | `width * height / 4` | Chrominance (Cb) |
+| V     | `width * height / 4` | Chrominance (Cr) |
 
 `VideoFrameMetadata` includes `strideY`, `strideU`, `strideV` for padded rows, plus `timestampUs` and `rotation` (0, 90, 180, 270).
 
@@ -244,20 +247,20 @@ npm run rebuild         # Clean + build
 
 ## Environment Variables
 
-| Variable | Description |
-|---|---|
+| Variable                          | Description                                                       |
+| --------------------------------- | ----------------------------------------------------------------- |
 | `TWILIO_VIDEO_NODE_SKIP_DOWNLOAD` | Set to `1` to skip prebuilt binary download during `npm install`. |
-| `TWILIO_ACCESS_TOKEN` | Twilio access token, used by the examples. |
+| `TWILIO_ACCESS_TOKEN`             | Twilio access token, used by the examples.                        |
 
 ## Examples
 
 See the [`examples/`](examples/) directory:
 
-| Example | Description |
-|---|---|
+| Example                                           | Description                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------ |
 | [`virtual_camera.js`](examples/virtual_camera.js) | Decodes an MP4 with ffmpeg and pushes I420 frames to a room. |
-| [`video_mirror.js`](examples/video_mirror.js) | Receives remote video frames and pushes them back as-is. |
-| [`audio_push.js`](examples/audio_push.js) | Generates a sine wave tone and pushes PCM audio to a room. |
+| [`video_mirror.js`](examples/video_mirror.js)     | Receives remote video frames and pushes them back as-is.     |
+| [`audio_push.js`](examples/audio_push.js)         | Generates a sine wave tone and pushes PCM audio to a room.   |
 
 ```bash
 TWILIO_ACCESS_TOKEN=xxx node examples/virtual_camera.js [room-name]

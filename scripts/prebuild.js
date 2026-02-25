@@ -13,23 +13,27 @@ const sourcePath = path.join(ROOT, 'build', 'Release', ADDON_NAME);
 const prebuiltPath = getPrebuiltPath(platformDir);
 
 function run(cmd) {
-    log('prebuild', `> ${cmd}`);
-    execSync(cmd, { cwd: ROOT, stdio: 'inherit' });
+  log('prebuild', `> ${cmd}`);
+  execSync(cmd, { cwd: ROOT, stdio: 'inherit' });
 }
 
 log('prebuild', `Building ${platformDir} (${buildType})`);
 run(`npx cmake-js rebuild --CDRTC_CPP_BUILD_TYPE=${buildType}`);
 
 if (!fs.existsSync(sourcePath)) {
-    console.error(`[prebuild] Build output not found: ${sourcePath}`);
-    process.exit(1);
+  console.error(`[prebuild] Build output not found: ${sourcePath}`);
+  process.exit(1);
 }
 
 const beforeSize = fs.statSync(sourcePath).size;
 log('prebuild', `Built ${(beforeSize / 1024 / 1024).toFixed(1)} MB (unstripped)`);
 
 log('prebuild', 'Stripping symbols...');
-run(process.platform === 'darwin' ? `strip -x "${sourcePath}"` : `strip --strip-unneeded "${sourcePath}"`);
+run(
+  process.platform === 'darwin'
+    ? `strip -x "${sourcePath}"`
+    : `strip --strip-unneeded "${sourcePath}"`,
+);
 
 const afterSize = fs.statSync(sourcePath).size;
 log('prebuild', `Stripped to ${(afterSize / 1024 / 1024).toFixed(1)} MB`);
