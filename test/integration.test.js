@@ -43,7 +43,7 @@ async function connectPair(roomName, optsA = {}) {
     return { connA, connB, remoteB, remoteA };
 }
 
-describe('Integration: Room connect/disconnect', () => {
+describe('Room connect/disconnect', () => {
     it('connects, verifies state, disconnects', async () => {
         const roomName = uniqueRoom();
         const { room, cleanup } = await connectToRoom('alice', roomName);
@@ -60,7 +60,7 @@ describe('Integration: Room connect/disconnect', () => {
     });
 });
 
-describe('Integration: Participant discovery', () => {
+describe('Participant discovery', () => {
     it('both participants see each other', async () => {
         const roomName = uniqueRoom();
         const { connA, connB, remoteB, remoteA } = await connectPair(roomName);
@@ -75,7 +75,7 @@ describe('Integration: Participant discovery', () => {
     });
 });
 
-describe('Integration: Video publish + receive', () => {
+describe('Video publish + receive', () => {
     it('B receives video frames from A', async () => {
         const roomName = uniqueRoom();
         const mfA = new MediaFactory();
@@ -129,7 +129,7 @@ describe('Integration: Video publish + receive', () => {
     });
 });
 
-describe('Integration: Audio publish + receive', () => {
+describe('Audio publish + receive', () => {
     it('B receives audio samples from A', async () => {
         const roomName = uniqueRoom();
         const mfA = new MediaFactory();
@@ -184,7 +184,7 @@ describe('Integration: Audio publish + receive', () => {
     });
 });
 
-describe('Integration: Multiple tracks', () => {
+describe('Multiple tracks', () => {
     it('B receives both video and audio tracks from A', async () => {
         const roomName = uniqueRoom();
         const mfA = new MediaFactory();
@@ -217,6 +217,98 @@ describe('Integration: Multiple tracks', () => {
             expect(tracks.length).toBe(2);
             const names = tracks.map(t => t.name).sort();
             expect(names).toEqual(['multi-cam', 'multi-mic']);
+        } finally {
+            await Promise.all([connA.cleanup(), connB.cleanup()]);
+        }
+    });
+});
+
+describe('Data track send/receive', () => {
+    it('Bob receives string and Buffer messages from Alice', async () => {
+        const roomName = uniqueRoom();
+        const mfA = new MediaFactory();
+        const dataTrack = mfA.createDataTrack({ name: 'chat' });
+
+        const { connA, connB, remoteB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+
+        const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
+        connA.room.localParticipant.publishTrack(dataTrack);
+        const remoteDataTrack = await trackPromise;
+
+        await sleep(NEGOTIATION_SETTLE_MS);
+
+        const received = [];
+        const messagesPromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error(`Only received ${received.length}/2 messages`));
+            }, MEDIA_FLOW_TIMEOUT);
+
+            remoteDataTrack.onMessage((data) => {
+                received.push(data);
+                if (received.length >= 2) {
+                    clearTimeout(timeout);
+                    resolve();
+                }
+            });
+        });
+
+        dataTrack.send('hello');
+        dataTrack.send(Buffer.from([0xDE, 0xAD]));
+
+        await messagesPromise;
+
+        try {
+            expect(received.length).toBe(2);
+            expect(received[0]).toBe('hello');
+            expect(Buffer.isBuffer(received[1])).toBe(true);
+            expect(received[1][0]).toBe(0xDE);
+            expect(received[1][1]).toBe(0xAD);
+        } finally {
+            remoteDataTrack.removeMessageCallback();
+            await Promise.all([connA.cleanup(), connB.cleanup()]);
+        }
+    });
+});
+
+describe('participantDisconnected', () => {
+    it('Alice receives participantDisconnected when Bob leaves', async () => {
+        const roomName = uniqueRoom();
+        const { connA, connB } = await connectPair(roomName);
+
+        const disconnectPromise = waitForEvent(connA.room, 'participantDisconnected', TRACK_SUBSCRIBE_TIMEOUT);
+        connB.room.disconnect();
+        const participant = await disconnectPromise;
+
+        try {
+            expect(participant.identity).toBe('bob');
+        } finally {
+            await connA.cleanup();
+        }
+    });
+});
+
+describe('Track publish/unpublish lifecycle', () => {
+    it('published track appears in localParticipant.videoTracks, disappears after unpublish', async () => {
+        const roomName = uniqueRoom();
+        const mfA = new MediaFactory();
+        const videoTrack = mfA.createVideoTrack({ name: 'lifecycle-cam' });
+
+        const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+
+        const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
+        connA.room.localParticipant.publishTrack(videoTrack);
+        await trackPromise;
+
+        try {
+            const pubs = connA.room.localParticipant.videoTracks;
+            expect(pubs.length).toBeGreaterThanOrEqual(1);
+            expect(pubs.some(p => p.trackName === 'lifecycle-cam')).toBe(true);
+
+            connA.room.localParticipant.unpublishTrack(videoTrack);
+            await sleep(1000);
+
+            const pubsAfter = connA.room.localParticipant.videoTracks;
+            expect(pubsAfter.some(p => p.trackName === 'lifecycle-cam')).toBe(false);
         } finally {
             await Promise.all([connA.cleanup(), connB.cleanup()]);
         }
