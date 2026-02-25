@@ -32,7 +32,13 @@ public:
     }
 
     void onAudioTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
-                                        const twilio::video::Error) override {}
+                                        const twilio::video::Error error) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        ctx_->dispatch([this, error](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            wrap_->emitEvent("trackSubscriptionFailed", createTwilioErrorObject(env, error.getCode(), error.getMessage()));
+        });
+    }
 
     void onAudioTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
                                   std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
@@ -61,7 +67,13 @@ public:
     }
 
     void onVideoTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
-                                        const twilio::video::Error) override {}
+                                        const twilio::video::Error error) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        ctx_->dispatch([this, error](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            wrap_->emitEvent("trackSubscriptionFailed", createTwilioErrorObject(env, error.getCode(), error.getMessage()));
+        });
+    }
 
     void onVideoTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
                                   std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
@@ -88,7 +100,13 @@ public:
     }
 
     void onDataTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
-                                       const twilio::video::Error) override {}
+                                       const twilio::video::Error error) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        ctx_->dispatch([this, error](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            wrap_->emitEvent("trackSubscriptionFailed", createTwilioErrorObject(env, error.getCode(), error.getMessage()));
+        });
+    }
 
     void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
                                  std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
