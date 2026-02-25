@@ -5,15 +5,15 @@ Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access
 ## Installation
 
 ```bash
-# GITHUB_TOKEN with read access to releases is required while the repository is private
-GITHUB_TOKEN=xxx npm install git+https://code.hq.twilio.com/client/twilio-video-node.git
+npm install git+ssh://git@code.hq.twilio.com/client/twilio-video-node.git
 ```
 
-A prebuilt native binary is downloaded automatically during `npm install`. No compilation required.
+A prebuilt native binary is downloaded automatically during `npm install` via the [GitHub CLI](https://cli.github.com/) (`gh`). No compilation required.
 
 **Requirements:**
  * Node.js >= 24
  * macOS x64 or Linux x64
+ * [`gh` CLI](https://cli.github.com/) installed and authenticated (`gh auth login --hostname code.hq.twilio.com`)
 
 > **Apple Silicon:** The native binary is x64-only. Install Rosetta (`softwareupdate --install-rosetta`) and run Node under x64: `arch -x86_64 node ...`
 
@@ -246,7 +246,6 @@ npm run rebuild         # Clean + build
 
 | Variable | Description |
 |---|---|
-| `GITHUB_TOKEN` | Auth token for downloading prebuilt binaries from private GitHub releases. |
 | `TWILIO_VIDEO_NODE_SKIP_DOWNLOAD` | Set to `1` to skip prebuilt binary download during `npm install`. |
 | `TWILIO_ACCESS_TOKEN` | Twilio access token, used by the examples. |
 
