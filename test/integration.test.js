@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
 import { connectToRoom } from './helpers/connect.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
-import { MediaFactory } from '../lib/index.js';
+import { createLocalVideoTrack, createLocalAudioTrack, LocalDataTrack } from '../lib/index.js';
 const TRACK_SUBSCRIBE_TIMEOUT = 15_000;
 const MEDIA_FLOW_TIMEOUT = 10_000;
 // SDP renegotiation after publishTrack + trackSubscribed needs time to complete
@@ -78,10 +78,9 @@ describe('Participant discovery', () => {
 describe('Video publish + receive', () => {
   it('B receives video frames from A', async () => {
     const roomName = uniqueRoom();
-    const mfA = new MediaFactory();
-    const videoTrack = mfA.createVideoTrack({ name: 'test-cam' });
+    const videoTrack = createLocalVideoTrack('test-cam');
 
-    const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+    const { connA, connB, remoteA } = await connectPair(roomName);
 
     const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
     connA.room.localParticipant.publishTrack(videoTrack);
@@ -132,10 +131,9 @@ describe('Video publish + receive', () => {
 describe('Audio publish + receive', () => {
   it('B receives audio samples from A', async () => {
     const roomName = uniqueRoom();
-    const mfA = new MediaFactory();
-    const audioTrack = mfA.createAudioTrack({ name: 'test-mic' });
+    const audioTrack = createLocalAudioTrack('test-mic');
 
-    const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+    const { connA, connB, remoteA } = await connectPair(roomName);
 
     const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
     connA.room.localParticipant.publishTrack(audioTrack);
@@ -187,11 +185,10 @@ describe('Audio publish + receive', () => {
 describe('Multiple tracks', () => {
   it('B receives both video and audio tracks from A', async () => {
     const roomName = uniqueRoom();
-    const mfA = new MediaFactory();
-    const videoTrack = mfA.createVideoTrack({ name: 'multi-cam' });
-    const audioTrack = mfA.createAudioTrack({ name: 'multi-mic' });
+    const videoTrack = createLocalVideoTrack('multi-cam');
+    const audioTrack = createLocalAudioTrack('multi-mic');
 
-    const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+    const { connA, connB, remoteA } = await connectPair(roomName);
 
     const tracks = [];
     const tracksPromise = new Promise((resolve, reject) => {
@@ -226,10 +223,9 @@ describe('Multiple tracks', () => {
 describe('Data track send/receive', () => {
   it('Bob receives string and Buffer messages from Alice', async () => {
     const roomName = uniqueRoom();
-    const mfA = new MediaFactory();
-    const dataTrack = mfA.createDataTrack({ name: 'chat' });
+    const dataTrack = new LocalDataTrack('chat');
 
-    const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+    const { connA, connB, remoteA } = await connectPair(roomName);
 
     const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
     connA.room.localParticipant.publishTrack(dataTrack);
@@ -291,13 +287,66 @@ describe('participantDisconnected', () => {
   });
 });
 
+describe('LocalParticipant observer events', () => {
+  it('trackPublished fires after publishTrack with correct trackName', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('observer-cam');
+
+    const { connA, connB } = await connectPair(roomName);
+
+    const publishedPromise = waitForEvent(
+      connA.room.localParticipant,
+      'trackPublished',
+      TRACK_SUBSCRIBE_TIMEOUT,
+    );
+
+    connA.room.localParticipant.publishTrack(videoTrack);
+    const publication = await publishedPromise;
+
+    try {
+      expect(publication.trackName).toBe('observer-cam');
+      expect(publication.trackSid).toBeTruthy();
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
+describe('RemoteParticipant trackPublished/trackUnpublished', () => {
+  it('Bob receives trackPublished when Alice publishes, trackUnpublished when she unpublishes', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('pub-event-cam');
+
+    const { connA, connB, remoteA } = await connectPair(roomName);
+
+    const publishedPromise = waitForEvent(remoteA, 'trackPublished', TRACK_SUBSCRIBE_TIMEOUT);
+    connA.room.localParticipant.publishTrack(videoTrack);
+    const publication = await publishedPromise;
+
+    expect(publication.trackName).toBe('pub-event-cam');
+    expect(publication.trackSid).toBeTruthy();
+
+    // Wait for subscription to complete before unpublishing
+    await waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
+
+    const unpublishedPromise = waitForEvent(remoteA, 'trackUnpublished', TRACK_SUBSCRIBE_TIMEOUT);
+    connA.room.localParticipant.unpublishTrack(videoTrack);
+    const unpubResult = await unpublishedPromise;
+
+    try {
+      expect(unpubResult.trackName).toBe('pub-event-cam');
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
 describe('Track publish/unpublish lifecycle', () => {
   it('published track appears in localParticipant.videoTracks, disappears after unpublish', async () => {
     const roomName = uniqueRoom();
-    const mfA = new MediaFactory();
-    const videoTrack = mfA.createVideoTrack({ name: 'lifecycle-cam' });
+    const videoTrack = createLocalVideoTrack('lifecycle-cam');
 
-    const { connA, connB, remoteA } = await connectPair(roomName, { mediaFactory: mfA });
+    const { connA, connB, remoteA } = await connectPair(roomName);
 
     const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
     connA.room.localParticipant.publishTrack(videoTrack);

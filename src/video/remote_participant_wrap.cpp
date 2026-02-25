@@ -17,8 +17,32 @@ public:
         ctx_ = nullptr;
     }
 
-    void onAudioTrackPublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>) override {}
-    void onAudioTrackUnpublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>) override {}
+    void onAudioTrackPublished(twilio::video::RemoteParticipant*,
+                               std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        ctx_->dispatch([this, sid, name](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            wrap_->emitEvent("trackPublished", obj);
+        });
+    }
+    void onAudioTrackUnpublished(twilio::video::RemoteParticipant*,
+                                 std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        ctx_->dispatch([this, sid, name](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            wrap_->emitEvent("trackUnpublished", obj);
+        });
+    }
     void onAudioTrackEnabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
         if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
         auto sid = pub->getTrackSid();
@@ -78,8 +102,32 @@ public:
     void onAudioTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
                                             twilio::media::TrackPriority) override {}
 
-    void onVideoTrackPublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>) override {}
-    void onVideoTrackUnpublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>) override {}
+    void onVideoTrackPublished(twilio::video::RemoteParticipant*,
+                               std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        ctx_->dispatch([this, sid, name](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            wrap_->emitEvent("trackPublished", obj);
+        });
+    }
+    void onVideoTrackUnpublished(twilio::video::RemoteParticipant*,
+                                 std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        ctx_->dispatch([this, sid, name](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            wrap_->emitEvent("trackUnpublished", obj);
+        });
+    }
     void onVideoTrackEnabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
         if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
         auto sid = pub->getTrackSid();
@@ -139,8 +187,50 @@ public:
     void onVideoTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
                                             twilio::media::TrackPriority) override {}
 
-    void onDataTrackPublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>) override {}
-    void onDataTrackUnpublished(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>) override {}
+    void onVideoTrackSwitchedOff(twilio::video::RemoteParticipant*,
+                                 std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        ctx_->dispatch([this, track](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            wrap_->emitEvent("videoTrackSwitchedOff", RemoteVideoTrackWrap::NewInstance(env, track));
+        });
+    }
+
+    void onVideoTrackSwitchedOn(twilio::video::RemoteParticipant*,
+                                std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        ctx_->dispatch([this, track](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            wrap_->emitEvent("videoTrackSwitchedOn", RemoteVideoTrackWrap::NewInstance(env, track));
+        });
+    }
+
+    void onDataTrackPublished(twilio::video::RemoteParticipant*,
+                              std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        ctx_->dispatch([this, sid, name](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            wrap_->emitEvent("trackPublished", obj);
+        });
+    }
+    void onDataTrackUnpublished(twilio::video::RemoteParticipant*,
+                                std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub) override {
+        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        auto sid = pub->getTrackSid();
+        auto name = pub->getTrackName();
+        ctx_->dispatch([this, sid, name](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            wrap_->emitEvent("trackUnpublished", obj);
+        });
+    }
 
     void onDataTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
                                std::shared_ptr<twilio::media::RemoteDataTrack> track) override {

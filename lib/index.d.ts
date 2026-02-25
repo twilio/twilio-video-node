@@ -29,13 +29,6 @@ export interface AudioTrackOptions {
   name?: string;
 }
 
-export interface DataTrackOptions {
-  name?: string;
-  maxPacketLifeTime?: number;
-  maxRetransmits?: number;
-  ordered?: boolean;
-}
-
 export interface PlatformInfo {
   sdkVersion?: string;
   platformName?: string;
@@ -57,9 +50,15 @@ export interface IceOptions {
   iceServers?: IceServer[];
 }
 
+export interface EncodingParameters {
+  /** Max audio bitrate in kbps (0 = codec default, ~40 kbps for Opus) */
+  maxAudioBitrate?: number;
+  /** Max video bitrate in kbps (0 = default, ~2 Mbps) */
+  maxVideoBitrate?: number;
+}
+
 export interface ConnectOptions {
   name?: string;
-  mediaFactory?: MediaFactory;
   videoTracks?: LocalVideoTrack[];
   audioTracks?: LocalAudioTrack[];
   dataTracks?: LocalDataTrack[];
@@ -70,6 +69,7 @@ export interface ConnectOptions {
   region?: string;
   platformInfo?: PlatformInfo;
   iceOptions?: IceOptions;
+  encodingParameters?: EncodingParameters;
 }
 
 export interface LocalVideoTrack {
@@ -91,7 +91,15 @@ export interface LocalAudioTrack {
   pushSamples(samples: Buffer, sampleRate: number, channels: number): void;
 }
 
-export interface LocalDataTrack {
+export interface LocalDataTrackOptions {
+  name?: string;
+  maxPacketLifeTime?: number;
+  maxRetransmits?: number;
+  ordered?: boolean;
+}
+
+export class LocalDataTrack {
+  constructor(options?: LocalDataTrackOptions | string);
   readonly name: string;
   readonly maxPacketLifeTime: number;
   readonly maxRetransmits: number;
@@ -152,6 +160,11 @@ export interface LocalParticipant {
   readonly dataTracks: TrackPublication[];
   publishTrack(track: LocalVideoTrack | LocalAudioTrack | LocalDataTrack): boolean;
   unpublishTrack(track: LocalVideoTrack | LocalAudioTrack | LocalDataTrack): boolean;
+  setEncodingParameters(params?: EncodingParameters): void;
+  on(event: 'trackPublished', handler: (publication: TrackPublication) => void): this;
+  on(event: 'trackPublicationFailed', handler: (error: TwilioError) => void): this;
+  on(event: 'networkQualityLevelChanged', handler: (level: number) => void): this;
+  off(event: string): this;
 }
 
 export interface RemoteParticipant {
@@ -169,8 +182,12 @@ export interface RemoteParticipant {
     handler: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void,
   ): this;
   on(event: 'trackSubscriptionFailed', handler: (error: TwilioError) => void): this;
+  on(event: 'trackPublished', handler: (publication: RemoteTrackPublication) => void): this;
+  on(event: 'trackUnpublished', handler: (publication: RemoteTrackPublication) => void): this;
   on(event: 'trackEnabled', handler: (publication: RemoteTrackPublication) => void): this;
   on(event: 'trackDisabled', handler: (publication: RemoteTrackPublication) => void): this;
+  on(event: 'videoTrackSwitchedOff', handler: (track: RemoteVideoTrack) => void): this;
+  on(event: 'videoTrackSwitchedOn', handler: (track: RemoteVideoTrack) => void): this;
   off(event: string): this;
 }
 
@@ -202,16 +219,6 @@ export interface Room {
     handler: (participant: RemoteParticipant | null) => void,
   ): this;
   off(event: string): this;
-}
-
-export interface MediaFactory {
-  createVideoTrack(options?: VideoTrackOptions): LocalVideoTrack;
-  createAudioTrack(options?: AudioTrackOptions): LocalAudioTrack;
-  createDataTrack(options?: DataTrackOptions): LocalDataTrack;
-}
-
-export interface MediaFactoryOptions {
-  platformInfo?: PlatformInfo;
 }
 
 export type LogLevel = 'off' | 'fatal' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'all';
@@ -248,4 +255,4 @@ export function setLogLevel(level: LogLevel | number): void;
 export function connect(token: string, options?: ConnectOptions): Promise<Room>;
 export function createLocalVideoTrack(name?: string): LocalVideoTrack;
 export function createLocalAudioTrack(name?: string): LocalAudioTrack;
-export { MediaFactory as MediaFactoryClass };
+export function createLocalDataTrack(name?: string): LocalDataTrack;

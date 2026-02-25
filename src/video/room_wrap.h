@@ -42,7 +42,8 @@ private:
     std::map<std::string, std::vector<Napi::FunctionReference>> eventListeners_;
     std::unique_ptr<AsyncContext> asyncContext_;
 
-    // Participant wrapper cache (keyed by SID)
+    // Participant wrapper caches
+    Napi::ObjectReference localParticipantCache_;
     std::map<std::string, Napi::ObjectReference> participantCache_;
 
 #ifdef __APPLE__

@@ -1,15 +1,13 @@
-import { connect, MediaFactory } from '../../lib/index.js';
+import { connect } from '../../lib/index.js';
 import { generateToken } from './token.js';
 
 const CONNECTION_TIMEOUT = 15_000;
 
 async function connectToRoom(identity, roomName, opts = {}) {
-  const mediaFactory = opts.mediaFactory || new MediaFactory();
   const token = generateToken(identity, roomName);
 
   const roomPromise = connect(token, {
     name: roomName,
-    mediaFactory,
     videoTracks: opts.videoTracks || [],
     audioTracks: opts.audioTracks || [],
     dataTracks: opts.dataTracks || [],
@@ -23,7 +21,6 @@ async function connectToRoom(identity, roomName, opts = {}) {
 
   return {
     room,
-    mediaFactory,
     cleanup() {
       return new Promise(resolve => {
         room.on('disconnected', () => resolve());

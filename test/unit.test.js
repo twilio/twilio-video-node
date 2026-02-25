@@ -1,5 +1,10 @@
-import { describe, it, beforeAll, expect } from 'vitest';
-import { getVersion, setLogLevel, MediaFactory } from '../lib/index.js';
+import { describe, it, expect } from 'vitest';
+import {
+  getVersion,
+  setLogLevel,
+  createLocalVideoTrack,
+  createLocalAudioTrack,
+} from '../lib/index.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
 describe('Version', () => {
@@ -23,92 +28,60 @@ describe('Log Level', () => {
   });
 });
 
-describe('MediaFactory', () => {
-  let factory;
+describe('Video Track', () => {
+  it('createLocalVideoTrack creates track', () => {
+    const track = createLocalVideoTrack('test-video');
 
-  beforeAll(() => {
-    factory = new MediaFactory();
+    expect(track).toBeDefined();
+    expect(track.name).toBe('test-video');
+    expect(track.enabled).toBe(true);
   });
 
-  describe('Video Track', () => {
-    it('createVideoTrack creates track', () => {
-      const track = factory.createVideoTrack({
-        name: 'test-video',
-        width: 640,
-        height: 480,
-      });
+  it('track can be disabled', () => {
+    const track = createLocalVideoTrack('disable-test');
 
-      expect(track).toBeDefined();
-      expect(track.name).toBe('test-video');
-      expect(track.enabled).toBe(true);
-    });
+    track.enabled = false;
+    expect(track.enabled).toBe(false);
 
-    it('track can be disabled', () => {
-      const track = factory.createVideoTrack({
-        name: 'disable-test',
-        width: 320,
-        height: 240,
-      });
-
-      track.enabled = false;
-      expect(track.enabled).toBe(false);
-
-      track.enabled = true;
-      expect(track.enabled).toBe(true);
-    });
-
-    it('pushFrame accepts I420 frame', () => {
-      const track = factory.createVideoTrack({
-        name: 'push-test',
-        width: 320,
-        height: 240,
-      });
-
-      const frame = generateI420Frame(320, 240);
-      expect(() => {
-        track.pushFrame(frame.y, frame.u, frame.v, 320, 240);
-      }).not.toThrow();
-    });
+    track.enabled = true;
+    expect(track.enabled).toBe(true);
   });
 
-  describe('Audio Track', () => {
-    it('createAudioTrack creates track', () => {
-      const track = factory.createAudioTrack({
-        name: 'test-audio',
-        sampleRate: 48000,
-        channels: 1,
-      });
+  it('pushFrame accepts I420 frame', () => {
+    const track = createLocalVideoTrack('push-test');
 
-      expect(track).toBeDefined();
-      expect(track.name).toBe('test-audio');
-      expect(track.enabled).toBe(true);
-    });
+    const frame = generateI420Frame(320, 240);
+    expect(() => {
+      track.pushFrame(frame.y, frame.u, frame.v, 320, 240);
+    }).not.toThrow();
+  });
+});
 
-    it('track can be disabled', () => {
-      const track = factory.createAudioTrack({
-        name: 'disable-test',
-        sampleRate: 48000,
-        channels: 1,
-      });
+describe('Audio Track', () => {
+  it('createLocalAudioTrack creates track', () => {
+    const track = createLocalAudioTrack('test-audio');
 
-      track.enabled = false;
-      expect(track.enabled).toBe(false);
+    expect(track).toBeDefined();
+    expect(track.name).toBe('test-audio');
+    expect(track.enabled).toBe(true);
+  });
 
-      track.enabled = true;
-      expect(track.enabled).toBe(true);
-    });
+  it('track can be disabled', () => {
+    const track = createLocalAudioTrack('disable-test');
 
-    it('pushSamples accepts audio samples', () => {
-      const track = factory.createAudioTrack({
-        name: 'push-test',
-        sampleRate: 48000,
-        channels: 1,
-      });
+    track.enabled = false;
+    expect(track.enabled).toBe(false);
 
-      const samples = generateAudioSamples(480, 48000, 1);
-      expect(() => {
-        track.pushSamples(samples, 48000, 1);
-      }).not.toThrow();
-    });
+    track.enabled = true;
+    expect(track.enabled).toBe(true);
+  });
+
+  it('pushSamples accepts audio samples', () => {
+    const track = createLocalAudioTrack('push-test');
+
+    const samples = generateAudioSamples(480, 48000, 1);
+    expect(() => {
+      track.pushSamples(samples, 48000, 1);
+    }).not.toThrow();
   });
 });

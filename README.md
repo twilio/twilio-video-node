@@ -59,23 +59,24 @@ room.disconnect();
 | `connect(token, options?)`     | Connect to a room. Returns `Promise<Room>`.                                                                               |
 | `createLocalVideoTrack(name?)` | Create a pushable local video track.                                                                                      |
 | `createLocalAudioTrack(name?)` | Create a pushable local audio track.                                                                                      |
+| `createLocalDataTrack(name?)`  | Create a local data track.                                                                                                |
 | `setLogLevel(level)`           | Set native log level (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`). |
 | `getVersion()`                 | Returns the native SDK version string.                                                                                    |
 
 ### Key Classes
 
-| Export              | Description                                                        |
-| ------------------- | ------------------------------------------------------------------ |
-| `Room`              | A connected video room. Emits events, exposes participants.        |
-| `LocalParticipant`  | The local participant. Publish/unpublish tracks.                   |
-| `RemoteParticipant` | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`. |
-| `LocalVideoTrack`   | Pushable video track (`pushFrame`).                                |
-| `LocalAudioTrack`   | Pushable audio track (`pushSamples`).                              |
-| `LocalDataTrack`    | Send arbitrary data (`send`).                                      |
-| `RemoteVideoTrack`  | Receive video frames (`onFrame`).                                  |
-| `RemoteAudioTrack`  | Receive audio samples (`onData`).                                  |
-| `RemoteDataTrack`   | Receive data messages (`onMessage`).                               |
-| `MediaFactory`      | Factory for creating local tracks with shared platform info.       |
+| Export              | Description                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `Room`              | A connected video room. Emits events, exposes participants.                                                  |
+| `LocalParticipant`  | The local participant. Publish/unpublish tracks.                                                             |
+| `RemoteParticipant` | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`.                                           |
+| `LocalVideoTrack`   | Pushable video track (`pushFrame`).                                                                          |
+| `LocalAudioTrack`   | Pushable audio track (`pushSamples`).                                                                        |
+| `LocalDataTrack`    | Send arbitrary data (`send`). Construct via `new LocalDataTrack(options?)` or `createLocalDataTrack(name?)`. |
+| `RemoteVideoTrack`  | Receive video frames (`onFrame`).                                                                            |
+| `RemoteAudioTrack`  | Receive audio samples (`onData`).                                                                            |
+| `RemoteDataTrack`   | Receive data messages (`onMessage`).                                                                         |
+| `ErrorCode`         | Enum of Twilio Video error codes.                                                                            |
 
 ## Room Events
 
@@ -94,10 +95,25 @@ room.disconnect();
 
 ### RemoteParticipant Events
 
-| Event               | Handler Signature                                                          |
-| ------------------- | -------------------------------------------------------------------------- |
-| `trackSubscribed`   | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
-| `trackUnsubscribed` | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
+| Event                     | Handler Signature                                                          |
+| ------------------------- | -------------------------------------------------------------------------- |
+| `trackSubscribed`         | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
+| `trackUnsubscribed`       | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
+| `trackSubscriptionFailed` | `(error: TwilioError) => void`                                             |
+| `trackPublished`          | `(publication: RemoteTrackPublication) => void`                            |
+| `trackUnpublished`        | `(publication: RemoteTrackPublication) => void`                            |
+| `trackEnabled`            | `(publication: RemoteTrackPublication) => void`                            |
+| `trackDisabled`           | `(publication: RemoteTrackPublication) => void`                            |
+| `videoTrackSwitchedOff`   | `(track: RemoteVideoTrack) => void`                                        |
+| `videoTrackSwitchedOn`    | `(track: RemoteVideoTrack) => void`                                        |
+
+### LocalParticipant Events
+
+| Event                        | Handler Signature                         |
+| ---------------------------- | ----------------------------------------- |
+| `trackPublished`             | `(publication: TrackPublication) => void` |
+| `trackPublicationFailed`     | `(error: TwilioError) => void`            |
+| `networkQualityLevelChanged` | `(level: number) => void`                 |
 
 ## Track Types
 
@@ -125,8 +141,7 @@ track.pushSamples(samples, sampleRate, channels);
 Send arbitrary string or binary messages.
 
 ```js
-const factory = new MediaFactory();
-const track = factory.createDataTrack({ name: 'chat', ordered: true });
+const track = new LocalDataTrack({ name: 'chat', ordered: true });
 room.localParticipant.publishTrack(track);
 track.send('hello');
 track.send(Buffer.from([0x01, 0x02]));
@@ -202,6 +217,7 @@ Audio is delivered as a single `Buffer` of interleaved 16-bit signed little-endi
   region?: string;                      // e.g. 'us1', 'au1'
   platformInfo?: PlatformInfo;
   iceOptions?: IceOptions;
+  encodingParameters?: EncodingParameters;
 }
 ```
 
@@ -256,11 +272,12 @@ npm run rebuild         # Clean + build
 
 See the [`examples/`](examples/) directory:
 
-| Example                                           | Description                                                  |
-| ------------------------------------------------- | ------------------------------------------------------------ |
-| [`virtual_camera.js`](examples/virtual_camera.js) | Decodes an MP4 with ffmpeg and pushes I420 frames to a room. |
-| [`video_mirror.js`](examples/video_mirror.js)     | Receives remote video frames and pushes them back as-is.     |
-| [`audio_push.js`](examples/audio_push.js)         | Generates a sine wave tone and pushes PCM audio to a room.   |
+| Example                                           | Description                                                           |
+| ------------------------------------------------- | --------------------------------------------------------------------- |
+| [`virtual_camera.js`](examples/virtual_camera.js) | Decodes an MP4 with ffmpeg and pushes I420 frames to a room.          |
+| [`video_mirror.js`](examples/video_mirror.js)     | Receives remote video frames and pushes them back as-is.              |
+| [`audio_push.js`](examples/audio_push.js)         | Generates a sine wave tone and pushes PCM audio to a room.            |
+| [`data_channel.js`](examples/data_channel.js)     | Two participants exchange string and binary messages via data tracks. |
 
 ```bash
 TWILIO_ACCESS_TOKEN=xxx node examples/virtual_camera.js [room-name]

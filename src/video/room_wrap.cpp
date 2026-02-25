@@ -119,6 +119,19 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         builder.setRegion(optionsObj.Get("region").As<Napi::String>().Utf8Value());
     }
 
+    // Encoding parameters
+    if (optionsObj.Has("encodingParameters") && optionsObj.Get("encodingParameters").IsObject()) {
+        auto epObj = optionsObj.Get("encodingParameters").As<Napi::Object>();
+        twilio::media::EncodingParameters ep;
+        if (epObj.Has("maxAudioBitrate")) {
+            ep.max_audio_bitrate_ = epObj.Get("maxAudioBitrate").As<Napi::Number>().Uint32Value();
+        }
+        if (epObj.Has("maxVideoBitrate")) {
+            ep.max_video_bitrate_ = epObj.Get("maxVideoBitrate").As<Napi::Number>().Uint32Value();
+        }
+        builder.setEncodingParameters(ep);
+    }
+
     // ICE options
     if (optionsObj.Has("iceOptions") && optionsObj.Get("iceOptions").IsObject()) {
         auto iceObj = optionsObj.Get("iceOptions").As<Napi::Object>();
@@ -251,6 +264,7 @@ RoomWrap::~RoomWrap() {
     if (asyncContext_) {
         asyncContext_->close();
     }
+    localParticipantCache_.Reset();
     participantCache_.clear();
 
 #ifdef __APPLE__
@@ -319,7 +333,14 @@ Napi::Value RoomWrap::GetLocalParticipant(const Napi::CallbackInfo& info) {
     if (!room_) return info.Env().Undefined();
     auto participant = room_->getLocalParticipant();
     if (!participant) return info.Env().Undefined();
-    return LocalParticipantWrap::NewInstance(info.Env(), participant);
+
+    if (!localParticipantCache_.IsEmpty()) {
+        return localParticipantCache_.Value();
+    }
+
+    auto obj = LocalParticipantWrap::NewInstance(info.Env(), participant);
+    localParticipantCache_ = Napi::Persistent(obj);
+    return obj;
 }
 
 Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {
@@ -375,6 +396,7 @@ Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
         observer_.reset();
     }
     eventListeners_.clear();
+    localParticipantCache_.Reset();
     participantCache_.clear();
     if (asyncContext_) {
         asyncContext_->close();

@@ -2,8 +2,14 @@
 
 #include <napi.h>
 #include <twilio/video/local_participant.h>
+#include <twilio/video/local_participant_observer.h>
+#include <twilio/media/codec.h>
+#include "../common/async_context.h"
+#include <map>
 
 namespace twilio_video_node {
+
+class LocalParticipantObserverImpl;
 
 class LocalParticipantWrap : public Napi::ObjectWrap<LocalParticipantWrap> {
 public:
@@ -12,6 +18,8 @@ public:
 
     LocalParticipantWrap(const Napi::CallbackInfo& info);
     ~LocalParticipantWrap();
+
+    void emitEvent(const std::string& eventName, Napi::Value arg = Napi::Value());
 
 private:
     static Napi::FunctionReference constructor_;
@@ -24,8 +32,14 @@ private:
     Napi::Value GetDataTracks(const Napi::CallbackInfo& info);
     Napi::Value PublishTrack(const Napi::CallbackInfo& info);
     Napi::Value UnpublishTrack(const Napi::CallbackInfo& info);
+    Napi::Value SetEncodingParameters(const Napi::CallbackInfo& info);
+    Napi::Value On(const Napi::CallbackInfo& info);
+    Napi::Value Off(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::video::LocalParticipant> participant_;
+    std::shared_ptr<LocalParticipantObserverImpl> observer_;
+    std::map<std::string, std::vector<Napi::FunctionReference>> eventListeners_;
+    std::unique_ptr<AsyncContext> asyncContext_;
 };
 
 }
