@@ -1,19 +1,13 @@
 /**
  * Pushable Audio Example - sends a sine wave tone to a room
  *
- * Usage:
- *   TWILIO_ACCESS_TOKEN=xxx node examples/audio_push.js [room-name]
+ * Usage: node examples/audio_push.js [room-name]
  */
 
 const { connect, createLocalAudioTrack } = require('../lib');
+const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';
-const TOKEN = process.env.TWILIO_ACCESS_TOKEN;
-
-if (!TOKEN) {
-  console.error('Error: TWILIO_ACCESS_TOKEN environment variable is required');
-  process.exit(1);
-}
 
 const SAMPLE_RATE = 48000;
 const FRAME_DURATION_MS = 10;
@@ -40,7 +34,7 @@ async function main() {
   const audioTrack = createLocalAudioTrack('pushable-audio');
   console.log('Created audio track:', audioTrack.name);
 
-  const room = await connect(TOKEN, {
+  const room = await connect(generateToken('node-participant', ROOM_NAME), {
     name: ROOM_NAME,
     audioTracks: [audioTrack],
   });

@@ -2,27 +2,22 @@
  * Data Channel Example - two participants exchange string and binary messages
  *
  * Usage:
- *   Terminal 1: TWILIO_ACCESS_TOKEN=<alice-token> node examples/data_channel.js my-room alice
- *   Terminal 2: TWILIO_ACCESS_TOKEN=<bob-token>   node examples/data_channel.js my-room bob
+ *   Terminal 1: node examples/data_channel.js my-room alice
+ *   Terminal 2: node examples/data_channel.js my-room bob
  */
 
 const { connect, LocalDataTrack } = require('../lib');
+const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'data-room';
 const IDENTITY = process.argv[3] || 'alice';
-const TOKEN = process.env.TWILIO_ACCESS_TOKEN;
-
-if (!TOKEN) {
-  console.error('Error: TWILIO_ACCESS_TOKEN environment variable is required');
-  process.exit(1);
-}
 
 async function main() {
   const dataTrack = new LocalDataTrack(`${IDENTITY}-chat`);
 
   console.log(`[${IDENTITY}] Connecting to room: ${ROOM_NAME}`);
 
-  const room = await connect(TOKEN, {
+  const room = await connect(generateToken(IDENTITY, ROOM_NAME), {
     name: ROOM_NAME,
     dataTracks: [dataTrack],
   });

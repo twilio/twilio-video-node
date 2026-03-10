@@ -1,25 +1,19 @@
 /**
  * Video Mirror — receives remote video and pushes it back as-is.
  *
- * Usage:
- *   TWILIO_ACCESS_TOKEN=xxx node examples/video_mirror.js [room-name]
+ * Usage: node examples/video_mirror.js [room-name]
  */
 
 const { connect, createLocalVideoTrack } = require('../lib');
+const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'mirror-room';
-const TOKEN = process.env.TWILIO_ACCESS_TOKEN;
-
-if (!TOKEN) {
-  console.error('Error: TWILIO_ACCESS_TOKEN environment variable is required');
-  process.exit(1);
-}
 
 async function main() {
   const videoTrack = createLocalVideoTrack('mirror');
 
   console.log('Connecting to room:', ROOM_NAME);
-  const room = await connect(TOKEN, {
+  const room = await connect(generateToken('node-participant', ROOM_NAME), {
     name: ROOM_NAME,
     videoTracks: [videoTrack],
     enableAutomaticSubscription: true,

@@ -1,23 +1,20 @@
 /**
  * Virtual Camera Example - pushes frames from generated_video.mp4 via ffmpeg
+ *
+ * Usage: node examples/virtual_camera.js [room-name]
  */
 
 const { spawn } = require('child_process');
 const path = require('path');
 const { connect, createLocalVideoTrack } = require('../lib');
+const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';
-const TOKEN = process.env.TWILIO_ACCESS_TOKEN;
 const WIDTH = 1280;
 const HEIGHT = 720;
 const FRAME_SIZE = (WIDTH * HEIGHT * 3) / 2; // YUV420p
 const FPS = 24;
 const VIDEO_PATH = path.join(__dirname, 'generated_video.mp4');
-
-if (!TOKEN) {
-  console.error('Error: TWILIO_ACCESS_TOKEN environment variable is required');
-  process.exit(1);
-}
 
 async function main() {
   console.log('Connecting to room:', ROOM_NAME);
@@ -25,7 +22,7 @@ async function main() {
   const videoTrack = createLocalVideoTrack('virtual-camera');
   console.log('Created video track:', videoTrack.name);
 
-  const room = await connect(TOKEN, {
+  const room = await connect(generateToken('node-participant', ROOM_NAME), {
     name: ROOM_NAME,
     videoTracks: [videoTrack],
   });
