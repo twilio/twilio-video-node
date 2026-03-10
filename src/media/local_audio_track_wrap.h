@@ -10,18 +10,21 @@
 #include <webrtc/rtc_base/time_utils.h>
 #include <list>
 #include <mutex>
+#include "node_audio_device.h"
 
 namespace twilio_video_node {
 
 class PushableAudioSource : public webrtc::Notifier<webrtc::AudioSourceInterface>,
                             public webrtc::AudioTrackSinkInterface {
 public:
-    PushableAudioSource() = default;
+    explicit PushableAudioSource(rtc::scoped_refptr<NodeAudioDevice> adm);
     ~PushableAudioSource() override = default;
 
     void PushSamples(const int16_t* data, int bits_per_sample,
                      int sample_rate, size_t number_of_channels,
                      size_t number_of_frames);
+
+    void ClearBuffer();
 
     // AudioSourceInterface
     SourceState state() const override { return kLive; }
@@ -35,6 +38,7 @@ public:
                 size_t number_of_frames) override;
 
 private:
+    rtc::scoped_refptr<NodeAudioDevice> adm_;
     std::mutex sink_lock_;
     std::list<webrtc::AudioTrackSinkInterface*> sinks_;
 };
@@ -44,7 +48,8 @@ public:
     static void Init(Napi::Env env, Napi::Object exports);
     static Napi::Object NewInstance(Napi::Env env,
                                     std::shared_ptr<twilio::media::MediaFactory> factory,
-                                    const twilio::media::AudioTrackOptions& options);
+                                    const twilio::media::AudioTrackOptions& options,
+                                    rtc::scoped_refptr<NodeAudioDevice> adm);
     static bool IsInstance(Napi::Object obj);
 
     LocalAudioTrackWrap(const Napi::CallbackInfo& info);
@@ -60,6 +65,7 @@ private:
     Napi::Value IsEnabled(const Napi::CallbackInfo& info);
     void SetEnabled(const Napi::CallbackInfo& info, const Napi::Value& value);
     Napi::Value PushSamples(const Napi::CallbackInfo& info);
+    Napi::Value ClearBuffer(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::media::LocalAudioTrack> track_;
     std::shared_ptr<twilio::media::MediaFactory> factory_;

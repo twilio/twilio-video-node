@@ -16,14 +16,13 @@ if (!TOKEN) {
 }
 
 const SAMPLE_RATE = 48000;
-const CHANNELS = 1;
 const FRAME_DURATION_MS = 10;
 const SAMPLES_PER_FRAME = (SAMPLE_RATE * FRAME_DURATION_MS) / 1000; // 480
 const TONE_HZ = 440;
 const AMPLITUDE = 3000;
 
 function generateSineFrame(frameIndex) {
-  const buf = Buffer.alloc(SAMPLES_PER_FRAME * CHANNELS * 2); // 2 bytes per int16
+  const buf = Buffer.alloc(SAMPLES_PER_FRAME * 2); // 2 bytes per int16
   const startSample = frameIndex * SAMPLES_PER_FRAME;
 
   for (let i = 0; i < SAMPLES_PER_FRAME; i++) {
@@ -91,7 +90,7 @@ function startPushingAudio(audioTrack) {
 
   setInterval(() => {
     const samples = generateSineFrame(frameIndex);
-    audioTrack.pushSamples(samples, SAMPLE_RATE, CHANNELS);
+    audioTrack.pushSamples(samples);
     frameIndex++;
     if (frameIndex % 100 === 0) {
       console.log('Pushed', frameIndex, 'audio frames');

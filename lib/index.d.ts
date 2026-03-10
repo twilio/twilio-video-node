@@ -88,7 +88,8 @@ export interface LocalVideoTrack {
 export interface LocalAudioTrack {
   readonly name: string;
   enabled: boolean;
-  pushSamples(samples: Buffer, sampleRate: number, channels: number): void;
+  pushSamples(samples: Buffer): void;
+  clearBuffer(): void;
 }
 
 export interface LocalDataTrackOptions {

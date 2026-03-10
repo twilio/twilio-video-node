@@ -1,9 +1,14 @@
 #include "local_audio_track_wrap.h"
 #include <webrtc/rtc_base/ref_counted_object.h>
+#include <webrtc/rtc_base/checks.h>
 
 namespace twilio_video_node {
 
 // --- PushableAudioSource ---
+
+PushableAudioSource::PushableAudioSource(rtc::scoped_refptr<NodeAudioDevice> adm)
+    : adm_(std::move(adm)) {
+}
 
 void PushableAudioSource::AddSink(webrtc::AudioTrackSinkInterface* sink) {
     std::lock_guard<std::mutex> lock(sink_lock_);
@@ -25,13 +30,14 @@ void PushableAudioSource::OnData(const void* audio_data, int bits_per_sample,
 void PushableAudioSource::PushSamples(const int16_t* data, int bits_per_sample,
                                        int sample_rate, size_t number_of_channels,
                                        size_t number_of_frames) {
-    int64_t capture_timestamp_ms = rtc::TimeMillis();
-    std::lock_guard<std::mutex> lock(sink_lock_);
-    for (auto* sink : sinks_) {
-        sink->OnData(data, bits_per_sample, sample_rate,
-                     number_of_channels, number_of_frames,
-                     capture_timestamp_ms);
-    }
+    RTC_DCHECK_EQ(sample_rate, 48000);
+    RTC_DCHECK_EQ(number_of_channels, 1);
+
+    adm_->PushRecordingData(data, number_of_frames);
+}
+
+void PushableAudioSource::ClearBuffer() {
+    adm_->ClearRecordingBuffer();
 }
 
 // --- LocalAudioTrackWrap ---
@@ -47,6 +53,7 @@ void LocalAudioTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("name", &LocalAudioTrackWrap::GetName, nullptr),
         InstanceAccessor("enabled", &LocalAudioTrackWrap::IsEnabled, &LocalAudioTrackWrap::SetEnabled),
         InstanceMethod("pushSamples", &LocalAudioTrackWrap::PushSamples),
+        InstanceMethod("clearBuffer", &LocalAudioTrackWrap::ClearBuffer),
     });
 
     constructor_ = Napi::Persistent(func);
@@ -56,10 +63,11 @@ void LocalAudioTrackWrap::Init(Napi::Env env, Napi::Object exports) {
 
 Napi::Object LocalAudioTrackWrap::NewInstance(Napi::Env env,
                                                std::shared_ptr<twilio::media::MediaFactory> factory,
-                                               const twilio::media::AudioTrackOptions& options) {
+                                               const twilio::media::AudioTrackOptions& options,
+                                               rtc::scoped_refptr<NodeAudioDevice> adm) {
     Napi::EscapableHandleScope scope(env);
 
-    auto source = rtc::make_ref_counted<PushableAudioSource>();
+    auto source = rtc::make_ref_counted<PushableAudioSource>(std::move(adm));
     auto track = factory->createAudioTrack(source, options);
 
     Napi::Object obj = constructor_.New({});
@@ -96,31 +104,25 @@ void LocalAudioTrackWrap::SetEnabled(const Napi::CallbackInfo& info, const Napi:
 Napi::Value LocalAudioTrackWrap::PushSamples(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 3) {
-        Napi::TypeError::New(env, "Expected 3 arguments: samplesBuffer, sampleRate, numberOfChannels")
-            .ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    if (!info[0].IsBuffer()) {
-        Napi::TypeError::New(env, "First argument must be a Buffer of int16 PCM samples")
+    if (info.Length() < 1 || !info[0].IsBuffer()) {
+        Napi::TypeError::New(env, "Expected 1 argument: Buffer of int16 PCM samples (48kHz mono)")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     auto buffer = info[0].As<Napi::Buffer<int16_t>>();
-    int sample_rate = info[1].As<Napi::Number>().Int32Value();
-    size_t number_of_channels = info[2].As<Napi::Number>().Uint32Value();
-
-    size_t total_samples = buffer.Length();
-    size_t number_of_frames = total_samples / number_of_channels;
+    size_t number_of_frames = buffer.Length();
 
     if (audioSource_) {
-        audioSource_->PushSamples(buffer.Data(), 16, sample_rate,
-                                   number_of_channels, number_of_frames);
+        audioSource_->PushSamples(buffer.Data(), 16, 48000, 1, number_of_frames);
     }
 
     return env.Undefined();
+}
+
+Napi::Value LocalAudioTrackWrap::ClearBuffer(const Napi::CallbackInfo& info) {
+    if (audioSource_) audioSource_->ClearBuffer();
+    return info.Env().Undefined();
 }
 
 }

@@ -32,12 +32,12 @@ MediaFactoryWrap::MediaFactoryWrap(const Napi::CallbackInfo& info)
     Napi::Env env = info.Env();
     asyncContext_ = std::make_unique<AsyncContext>(env);
 
-    if (info.Length() == 0 || !info[0].IsObject()) {
-        factory_ = twilio::media::MediaFactory::create();
-    } else {
-        auto options = std::make_unique<twilio::media::MediaOptions>();
-        factory_ = twilio::media::MediaFactory::create(std::move(options));
-    }
+    auto options = std::make_unique<twilio::media::MediaOptions>();
+    options->audio_device_factory = [this](webrtc::TaskQueueFactory* task_queue_factory) {
+        adm_ = NodeAudioDevice::Create(task_queue_factory);
+        return rtc::scoped_refptr<webrtc::AudioDeviceModule>(adm_);
+    };
+    factory_ = twilio::media::MediaFactory::create(std::move(options));
 }
 
 MediaFactoryWrap::~MediaFactoryWrap() {
@@ -73,7 +73,7 @@ Napi::Value MediaFactoryWrap::CreateAudioTrack(const Napi::CallbackInfo& info) {
     }
 
     twilio::media::AudioTrackOptions trackOptions(true, name);
-    return LocalAudioTrackWrap::NewInstance(env, factory_, trackOptions);
+    return LocalAudioTrackWrap::NewInstance(env, factory_, trackOptions, adm_);
 }
 
 Napi::Value MediaFactoryWrap::CreateDataTrack(const Napi::CallbackInfo& info) {
