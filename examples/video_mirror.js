@@ -4,7 +4,7 @@
  * Usage: node examples/video_mirror.js [room-name]
  */
 
-const { connect, createLocalVideoTrack } = require('../lib');
+const { connect, createLocalVideoTrack } = require('../dist/index.cjs');
 const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'mirror-room';

@@ -4,7 +4,7 @@
  * Usage: node examples/audio_push.js [room-name]
  */
 
-const { connect, createLocalAudioTrack } = require('../lib');
+const { connect, createLocalAudioTrack } = require('../dist/index.cjs');
 const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';

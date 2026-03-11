@@ -2,8 +2,21 @@
   "name": "twilio-video-sdk",
   "version": "0.1.0",
   "description": "Twilio Video Media Streams SDK for Node.js - Server-side access to decoded video/audio frames",
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
   "scripts": {
     "install": "node scripts/install.js",
     "build": "cmake-js build",
@@ -16,6 +29,7 @@
     "upload:darwin": "node scripts/upload.js darwin-x64",
     "upload:linux": "node scripts/upload.js linux-x64",
     "fetch-deps": "node scripts/fetch-deps.js",
+    "build:ts": "tsdown",
     "test": "vitest run",
     "test:unit": "vitest run test/unit.test.js",
     "test:integration": "vitest run test/integration.test.js",
@@ -35,12 +49,13 @@
     "lint-staged": "^16.2.7",
     "node-addon-api": "^8.0.0",
     "prettier": "^3.8.1",
+    "tsdown": "^0.21.1",
     "twilio": "^5.12.1",
     "typescript": "^5.0.0",
     "vitest": "^4.0.18"
   },
   "files": [
-    "lib",
+    "dist",
     "scripts/install.js",
     "scripts/common.js",
     "package.json"

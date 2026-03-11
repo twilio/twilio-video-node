@@ -9,7 +9,6 @@
 
 #include <twilio/video/remote_participant_observer.h>
 #include "../common/async_context.h"
-#include <map>
 
 namespace twilio_video_node {
 
@@ -27,6 +26,7 @@ public:
     std::shared_ptr<twilio::video::RemoteParticipant> getParticipant() const { return participant_; }
 
 private:
+    Napi::FunctionReference eventCallback_;
     static Napi::FunctionReference constructor_;
 
     Napi::Value GetIdentity(const Napi::CallbackInfo& info);
@@ -34,12 +34,10 @@ private:
     Napi::Value GetVideoTracks(const Napi::CallbackInfo& info);
     Napi::Value GetAudioTracks(const Napi::CallbackInfo& info);
     Napi::Value GetDataTracks(const Napi::CallbackInfo& info);
-    Napi::Value On(const Napi::CallbackInfo& info);
-    Napi::Value Off(const Napi::CallbackInfo& info);
+    Napi::Value SetEventCallback(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::video::RemoteParticipant> participant_;
     std::shared_ptr<RemoteParticipantObserverImpl> observer_;
-    std::map<std::string, std::vector<Napi::FunctionReference>> eventListeners_;
     std::unique_ptr<AsyncContext> asyncContext_;
 };
 

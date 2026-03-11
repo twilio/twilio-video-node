@@ -277,8 +277,7 @@ void RemoteParticipantWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("videoTracks", &RemoteParticipantWrap::GetVideoTracks, nullptr),
         InstanceAccessor("audioTracks", &RemoteParticipantWrap::GetAudioTracks, nullptr),
         InstanceAccessor("dataTracks", &RemoteParticipantWrap::GetDataTracks, nullptr),
-        InstanceMethod("on", &RemoteParticipantWrap::On),
-        InstanceMethod("off", &RemoteParticipantWrap::Off),
+        InstanceMethod("setEventCallback", &RemoteParticipantWrap::SetEventCallback),
     });
 
     constructor_ = Napi::Persistent(func);
@@ -310,23 +309,19 @@ RemoteParticipantWrap::~RemoteParticipantWrap() {
     if (participant_) {
         participant_->setObserver(std::weak_ptr<twilio::video::RemoteParticipantObserver>());
     }
+    eventCallback_.Reset();
     if (asyncContext_) {
         asyncContext_->close();
     }
 }
 
 void RemoteParticipantWrap::emitEvent(const std::string& eventName, Napi::Value arg) {
-    auto it = eventListeners_.find(eventName);
-    if (it == eventListeners_.end()) return;
-
-    for (auto& listener : it->second) {
-        if (!listener.IsEmpty()) {
-            if (arg.IsEmpty() || arg.IsUndefined()) {
-                listener.Call({});
-            } else {
-                listener.Call({arg});
-            }
-        }
+    if (eventCallback_.IsEmpty()) return;
+    Napi::Env env = eventCallback_.Value().Env();
+    if (arg.IsEmpty() || arg.IsUndefined()) {
+        eventCallback_.Call({Napi::String::New(env, eventName)});
+    } else {
+        eventCallback_.Call({Napi::String::New(env, eventName), arg});
     }
 }
 
@@ -406,34 +401,16 @@ Napi::Value RemoteParticipantWrap::GetDataTracks(const Napi::CallbackInfo& info)
     return array;
 }
 
-Napi::Value RemoteParticipantWrap::On(const Napi::CallbackInfo& info) {
+Napi::Value RemoteParticipantWrap::SetEventCallback(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 2 || !info[0].IsString() || !info[1].IsFunction()) {
-        Napi::TypeError::New(env, "Expected event name and callback").ThrowAsJavaScriptException();
+    if (info.Length() < 1 || !info[0].IsFunction()) {
+        Napi::TypeError::New(env, "Expected callback function").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    std::string eventName = info[0].As<Napi::String>().Utf8Value();
-    auto callback = info[1].As<Napi::Function>();
-
-    eventListeners_[eventName].push_back(Napi::Persistent(callback));
-
-    return info.This();
-}
-
-Napi::Value RemoteParticipantWrap::Off(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 1 || !info[0].IsString()) {
-        Napi::TypeError::New(env, "Expected event name").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    std::string eventName = info[0].As<Napi::String>().Utf8Value();
-    eventListeners_.erase(eventName);
-
-    return info.This();
+    eventCallback_ = Napi::Persistent(info[0].As<Napi::Function>());
+    return env.Undefined();
 }
 
 }

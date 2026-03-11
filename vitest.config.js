@@ -6,7 +6,7 @@ export default defineConfig({
     hookTimeout: 30000,
     coverage: {
       provider: 'v8',
-      include: ['lib/**/*.js'],
+      include: ['dist/**/*.cjs', 'dist/**/*.mjs'],
       reporter: ['text', 'lcov'],
     },
   },

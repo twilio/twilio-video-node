@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
 import { connectToRoom } from './helpers/connect.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
-import { createLocalVideoTrack, createLocalAudioTrack, LocalDataTrack } from '../lib/index.js';
+import { createLocalVideoTrack, createLocalAudioTrack, LocalDataTrack } from '../dist/index.mjs';
 const TRACK_SUBSCRIBE_TIMEOUT = 15_000;
 const MEDIA_FLOW_TIMEOUT = 10_000;
 // SDP renegotiation after publishTrack + trackSubscribed needs time to complete

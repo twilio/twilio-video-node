@@ -132,7 +132,6 @@ set(ADDON_SOURCES
     src/video/room_observer_wrap.cpp
     src/video/local_participant_wrap.cpp
     src/video/remote_participant_wrap.cpp
-    src/video/connect_options_wrap.cpp
     src/sinks/video_frame_sink.cpp
     src/sinks/audio_frame_sink.cpp
     src/media/node_audio_device.cpp

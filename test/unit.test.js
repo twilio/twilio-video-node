@@ -4,7 +4,7 @@ import {
   setLogLevel,
   createLocalVideoTrack,
   createLocalAudioTrack,
-} from '../lib/index.js';
+} from '../dist/index.mjs';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
 describe('Version', () => {

@@ -29,6 +29,6 @@ export default [
     },
   },
   {
-    ignores: ['build/', 'prebuilds/', 'deps/', 'node_modules/', 'coverage/'],
+    ignores: ['build/', 'prebuilds/', 'deps/', 'node_modules/', 'coverage/', 'dist/'],
   },
 ];

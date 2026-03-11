@@ -1,6 +1,5 @@
 #include <napi.h>
 #include "video/room_wrap.h"
-#include "video/connect_options_wrap.h"
 #include "video/local_participant_wrap.h"
 #include "video/remote_participant_wrap.h"
 #include "media/media_factory_wrap.h"
@@ -57,7 +56,6 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("setLogLevel", Napi::Function::New(env, SetLogLevel));
 
     MediaFactoryWrap::Init(env, exports);
-    ConnectOptionsWrap::Init(env, exports);
     RoomWrap::Init(env, exports);
     LocalParticipantWrap::Init(env, exports);
     RemoteParticipantWrap::Init(env, exports);

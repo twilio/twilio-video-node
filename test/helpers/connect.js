@@ -1,4 +1,4 @@
-import { connect } from '../../lib/index.js';
+import { connect } from '../../dist/index.mjs';
 import { generateToken } from './token.js';
 
 const CONNECTION_TIMEOUT = 15_000;

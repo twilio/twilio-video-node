@@ -2,6 +2,7 @@ node_modules
 
 # Build artifacts
 build/
+dist/
 *.node
 *.o
 *.a

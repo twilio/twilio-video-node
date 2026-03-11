@@ -5,9 +5,7 @@
 #include <twilio/video/room.h>
 #include <twilio/video/connect_options.h>
 #include "room_observer_wrap.h"
-#include "connect_options_wrap.h"
 #include "../common/async_context.h"
-#include <map>
 
 namespace twilio_video_node {
 
@@ -23,6 +21,7 @@ public:
     twilio::video::Room* getRoom() const { return room_.get(); }
 
 private:
+    Napi::FunctionReference eventCallback_;
     static Napi::FunctionReference constructor_;
 
     Napi::Value GetName(const Napi::CallbackInfo& info);
@@ -34,12 +33,10 @@ private:
     Napi::Value GetRemoteParticipants(const Napi::CallbackInfo& info);
     Napi::Value Disconnect(const Napi::CallbackInfo& info);
     Napi::Value Dispose(const Napi::CallbackInfo& info);
-    Napi::Value On(const Napi::CallbackInfo& info);
-    Napi::Value Off(const Napi::CallbackInfo& info);
+    Napi::Value SetEventCallback(const Napi::CallbackInfo& info);
 
     std::unique_ptr<twilio::video::Room> room_;
     std::shared_ptr<RoomObserverWrap> observer_;
-    std::map<std::string, std::vector<Napi::FunctionReference>> eventListeners_;
     std::unique_ptr<AsyncContext> asyncContext_;
 
     // Participant wrapper caches

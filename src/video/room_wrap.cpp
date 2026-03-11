@@ -28,8 +28,7 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("remoteParticipants", &RoomWrap::GetRemoteParticipants, nullptr),
         InstanceMethod("disconnect", &RoomWrap::Disconnect),
         InstanceMethod("dispose", &RoomWrap::Dispose),
-        InstanceMethod("on", &RoomWrap::On),
-        InstanceMethod("off", &RoomWrap::Off),
+        InstanceMethod("setEventCallback", &RoomWrap::SetEventCallback),
     });
 
     constructor_ = Napi::Persistent(func);
@@ -57,93 +56,53 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     std::string token = info[0].As<Napi::String>().Utf8Value();
     twilio::video::ConnectOptions::Builder builder(token);
 
-    auto optionsObj = (info.Length() >= 2 && info[1].IsObject())
+    // TS layer pre-populates all options; C++ just reads them
+    auto opts = (info.Length() >= 2 && info[1].IsObject())
         ? info[1].As<Napi::Object>()
         : Napi::Object::New(env);
 
-    if (optionsObj.Has("name")) {
-        builder.setRoomName(optionsObj.Get("name").As<Napi::String>().Utf8Value());
+    if (opts.Has("name"))
+        builder.setRoomName(opts.Get("name").As<Napi::String>().Utf8Value());
+
+    // MediaFactory (always provided by TS layer)
+    if (opts.Has("mediaFactory") && opts.Get("mediaFactory").IsObject()) {
+        auto* factoryWrap = Napi::ObjectWrap<MediaFactoryWrap>::Unwrap(opts.Get("mediaFactory").As<Napi::Object>());
+        if (factoryWrap) builder.setMediaFactory(factoryWrap->getFactory());
     }
 
-    // MediaFactory
-    std::shared_ptr<twilio::media::MediaFactory> mediaFactory;
-
-    if (optionsObj.Has("mediaFactory") && optionsObj.Get("mediaFactory").IsObject()) {
-        auto factoryObj = optionsObj.Get("mediaFactory").As<Napi::Object>();
-        auto* factoryWrap = Napi::ObjectWrap<MediaFactoryWrap>::Unwrap(factoryObj);
-        if (factoryWrap) {
-            mediaFactory = factoryWrap->getFactory();
-            builder.setMediaFactory(mediaFactory);
-        }
-    }
-
-    // Fallback: extract MediaFactory from tracks
-    if (!mediaFactory && optionsObj.Has("videoTracks") && optionsObj.Get("videoTracks").IsArray()) {
-        auto tracks = optionsObj.Get("videoTracks").As<Napi::Array>();
-        if (tracks.Length() > 0) {
-            auto trackObj = tracks.Get(uint32_t(0)).As<Napi::Object>();
-            auto* trackWrap = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(trackObj);
-            if (trackWrap && trackWrap->getFactory()) {
-                mediaFactory = trackWrap->getFactory();
-                builder.setMediaFactory(mediaFactory);
-            }
-        }
-    }
-    if (!mediaFactory && optionsObj.Has("audioTracks") && optionsObj.Get("audioTracks").IsArray()) {
-        auto tracks = optionsObj.Get("audioTracks").As<Napi::Array>();
-        if (tracks.Length() > 0) {
-            auto trackObj = tracks.Get(uint32_t(0)).As<Napi::Object>();
-            auto* trackWrap = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(trackObj);
-            if (trackWrap && trackWrap->getFactory()) {
-                mediaFactory = trackWrap->getFactory();
-                builder.setMediaFactory(mediaFactory);
-            }
-        }
-    }
-
-    builder.enableInsights(false);
-
-    if (optionsObj.Has("enableInsights")) {
-        builder.enableInsights(optionsObj.Get("enableInsights").As<Napi::Boolean>().Value());
-    }
-    if (optionsObj.Has("enableAutomaticSubscription")) {
-        builder.enableAutomaticSubscription(optionsObj.Get("enableAutomaticSubscription").As<Napi::Boolean>().Value());
-    }
-    if (optionsObj.Has("enableDominantSpeaker")) {
-        builder.enableDominantSpeaker(optionsObj.Get("enableDominantSpeaker").As<Napi::Boolean>().Value());
-    }
-    if (optionsObj.Has("enableNetworkQuality")) {
-        builder.enableNetworkQuality(optionsObj.Get("enableNetworkQuality").As<Napi::Boolean>().Value());
-    }
-    if (optionsObj.Has("region")) {
-        builder.setRegion(optionsObj.Get("region").As<Napi::String>().Utf8Value());
-    }
+    // Boolean options (TS defaults enableInsights to false)
+    if (opts.Has("enableInsights"))
+        builder.enableInsights(opts.Get("enableInsights").As<Napi::Boolean>().Value());
+    if (opts.Has("enableAutomaticSubscription"))
+        builder.enableAutomaticSubscription(opts.Get("enableAutomaticSubscription").As<Napi::Boolean>().Value());
+    if (opts.Has("enableDominantSpeaker"))
+        builder.enableDominantSpeaker(opts.Get("enableDominantSpeaker").As<Napi::Boolean>().Value());
+    if (opts.Has("enableNetworkQuality"))
+        builder.enableNetworkQuality(opts.Get("enableNetworkQuality").As<Napi::Boolean>().Value());
+    if (opts.Has("region"))
+        builder.setRegion(opts.Get("region").As<Napi::String>().Utf8Value());
 
     // Encoding parameters
-    if (optionsObj.Has("encodingParameters") && optionsObj.Get("encodingParameters").IsObject()) {
-        auto epObj = optionsObj.Get("encodingParameters").As<Napi::Object>();
+    if (opts.Has("encodingParameters") && opts.Get("encodingParameters").IsObject()) {
+        auto epObj = opts.Get("encodingParameters").As<Napi::Object>();
         twilio::media::EncodingParameters ep;
-        if (epObj.Has("maxAudioBitrate")) {
+        if (epObj.Has("maxAudioBitrate"))
             ep.max_audio_bitrate_ = epObj.Get("maxAudioBitrate").As<Napi::Number>().Uint32Value();
-        }
-        if (epObj.Has("maxVideoBitrate")) {
+        if (epObj.Has("maxVideoBitrate"))
             ep.max_video_bitrate_ = epObj.Get("maxVideoBitrate").As<Napi::Number>().Uint32Value();
-        }
         builder.setEncodingParameters(ep);
     }
 
-    // ICE options
-    if (optionsObj.Has("iceOptions") && optionsObj.Get("iceOptions").IsObject()) {
-        auto iceObj = optionsObj.Get("iceOptions").As<Napi::Object>();
+    // ICE options (TS maps transportPolicy string → int)
+    if (opts.Has("iceOptions") && opts.Get("iceOptions").IsObject()) {
+        auto iceObj = opts.Get("iceOptions").As<Napi::Object>();
         twilio::media::IceOptions iceOptions;
 
-        if (iceObj.Has("transportPolicy")) {
+        if (iceObj.Has("transportPolicy") && iceObj.Get("transportPolicy").IsString()) {
             std::string policy = iceObj.Get("transportPolicy").As<Napi::String>().Utf8Value();
-            if (policy == "relay") {
-                iceOptions.ice_transport_policy = twilio::media::IceTransportPolicy::kIceTransportPolicyRelay;
-            } else {
-                iceOptions.ice_transport_policy = twilio::media::IceTransportPolicy::kIceTransportPolicyAll;
-            }
+            iceOptions.ice_transport_policy = policy == "relay"
+                ? twilio::media::IceTransportPolicy::kIceTransportPolicyRelay
+                : twilio::media::IceTransportPolicy::kIceTransportPolicyAll;
         }
 
         if (iceObj.Has("iceServers") && iceObj.Get("iceServers").IsArray()) {
@@ -154,68 +113,57 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
                 twilio::media::IceServer server;
                 if (serverObj.Has("urls") && serverObj.Get("urls").IsArray()) {
                     auto urls = serverObj.Get("urls").As<Napi::Array>();
-                    for (uint32_t j = 0; j < urls.Length(); j++) {
+                    for (uint32_t j = 0; j < urls.Length(); j++)
                         server.urls.push_back(urls.Get(j).As<Napi::String>().Utf8Value());
-                    }
                 }
-                if (serverObj.Has("username")) {
+                if (serverObj.Has("username"))
                     server.username = serverObj.Get("username").As<Napi::String>().Utf8Value();
-                }
-                if (serverObj.Has("credential")) {
+                if (serverObj.Has("credential"))
                     server.password = serverObj.Get("credential").As<Napi::String>().Utf8Value();
-                }
                 iceServers.push_back(server);
             }
             iceOptions.ice_servers = iceServers;
         }
-
         builder.setIceOptions(iceOptions);
     }
 
-    // Platform info
-    twilio::PlatformInfo platformInfo;
-    platformInfo.platformName = "nodejs";
-    platformInfo.hwDeviceArch = "x86_64";
-    platformInfo.hwDeviceManufacturer = "Server";
-    platformInfo.hwDeviceModel = "MediaStreams";
-
-    if (optionsObj.Has("platformInfo") && optionsObj.Get("platformInfo").IsObject()) {
-        auto pi = optionsObj.Get("platformInfo").As<Napi::Object>();
+    // Platform info (fully populated by TS layer)
+    if (opts.Has("platformInfo") && opts.Get("platformInfo").IsObject()) {
+        auto pi = opts.Get("platformInfo").As<Napi::Object>();
+        twilio::PlatformInfo platformInfo;
         if (pi.Has("sdkVersion")) platformInfo.sdkVersion = pi.Get("sdkVersion").As<Napi::String>().Utf8Value();
         if (pi.Has("platformName")) platformInfo.platformName = pi.Get("platformName").As<Napi::String>().Utf8Value();
         if (pi.Has("platformVersion")) platformInfo.platformVersion = pi.Get("platformVersion").As<Napi::String>().Utf8Value();
+        if (pi.Has("deviceArchitecture")) platformInfo.hwDeviceArch = pi.Get("deviceArchitecture").As<Napi::String>().Utf8Value();
+        if (pi.Has("deviceManufacturer")) platformInfo.hwDeviceManufacturer = pi.Get("deviceManufacturer").As<Napi::String>().Utf8Value();
+        if (pi.Has("deviceModel")) platformInfo.hwDeviceModel = pi.Get("deviceModel").As<Napi::String>().Utf8Value();
+        builder.setPlatformInfo(platformInfo);
     }
-    builder.setPlatformInfo(platformInfo);
 
     // Tracks
-    if (optionsObj.Has("videoTracks") && optionsObj.Get("videoTracks").IsArray()) {
-        auto tracks = optionsObj.Get("videoTracks").As<Napi::Array>();
+    if (opts.Has("videoTracks") && opts.Get("videoTracks").IsArray()) {
+        auto tracks = opts.Get("videoTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalVideoTrack>> videoTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
-            auto trackObj = tracks.Get(i).As<Napi::Object>();
-            auto* trackWrap = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(trackObj);
+            auto* trackWrap = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(tracks.Get(i).As<Napi::Object>());
             if (trackWrap) videoTracks.push_back(trackWrap->getTrack());
         }
         builder.setVideoTracks(videoTracks);
     }
-
-    if (optionsObj.Has("audioTracks") && optionsObj.Get("audioTracks").IsArray()) {
-        auto tracks = optionsObj.Get("audioTracks").As<Napi::Array>();
+    if (opts.Has("audioTracks") && opts.Get("audioTracks").IsArray()) {
+        auto tracks = opts.Get("audioTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalAudioTrack>> audioTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
-            auto trackObj = tracks.Get(i).As<Napi::Object>();
-            auto* trackWrap = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(trackObj);
+            auto* trackWrap = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(tracks.Get(i).As<Napi::Object>());
             if (trackWrap) audioTracks.push_back(trackWrap->getTrack());
         }
         builder.setAudioTracks(audioTracks);
     }
-
-    if (optionsObj.Has("dataTracks") && optionsObj.Get("dataTracks").IsArray()) {
-        auto tracks = optionsObj.Get("dataTracks").As<Napi::Array>();
+    if (opts.Has("dataTracks") && opts.Get("dataTracks").IsArray()) {
+        auto tracks = opts.Get("dataTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalDataTrack>> dataTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
-            auto trackObj = tracks.Get(i).As<Napi::Object>();
-            auto* trackWrap = Napi::ObjectWrap<LocalDataTrackWrap>::Unwrap(trackObj);
+            auto* trackWrap = Napi::ObjectWrap<LocalDataTrackWrap>::Unwrap(tracks.Get(i).As<Napi::Object>());
             if (trackWrap) dataTracks.push_back(trackWrap->getTrack());
         }
         builder.setDataTracks(dataTracks);
@@ -264,6 +212,7 @@ RoomWrap::~RoomWrap() {
     if (asyncContext_) {
         asyncContext_->close();
     }
+    eventCallback_.Reset();
     localParticipantCache_.Reset();
     participantCache_.clear();
 
@@ -279,17 +228,12 @@ RoomWrap::~RoomWrap() {
 }
 
 void RoomWrap::emitEvent(const std::string& eventName, Napi::Value arg) {
-    auto it = eventListeners_.find(eventName);
-    if (it == eventListeners_.end()) return;
-
-    for (auto& listener : it->second) {
-        if (!listener.IsEmpty()) {
-            if (arg.IsEmpty() || arg.IsUndefined()) {
-                listener.Call({});
-            } else {
-                listener.Call({arg});
-            }
-        }
+    if (eventCallback_.IsEmpty()) return;
+    Napi::Env env = eventCallback_.Value().Env();
+    if (arg.IsEmpty() || arg.IsUndefined()) {
+        eventCallback_.Call({Napi::String::New(env, eventName)});
+    } else {
+        eventCallback_.Call({Napi::String::New(env, eventName), arg});
     }
 }
 
@@ -395,7 +339,7 @@ Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
         observer_->close();
         observer_.reset();
     }
-    eventListeners_.clear();
+    eventCallback_.Reset();
     localParticipantCache_.Reset();
     participantCache_.clear();
     if (asyncContext_) {
@@ -417,40 +361,16 @@ Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
     return info.Env().Undefined();
 }
 
-Napi::Value RoomWrap::On(const Napi::CallbackInfo& info) {
+Napi::Value RoomWrap::SetEventCallback(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 2 || !info[0].IsString() || !info[1].IsFunction()) {
-        Napi::TypeError::New(env, "Expected event name and callback").ThrowAsJavaScriptException();
+    if (info.Length() < 1 || !info[0].IsFunction()) {
+        Napi::TypeError::New(env, "Expected callback function").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    std::string eventName = info[0].As<Napi::String>().Utf8Value();
-    auto callback = info[1].As<Napi::Function>();
-
-    eventListeners_[eventName].push_back(Napi::Persistent(callback));
-
-    return info.This();
-}
-
-Napi::Value RoomWrap::Off(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 1 || !info[0].IsString()) {
-        Napi::TypeError::New(env, "Expected event name").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    std::string eventName = info[0].As<Napi::String>().Utf8Value();
-
-    if (info.Length() < 2 || !info[1].IsFunction()) {
-        eventListeners_.erase(eventName);
-    } else {
-        auto& listeners = eventListeners_[eventName];
-        listeners.clear();
-    }
-
-    return info.This();
+    eventCallback_ = Napi::Persistent(info[0].As<Napi::Function>());
+    return env.Undefined();
 }
 
 }
