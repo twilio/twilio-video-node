@@ -11,6 +11,7 @@ import type {
   LocalAudioTrack,
   LocalDataTrack as LocalDataTrackInterface,
   LocalDataTrackOptions,
+  LogLevel,
 } from './types.js';
 
 export { Room } from './room.js';
@@ -190,6 +191,6 @@ export function getVersion(): string {
   return addon.getVersion();
 }
 
-export function setLogLevel(level: string | number): void {
-  addon.setLogLevel(level as never);
+export function setLogLevel(level: LogLevel | number): void {
+  addon.setLogLevel(level);
 }
