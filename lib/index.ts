@@ -81,7 +81,7 @@ function loadAddon(): NativeAddon {
       throw new Error(
         `No prebuilt binary found for ${platformDir}. ` +
           'Run npm run build to compile from source.',
-        { cause: cause as Error },
+        { cause },
       );
     }
   }

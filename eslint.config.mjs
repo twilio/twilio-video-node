@@ -1,11 +1,13 @@
 import js from '@eslint/js';
+import { defineConfig, globalIgnores } from 'eslint/config';
+import tseslint from 'typescript-eslint';
 
-export default [
+export default defineConfig([
   js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
+    files: ['scripts/**/*.js', 'examples/**/*.js'],
     languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
       globals: {
         console: 'readonly',
         process: 'readonly',
@@ -22,13 +24,22 @@ export default [
       },
     },
     rules: {
-      'no-unused-vars': [
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', caughtErrors: 'none', destructuredArrayIgnorePattern: '^_' },
       ],
     },
   },
   {
-    ignores: ['build/', 'prebuilds/', 'deps/', 'node_modules/', 'coverage/', 'dist/'],
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
   },
-];
+  globalIgnores(['build/', 'prebuilds/', 'deps/', 'node_modules/', 'coverage/', 'dist/']),
+]);
