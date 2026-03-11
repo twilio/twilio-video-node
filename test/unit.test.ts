@@ -17,14 +17,14 @@ describe('Version', () => {
 
 describe('Log Level', () => {
   it('setLogLevel accepts valid levels', () => {
-    const levels = ['off', 'fatal', 'error', 'warning', 'info', 'debug', 'trace', 'all'];
+    const levels = ['off', 'fatal', 'error', 'warning', 'info', 'debug', 'trace', 'all'] as const;
     levels.forEach(level => {
       expect(() => setLogLevel(level)).not.toThrow();
     });
   });
 
   it('setLogLevel rejects invalid level', () => {
-    expect(() => setLogLevel('invalid')).toThrow(/Invalid log level/);
+    expect(() => setLogLevel('invalid' as any)).toThrow(/Invalid log level/);
   });
 });
 
@@ -81,7 +81,7 @@ describe('Audio Track', () => {
 
     const samples = generateAudioSamples(480, 48000, 1);
     expect(() => {
-      track.pushSamples(samples, 48000, 1);
+      track.pushSamples(samples);
     }).not.toThrow();
   });
 });

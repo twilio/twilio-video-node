@@ -4,13 +4,13 @@ const VideoGrant = AccessToken.VideoGrant;
 
 const PREFIX = 'TWILIO_STAGE_';
 
-function generateToken(identity, roomName) {
+function generateToken(identity: string, roomName?: string): string {
   const accountSid = process.env[`${PREFIX}ACCOUNT_SID`];
   const apiKey = process.env[`${PREFIX}API_KEY`];
   const apiSecret = process.env[`${PREFIX}API_SECRET`];
 
   if (!accountSid || !apiKey || !apiSecret) {
-    const missing = [];
+    const missing: string[] = [];
     if (!accountSid) missing.push(`${PREFIX}ACCOUNT_SID`);
     if (!apiKey) missing.push(`${PREFIX}API_KEY`);
     if (!apiSecret) missing.push(`${PREFIX}API_SECRET`);

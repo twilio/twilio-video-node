@@ -1,4 +1,4 @@
-function generateI420Frame(width, height) {
+function generateI420Frame(width: number, height: number): { y: Buffer; u: Buffer; v: Buffer } {
   const ySize = width * height;
   const uvWidth = Math.floor(width / 2);
   const uvHeight = Math.floor(height / 2);
@@ -15,7 +15,7 @@ function generateI420Frame(width, height) {
   return { y, u, v };
 }
 
-function generateAudioSamples(frameSize, sampleRate = 48000, channels = 1) {
+function generateAudioSamples(frameSize: number, sampleRate = 48000, channels = 1): Buffer {
   const frequency = 440;
   const buffer = Buffer.alloc(frameSize * 2 * channels);
 

@@ -31,8 +31,8 @@
     "fetch-deps": "node scripts/fetch-deps.js",
     "build:ts": "tsdown",
     "test": "vitest run",
-    "test:unit": "vitest run test/unit.test.js",
-    "test:integration": "vitest run test/integration.test.js",
+    "test:unit": "vitest run test/unit.test.ts",
+    "test:integration": "vitest run test/integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -78,11 +78,11 @@
     "real-time"
   ],
   "lint-staged": {
-    "*.{js,mjs}": [
+    "*.{js,mjs,ts}": [
       "prettier --write",
       "eslint --fix"
     ],
-    "*.{json,md,yml,yaml,ts}": [
+    "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
   },
