@@ -57,6 +57,7 @@
   },
   "files": [
     "dist",
+    "prebuilds",
     "scripts/install.js",
     "scripts/common.js",
     "package.json"
