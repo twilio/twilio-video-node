@@ -285,6 +285,8 @@ Napi::Value RemoteParticipantWrap::GetVideoTracks(const Napi::CallbackInfo& info
         auto obj = Napi::Object::New(env);
         obj.Set("trackSid", Napi::String::New(env, pub->getTrackSid()));
         obj.Set("trackName", Napi::String::New(env, pub->getTrackName()));
+        obj.Set("kind", Napi::String::New(env, "video"));
+        obj.Set("isTrackEnabled", Napi::Boolean::New(env, pub->isTrackEnabled()));
         obj.Set("isSubscribed", Napi::Boolean::New(env, pub->isTrackSubscribed()));
         if (pub->isTrackSubscribed()) {
             obj.Set("track", RemoteVideoTrackWrap::NewInstance(env, pub->getRemoteTrack()));
@@ -307,6 +309,8 @@ Napi::Value RemoteParticipantWrap::GetAudioTracks(const Napi::CallbackInfo& info
         auto obj = Napi::Object::New(env);
         obj.Set("trackSid", Napi::String::New(env, pub->getTrackSid()));
         obj.Set("trackName", Napi::String::New(env, pub->getTrackName()));
+        obj.Set("kind", Napi::String::New(env, "audio"));
+        obj.Set("isTrackEnabled", Napi::Boolean::New(env, pub->isTrackEnabled()));
         obj.Set("isSubscribed", Napi::Boolean::New(env, pub->isTrackSubscribed()));
         if (pub->isTrackSubscribed()) {
             obj.Set("track", RemoteAudioTrackWrap::NewInstance(env, pub->getRemoteTrack()));
@@ -329,6 +333,8 @@ Napi::Value RemoteParticipantWrap::GetDataTracks(const Napi::CallbackInfo& info)
         auto obj = Napi::Object::New(env);
         obj.Set("trackSid", Napi::String::New(env, pub->getTrackSid()));
         obj.Set("trackName", Napi::String::New(env, pub->getTrackName()));
+        obj.Set("kind", Napi::String::New(env, "data"));
+        obj.Set("isTrackEnabled", Napi::Boolean::New(env, pub->isTrackEnabled()));
         obj.Set("isSubscribed", Napi::Boolean::New(env, pub->isTrackSubscribed()));
         if (pub->isTrackSubscribed()) {
             obj.Set("track", RemoteDataTrackWrap::NewInstance(env, pub->getRemoteTrack()));

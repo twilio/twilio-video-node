@@ -209,6 +209,8 @@ Napi::Value LocalParticipantWrap::GetVideoTracks(const Napi::CallbackInfo& info)
         auto obj = Napi::Object::New(env);
         obj.Set("trackSid", Napi::String::New(env, pub->getTrackSid()));
         obj.Set("trackName", Napi::String::New(env, pub->getTrackName()));
+        obj.Set("kind", Napi::String::New(env, "video"));
+        obj.Set("isTrackEnabled", Napi::Boolean::New(env, pub->isTrackEnabled()));
         array.Set(i++, obj);
     }
 
@@ -227,6 +229,8 @@ Napi::Value LocalParticipantWrap::GetAudioTracks(const Napi::CallbackInfo& info)
         auto obj = Napi::Object::New(env);
         obj.Set("trackSid", Napi::String::New(env, pub->getTrackSid()));
         obj.Set("trackName", Napi::String::New(env, pub->getTrackName()));
+        obj.Set("kind", Napi::String::New(env, "audio"));
+        obj.Set("isTrackEnabled", Napi::Boolean::New(env, pub->isTrackEnabled()));
         array.Set(i++, obj);
     }
 
@@ -245,6 +249,8 @@ Napi::Value LocalParticipantWrap::GetDataTracks(const Napi::CallbackInfo& info) 
         auto obj = Napi::Object::New(env);
         obj.Set("trackSid", Napi::String::New(env, pub->getTrackSid()));
         obj.Set("trackName", Napi::String::New(env, pub->getTrackName()));
+        obj.Set("kind", Napi::String::New(env, "data"));
+        obj.Set("isTrackEnabled", Napi::Boolean::New(env, pub->isTrackEnabled()));
         array.Set(i++, obj);
     }
 

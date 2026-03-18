@@ -147,6 +147,8 @@ export interface RemoteDataTrack {
 export interface TrackPublication {
   trackSid: string;
   trackName: string;
+  kind: TrackKind;
+  isTrackEnabled: boolean;
 }
 
 export interface RemoteTrackPublication extends TrackPublication {
