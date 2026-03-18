@@ -70,7 +70,6 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         if (factoryWrap) builder.setMediaFactory(factoryWrap->getFactory());
     }
 
-    // Boolean options (TS defaults enableInsights to false)
     if (opts.Has("enableInsights"))
         builder.enableInsights(opts.Get("enableInsights").As<Napi::Boolean>().Value());
     if (opts.Has("enableAutomaticSubscription"))
@@ -127,16 +126,14 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         builder.setIceOptions(iceOptions);
     }
 
-    // Platform info (fully populated by TS layer)
+    // Platform info (pre-populated by TS layer)
     if (opts.Has("platformInfo") && opts.Get("platformInfo").IsObject()) {
-        auto pi = opts.Get("platformInfo").As<Napi::Object>();
+        auto piObj = opts.Get("platformInfo").As<Napi::Object>();
         twilio::PlatformInfo platformInfo;
-        if (pi.Has("sdkVersion")) platformInfo.sdkVersion = pi.Get("sdkVersion").As<Napi::String>().Utf8Value();
-        if (pi.Has("platformName")) platformInfo.platformName = pi.Get("platformName").As<Napi::String>().Utf8Value();
-        if (pi.Has("platformVersion")) platformInfo.platformVersion = pi.Get("platformVersion").As<Napi::String>().Utf8Value();
-        if (pi.Has("deviceArchitecture")) platformInfo.hwDeviceArch = pi.Get("deviceArchitecture").As<Napi::String>().Utf8Value();
-        if (pi.Has("deviceManufacturer")) platformInfo.hwDeviceManufacturer = pi.Get("deviceManufacturer").As<Napi::String>().Utf8Value();
-        if (pi.Has("deviceModel")) platformInfo.hwDeviceModel = pi.Get("deviceModel").As<Napi::String>().Utf8Value();
+        if (piObj.Has("sdkVersion")) platformInfo.sdkVersion = piObj.Get("sdkVersion").As<Napi::String>().Utf8Value();
+        if (piObj.Has("platformName")) platformInfo.platformName = piObj.Get("platformName").As<Napi::String>().Utf8Value();
+        if (piObj.Has("platformVersion")) platformInfo.platformVersion = piObj.Get("platformVersion").As<Napi::String>().Utf8Value();
+        if (piObj.Has("deviceArchitecture")) platformInfo.hwDeviceArch = piObj.Get("deviceArchitecture").As<Napi::String>().Utf8Value();
         builder.setPlatformInfo(platformInfo);
     }
 

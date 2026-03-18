@@ -12,6 +12,7 @@ import type {
   LocalDataTrack as LocalDataTrackInterface,
   LocalDataTrackOptions,
   LogLevel,
+  PlatformInfo,
 } from './types.js';
 
 export { Room } from './room.js';
@@ -22,7 +23,6 @@ export type {
   IceOptions,
   IceServer,
   EncodingParameters,
-  PlatformInfo,
   VideoFrameMetadata,
   AudioFrameMetadata,
   TwilioError,
@@ -104,23 +104,16 @@ function getDefaultMediaFactory(): NativeMediaFactory {
 export function connect(token: string, options: ConnectOptions = {}): Promise<Room> {
   const internalOpts: Record<string, unknown> = { ...options };
 
-  // Fully populate platformInfo so C++ just reads it
-  internalOpts.platformInfo = {
+  // Pre-populate platformInfo so C++ just reads it
+  const platformInfo: PlatformInfo = {
     sdkVersion: SDK_VERSION,
     platformName: 'nodejs',
     platformVersion: process.version.replace(/^v/, ''),
     deviceArchitecture: process.arch,
-    deviceManufacturer: 'Server',
-    deviceModel: 'MediaStreams',
-    ...options.platformInfo,
   };
+  internalOpts.platformInfo = platformInfo;
 
   internalOpts.mediaFactory = getDefaultMediaFactory();
-
-  // Default enableInsights to false
-  if (internalOpts.enableInsights === undefined) {
-    internalOpts.enableInsights = false;
-  }
 
   return new Promise((resolve, reject) => {
     const nativeRoom = addon.connect(token, internalOpts);

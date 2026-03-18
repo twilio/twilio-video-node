@@ -29,13 +29,12 @@ export interface AudioTrackOptions {
   name?: string;
 }
 
+/** Internal — auto-detected by the SDK, not user-facing. */
 export interface PlatformInfo {
-  sdkVersion?: string;
-  platformName?: string;
-  platformVersion?: string;
-  deviceArchitecture?: string;
-  deviceManufacturer?: string;
-  deviceModel?: string;
+  sdkVersion: string;
+  platformName: string;
+  platformVersion: string;
+  deviceArchitecture: string;
 }
 
 export interface IceServer {
@@ -64,7 +63,6 @@ export interface ConnectOptions {
   enableDominantSpeaker?: boolean;
   enableNetworkQuality?: boolean;
   region?: string;
-  platformInfo?: PlatformInfo;
   iceOptions?: IceOptions;
   encodingParameters?: EncodingParameters;
 }
