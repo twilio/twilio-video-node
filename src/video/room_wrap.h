@@ -30,6 +30,7 @@ private:
     Napi::Value GetMediaRegion(const Napi::CallbackInfo& info);
     Napi::Value IsRecording(const Napi::CallbackInfo& info);
     Napi::Value GetLocalParticipant(const Napi::CallbackInfo& info);
+    Napi::Value GetDominantSpeaker(const Napi::CallbackInfo& info);
     Napi::Value GetRemoteParticipants(const Napi::CallbackInfo& info);
     Napi::Value Disconnect(const Napi::CallbackInfo& info);
     Napi::Value Dispose(const Napi::CallbackInfo& info);

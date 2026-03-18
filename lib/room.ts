@@ -54,6 +54,12 @@ export class Room extends EventEmitter {
     return this._native.isRecording;
   }
 
+  get dominantSpeaker(): RemoteParticipant | null {
+    const native = this._native.dominantSpeaker;
+    if (!native) return null;
+    return this._wrapRemoteParticipant(native);
+  }
+
   get localParticipant(): LocalParticipant {
     if (!this._localParticipant) {
       this._localParticipant = new LocalParticipant(this._native.localParticipant);

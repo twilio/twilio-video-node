@@ -180,6 +180,7 @@ export interface NativeRoom {
   readonly mediaRegion: string;
   readonly isRecording: boolean;
   readonly localParticipant: NativeLocalParticipant;
+  readonly dominantSpeaker: NativeRemoteParticipant | null;
   readonly remoteParticipants: NativeRemoteParticipant[];
   disconnect(): void;
   dispose(): void;
