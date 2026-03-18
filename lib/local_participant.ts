@@ -1,17 +1,24 @@
 import { EventEmitter } from 'node:events';
 import type {
   NativeLocalParticipant,
-  TrackPublication,
   EncodingParameters,
   LocalVideoTrack,
   LocalAudioTrack,
   LocalDataTrack,
   ParticipantState,
 } from './types.js';
+import {
+  LocalVideoTrackPublication,
+  LocalAudioTrackPublication,
+  LocalDataTrackPublication,
+  type LocalTrackPublication,
+  type LocalTrack,
+} from './track_publication.js';
 
 export class LocalParticipant extends EventEmitter {
   /** @internal */
   readonly _native: NativeLocalParticipant;
+  private _publishedTracks = new Map<string, LocalTrack>();
 
   constructor(nativeParticipant: NativeLocalParticipant) {
     super();
@@ -42,24 +49,55 @@ export class LocalParticipant extends EventEmitter {
     return this._native.signalingRegion;
   }
 
-  get videoTracks(): TrackPublication[] {
-    return this._native.videoTracks;
+  get videoTracks(): Map<string, LocalVideoTrackPublication> {
+    const map = new Map<string, LocalVideoTrackPublication>();
+    for (const raw of this._native.videoTracks) {
+      const track = this._publishedTracks.get(raw.trackName) as LocalVideoTrack | undefined;
+      map.set(raw.trackSid, new LocalVideoTrackPublication(raw, track ?? null));
+    }
+    return map;
   }
 
-  get audioTracks(): TrackPublication[] {
-    return this._native.audioTracks;
+  get audioTracks(): Map<string, LocalAudioTrackPublication> {
+    const map = new Map<string, LocalAudioTrackPublication>();
+    for (const raw of this._native.audioTracks) {
+      const track = this._publishedTracks.get(raw.trackName) as LocalAudioTrack | undefined;
+      map.set(raw.trackSid, new LocalAudioTrackPublication(raw, track ?? null));
+    }
+    return map;
   }
 
-  get dataTracks(): TrackPublication[] {
-    return this._native.dataTracks;
+  get dataTracks(): Map<string, LocalDataTrackPublication> {
+    const map = new Map<string, LocalDataTrackPublication>();
+    for (const raw of this._native.dataTracks) {
+      const track = this._publishedTracks.get(raw.trackName) as LocalDataTrack | undefined;
+      map.set(raw.trackSid, new LocalDataTrackPublication(raw, track ?? null));
+    }
+    return map;
+  }
+
+  get tracks(): Map<string, LocalTrackPublication> {
+    const map = new Map<string, LocalTrackPublication>();
+    for (const [sid, pub] of this.videoTracks) map.set(sid, pub);
+    for (const [sid, pub] of this.audioTracks) map.set(sid, pub);
+    for (const [sid, pub] of this.dataTracks) map.set(sid, pub);
+    return map;
   }
 
   publishTrack(track: LocalVideoTrack | LocalAudioTrack | LocalDataTrack): boolean {
-    return this._native.publishTrack(track);
+    const result = this._native.publishTrack(track);
+    if (result) {
+      this._publishedTracks.set(track.name, track as LocalTrack);
+    }
+    return result;
   }
 
   unpublishTrack(track: LocalVideoTrack | LocalAudioTrack | LocalDataTrack): boolean {
-    return this._native.unpublishTrack(track);
+    const result = this._native.unpublishTrack(track);
+    if (result) {
+      this._publishedTracks.delete(track.name);
+    }
+    return result;
   }
 
   setEncodingParameters(params?: EncodingParameters): void {
