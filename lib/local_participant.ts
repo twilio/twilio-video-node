@@ -6,6 +6,7 @@ import type {
   LocalVideoTrack,
   LocalAudioTrack,
   LocalDataTrack,
+  ParticipantState,
 } from './types.js';
 
 export class LocalParticipant extends EventEmitter {
@@ -27,6 +28,14 @@ export class LocalParticipant extends EventEmitter {
 
   get sid(): string {
     return this._native.sid;
+  }
+
+  get state(): ParticipantState {
+    return this._native.state as ParticipantState;
+  }
+
+  get networkQualityLevel(): number | null {
+    return this._native.networkQualityLevel;
   }
 
   get signalingRegion(): string {

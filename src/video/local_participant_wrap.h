@@ -3,6 +3,7 @@
 #include <napi.h>
 #include <twilio/video/local_participant.h>
 #include <twilio/video/local_participant_observer.h>
+#include <twilio/video/network_quality.h>
 #include <twilio/media/codec.h>
 #include "../common/async_context.h"
 
@@ -26,6 +27,8 @@ private:
 
     Napi::Value GetIdentity(const Napi::CallbackInfo& info);
     Napi::Value GetSid(const Napi::CallbackInfo& info);
+    Napi::Value GetState(const Napi::CallbackInfo& info);
+    Napi::Value GetNetworkQualityLevel(const Napi::CallbackInfo& info);
     Napi::Value GetSignalingRegion(const Napi::CallbackInfo& info);
     Napi::Value GetVideoTracks(const Napi::CallbackInfo& info);
     Napi::Value GetAudioTracks(const Napi::CallbackInfo& info);

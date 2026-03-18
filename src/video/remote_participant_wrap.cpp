@@ -126,6 +126,14 @@ public:
     void onDataTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
                                            twilio::media::TrackPriority) override {}
 
+    void onNetworkQualityLevelChanged(twilio::video::RemoteParticipant*,
+                                      twilio::video::NetworkQualityLevel level) override {
+        auto lvl = static_cast<int>(level);
+        dispatchEvent("networkQualityLevelChanged", [lvl](Napi::Env env) {
+            return Napi::Number::New(env, lvl);
+        });
+    }
+
 private:
     void dispatchEvent(const std::string& eventName, std::function<Napi::Value(Napi::Env)> createArgs = nullptr) {
         if (closed_.load(std::memory_order_acquire)) return;
@@ -177,6 +185,8 @@ void RemoteParticipantWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "RemoteParticipant", {
         InstanceAccessor("identity", &RemoteParticipantWrap::GetIdentity, nullptr),
         InstanceAccessor("sid", &RemoteParticipantWrap::GetSid, nullptr),
+        InstanceAccessor("state", &RemoteParticipantWrap::GetState, nullptr),
+        InstanceAccessor("networkQualityLevel", &RemoteParticipantWrap::GetNetworkQualityLevel, nullptr),
         InstanceAccessor("videoTracks", &RemoteParticipantWrap::GetVideoTracks, nullptr),
         InstanceAccessor("audioTracks", &RemoteParticipantWrap::GetAudioTracks, nullptr),
         InstanceAccessor("dataTracks", &RemoteParticipantWrap::GetDataTracks, nullptr),
@@ -237,6 +247,30 @@ Napi::Value RemoteParticipantWrap::GetIdentity(const Napi::CallbackInfo& info) {
 Napi::Value RemoteParticipantWrap::GetSid(const Napi::CallbackInfo& info) {
     if (!participant_) return info.Env().Undefined();
     return Napi::String::New(info.Env(), participant_->getSid());
+}
+
+Napi::Value RemoteParticipantWrap::GetState(const Napi::CallbackInfo& info) {
+    if (!participant_) return Napi::String::New(info.Env(), "disconnected");
+
+    switch (participant_->getState()) {
+        case twilio::video::Participant::State::kConnected:
+            return Napi::String::New(info.Env(), "connected");
+        case twilio::video::Participant::State::kReconnecting:
+            return Napi::String::New(info.Env(), "reconnecting");
+        case twilio::video::Participant::State::kDisconnected:
+        default:
+            return Napi::String::New(info.Env(), "disconnected");
+    }
+}
+
+Napi::Value RemoteParticipantWrap::GetNetworkQualityLevel(const Napi::CallbackInfo& info) {
+    if (!participant_) return info.Env().Null();
+
+    auto level = participant_->getNetworkQualityLevel();
+    if (level == twilio::video::kNetworkQualityLevelUnknown) {
+        return info.Env().Null();
+    }
+    return Napi::Number::New(info.Env(), static_cast<int>(level));
 }
 
 Napi::Value RemoteParticipantWrap::GetVideoTracks(const Napi::CallbackInfo& info) {

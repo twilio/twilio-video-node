@@ -186,9 +186,13 @@ export interface NativeRoom {
   setEventCallback(cb: (event: string, data?: unknown) => void): void;
 }
 
+export type ParticipantState = 'connected' | 'reconnecting' | 'disconnected';
+
 export interface NativeLocalParticipant {
   readonly identity: string;
   readonly sid: string;
+  readonly state: string;
+  readonly networkQualityLevel: number | null;
   readonly signalingRegion: string;
   readonly videoTracks: TrackPublication[];
   readonly audioTracks: TrackPublication[];
@@ -202,6 +206,8 @@ export interface NativeLocalParticipant {
 export interface NativeRemoteParticipant {
   readonly identity: string;
   readonly sid: string;
+  readonly state: string;
+  readonly networkQualityLevel: number | null;
   readonly videoTracks: RemoteTrackPublication[];
   readonly audioTracks: RemoteTrackPublication[];
   readonly dataTracks: RemoteTrackPublication[];

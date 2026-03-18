@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import type { NativeRemoteParticipant, RemoteTrackPublication } from './types.js';
+import type { NativeRemoteParticipant, RemoteTrackPublication, ParticipantState } from './types.js';
 
 export class RemoteParticipant extends EventEmitter {
   /** @internal */
@@ -20,6 +20,14 @@ export class RemoteParticipant extends EventEmitter {
 
   get sid(): string {
     return this._native.sid;
+  }
+
+  get state(): ParticipantState {
+    return this._native.state as ParticipantState;
+  }
+
+  get networkQualityLevel(): number | null {
+    return this._native.networkQualityLevel;
   }
 
   get videoTracks(): RemoteTrackPublication[] {

@@ -100,6 +100,8 @@ void LocalParticipantWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "LocalParticipant", {
         InstanceAccessor("identity", &LocalParticipantWrap::GetIdentity, nullptr),
         InstanceAccessor("sid", &LocalParticipantWrap::GetSid, nullptr),
+        InstanceAccessor("state", &LocalParticipantWrap::GetState, nullptr),
+        InstanceAccessor("networkQualityLevel", &LocalParticipantWrap::GetNetworkQualityLevel, nullptr),
         InstanceAccessor("signalingRegion", &LocalParticipantWrap::GetSignalingRegion, nullptr),
         InstanceAccessor("videoTracks", &LocalParticipantWrap::GetVideoTracks, nullptr),
         InstanceAccessor("audioTracks", &LocalParticipantWrap::GetAudioTracks, nullptr),
@@ -164,6 +166,30 @@ Napi::Value LocalParticipantWrap::GetIdentity(const Napi::CallbackInfo& info) {
 Napi::Value LocalParticipantWrap::GetSid(const Napi::CallbackInfo& info) {
     if (!participant_) return info.Env().Undefined();
     return Napi::String::New(info.Env(), participant_->getSid());
+}
+
+Napi::Value LocalParticipantWrap::GetState(const Napi::CallbackInfo& info) {
+    if (!participant_) return Napi::String::New(info.Env(), "disconnected");
+
+    switch (participant_->getState()) {
+        case twilio::video::Participant::State::kConnected:
+            return Napi::String::New(info.Env(), "connected");
+        case twilio::video::Participant::State::kReconnecting:
+            return Napi::String::New(info.Env(), "reconnecting");
+        case twilio::video::Participant::State::kDisconnected:
+        default:
+            return Napi::String::New(info.Env(), "disconnected");
+    }
+}
+
+Napi::Value LocalParticipantWrap::GetNetworkQualityLevel(const Napi::CallbackInfo& info) {
+    if (!participant_) return info.Env().Null();
+
+    auto level = participant_->getNetworkQualityLevel();
+    if (level == twilio::video::kNetworkQualityLevelUnknown) {
+        return info.Env().Null();
+    }
+    return Napi::Number::New(info.Env(), static_cast<int>(level));
 }
 
 Napi::Value LocalParticipantWrap::GetSignalingRegion(const Napi::CallbackInfo& info) {
