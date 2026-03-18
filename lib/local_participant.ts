@@ -100,6 +100,14 @@ export class LocalParticipant extends EventEmitter {
     return result;
   }
 
+  publishTracks(tracks: (LocalVideoTrack | LocalAudioTrack | LocalDataTrack)[]): boolean[] {
+    return tracks.map(t => this.publishTrack(t));
+  }
+
+  unpublishTracks(tracks: (LocalVideoTrack | LocalAudioTrack | LocalDataTrack)[]): boolean[] {
+    return tracks.map(t => this.unpublishTrack(t));
+  }
+
   setEncodingParameters(params?: EncodingParameters): void {
     this._native.setEncodingParameters(params);
   }
