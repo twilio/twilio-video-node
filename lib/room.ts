@@ -11,6 +11,17 @@ const PARTICIPANT_EVENTS = new Set([
   'dominantSpeakerChanged',
 ]);
 
+const BUBBLED_TRACK_EVENTS = [
+  'trackSubscribed',
+  'trackUnsubscribed',
+  'trackPublished',
+  'trackUnpublished',
+  'trackEnabled',
+  'trackDisabled',
+  'videoTrackSwitchedOff',
+  'videoTrackSwitchedOn',
+] as const;
+
 export class Room extends EventEmitter {
   /** @internal */
   readonly _native: NativeRoom;
@@ -24,6 +35,9 @@ export class Room extends EventEmitter {
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (PARTICIPANT_EVENTS.has(event)) {
         const wrapped = data ? this._wrapRemoteParticipant(data as NativeRemoteParticipant) : null;
+        if (event === 'participantConnected' && wrapped) {
+          this._bubbleTrackEvents(wrapped);
+        }
         this.emit(event, wrapped);
         if (event === 'participantDisconnected' && wrapped) {
           this._remoteParticipantCache.delete(wrapped.sid);
@@ -101,11 +115,20 @@ export class Room extends EventEmitter {
     this.removeAllListeners();
   }
 
+  private _bubbleTrackEvents(participant: RemoteParticipant): void {
+    for (const event of BUBBLED_TRACK_EVENTS) {
+      participant.on(event, (trackOrPub: unknown) => {
+        this.emit(event, trackOrPub, participant);
+      });
+    }
+  }
+
   private _wrapRemoteParticipant(native: NativeRemoteParticipant): RemoteParticipant {
     const sid = native.sid;
     let wrapped = this._remoteParticipantCache.get(sid);
     if (!wrapped) {
       wrapped = new RemoteParticipant(native);
+      this._bubbleTrackEvents(wrapped);
       this._remoteParticipantCache.set(sid, wrapped);
     }
     return wrapped;
