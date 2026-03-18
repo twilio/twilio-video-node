@@ -67,24 +67,27 @@ export class Room extends EventEmitter {
     return this._localParticipant;
   }
 
-  get remoteParticipants(): RemoteParticipant[] {
+  get participants(): Map<string, RemoteParticipant> {
     const natives = this._native.remoteParticipants;
-    const activeSids = new Set<string>();
-    const result: RemoteParticipant[] = [];
+    const map = new Map<string, RemoteParticipant>();
 
     for (const native of natives) {
-      activeSids.add(native.sid);
-      result.push(this._wrapRemoteParticipant(native));
+      map.set(native.sid, this._wrapRemoteParticipant(native));
     }
 
     // Evict stale cache entries
     for (const sid of this._remoteParticipantCache.keys()) {
-      if (!activeSids.has(sid)) {
+      if (!map.has(sid)) {
         this._remoteParticipantCache.delete(sid);
       }
     }
 
-    return result;
+    return map;
+  }
+
+  /** @deprecated Use `participants` instead. */
+  get remoteParticipants(): RemoteParticipant[] {
+    return [...this.participants.values()];
   }
 
   disconnect(): void {
