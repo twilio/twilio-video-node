@@ -1,5 +1,13 @@
-import { EventEmitter } from 'node:events';
-import type { NativeRemoteParticipant, ParticipantState } from './types.js';
+import type {
+  NativeRemoteParticipant,
+  ParticipantState,
+  RemoteVideoTrack,
+  RemoteAudioTrack,
+  RemoteDataTrack,
+  TwilioError,
+  RemoteTrackPublication as RawRemoteTrackPublication,
+} from './types.js';
+import { TypedEventEmitter } from './typed_emitter.js';
 import {
   RemoteVideoTrackPublication,
   RemoteAudioTrackPublication,
@@ -7,7 +15,20 @@ import {
   type RemoteTrackPublication,
 } from './track_publication.js';
 
-export class RemoteParticipant extends EventEmitter {
+export type RemoteParticipantEvents = {
+  trackSubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  trackUnsubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  trackPublished: (publication: RawRemoteTrackPublication) => void;
+  trackUnpublished: (publication: RawRemoteTrackPublication) => void;
+  trackEnabled: (publication: RawRemoteTrackPublication) => void;
+  trackDisabled: (publication: RawRemoteTrackPublication) => void;
+  trackSubscriptionFailed: (error: TwilioError) => void;
+  videoTrackSwitchedOff: (track: RemoteVideoTrack) => void;
+  videoTrackSwitchedOn: (track: RemoteVideoTrack) => void;
+  networkQualityLevelChanged: (level: number) => void;
+};
+
+export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents> {
   /** @internal */
   readonly _native: NativeRemoteParticipant;
 

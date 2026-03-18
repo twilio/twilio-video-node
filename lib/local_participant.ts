@@ -1,4 +1,3 @@
-import { EventEmitter } from 'node:events';
 import type {
   NativeLocalParticipant,
   EncodingParameters,
@@ -6,7 +5,10 @@ import type {
   LocalAudioTrack,
   LocalDataTrack,
   ParticipantState,
+  TwilioError,
+  TrackPublication as RawTrackPublication,
 } from './types.js';
+import { TypedEventEmitter } from './typed_emitter.js';
 import {
   LocalVideoTrackPublication,
   LocalAudioTrackPublication,
@@ -15,7 +17,13 @@ import {
   type LocalTrack,
 } from './track_publication.js';
 
-export class LocalParticipant extends EventEmitter {
+export type LocalParticipantEvents = {
+  trackPublished: (publication: RawTrackPublication) => void;
+  trackPublicationFailed: (error: TwilioError) => void;
+  networkQualityLevelChanged: (level: number) => void;
+};
+
+export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> {
   /** @internal */
   readonly _native: NativeLocalParticipant;
   private _publishedTracks = new Map<string, LocalTrack>();

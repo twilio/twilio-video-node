@@ -1,7 +1,45 @@
-import { EventEmitter } from 'node:events';
 import { LocalParticipant } from './local_participant.js';
 import { RemoteParticipant } from './remote_participant.js';
-import type { NativeRoom, NativeRemoteParticipant, RoomState } from './types.js';
+import { TypedEventEmitter } from './typed_emitter.js';
+import type {
+  NativeRoom,
+  NativeRemoteParticipant,
+  RoomState,
+  TwilioError,
+  RemoteVideoTrack,
+  RemoteAudioTrack,
+  RemoteDataTrack,
+} from './types.js';
+
+export type RoomEvents = {
+  connected: () => void;
+  disconnected: (error?: TwilioError) => void;
+  connectFailure: (error: TwilioError) => void;
+  reconnecting: (error: TwilioError) => void;
+  reconnected: () => void;
+  participantConnected: (participant: RemoteParticipant) => void;
+  participantDisconnected: (participant: RemoteParticipant) => void;
+  participantReconnecting: (participant: RemoteParticipant) => void;
+  participantReconnected: (participant: RemoteParticipant) => void;
+  dominantSpeakerChanged: (participant: RemoteParticipant | null) => void;
+  recordingStarted: () => void;
+  recordingStopped: () => void;
+  transcription: (transcriptionJson: string) => void;
+  trackSubscribed: (
+    track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    participant: RemoteParticipant,
+  ) => void;
+  trackUnsubscribed: (
+    track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    participant: RemoteParticipant,
+  ) => void;
+  trackPublished: (publication: unknown, participant: RemoteParticipant) => void;
+  trackUnpublished: (publication: unknown, participant: RemoteParticipant) => void;
+  trackEnabled: (publication: unknown, participant: RemoteParticipant) => void;
+  trackDisabled: (publication: unknown, participant: RemoteParticipant) => void;
+  videoTrackSwitchedOff: (track: RemoteVideoTrack, participant: RemoteParticipant) => void;
+  videoTrackSwitchedOn: (track: RemoteVideoTrack, participant: RemoteParticipant) => void;
+};
 
 const PARTICIPANT_EVENTS = new Set([
   'participantConnected',
@@ -22,7 +60,7 @@ const BUBBLED_TRACK_EVENTS = [
   'videoTrackSwitchedOn',
 ] as const;
 
-export class Room extends EventEmitter {
+export class Room extends TypedEventEmitter<RoomEvents> {
   /** @internal */
   readonly _native: NativeRoom;
   private _localParticipant: LocalParticipant | null = null;
