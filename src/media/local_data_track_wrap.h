@@ -24,6 +24,7 @@ private:
     static Napi::FunctionReference constructor_;
 
     Napi::Value GetName(const Napi::CallbackInfo& info);
+    Napi::Value GetKind(const Napi::CallbackInfo& info);
     Napi::Value Send(const Napi::CallbackInfo& info);
     Napi::Value GetMaxPacketLifeTime(const Napi::CallbackInfo& info);
     Napi::Value GetMaxRetransmits(const Napi::CallbackInfo& info);

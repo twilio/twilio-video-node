@@ -8,6 +8,7 @@ Napi::FunctionReference RemoteVideoTrackWrap::constructor_;
 void RemoteVideoTrackWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "RemoteVideoTrack", {
         InstanceAccessor("name", &RemoteVideoTrackWrap::GetName, nullptr),
+        InstanceAccessor("kind", &RemoteVideoTrackWrap::GetKind, nullptr),
         InstanceAccessor("sid", &RemoteVideoTrackWrap::GetSid, nullptr),
         InstanceAccessor("enabled", &RemoteVideoTrackWrap::IsEnabled, nullptr),
         InstanceAccessor("isSwitchedOff", &RemoteVideoTrackWrap::IsSwitchedOff, nullptr),
@@ -42,6 +43,10 @@ RemoteVideoTrackWrap::~RemoteVideoTrackWrap() {
         }
         frameSink_->close();
     }
+}
+
+Napi::Value RemoteVideoTrackWrap::GetKind(const Napi::CallbackInfo& info) {
+    return Napi::String::New(info.Env(), "video");
 }
 
 Napi::Value RemoteVideoTrackWrap::GetName(const Napi::CallbackInfo& info) {

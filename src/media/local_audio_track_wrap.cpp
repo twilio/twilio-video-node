@@ -51,6 +51,7 @@ bool LocalAudioTrackWrap::IsInstance(Napi::Object obj) {
 void LocalAudioTrackWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "LocalAudioTrack", {
         InstanceAccessor("name", &LocalAudioTrackWrap::GetName, nullptr),
+        InstanceAccessor("kind", &LocalAudioTrackWrap::GetKind, nullptr),
         InstanceAccessor("enabled", &LocalAudioTrackWrap::IsEnabled, &LocalAudioTrackWrap::SetEnabled),
         InstanceMethod("pushSamples", &LocalAudioTrackWrap::PushSamples),
         InstanceMethod("clearBuffer", &LocalAudioTrackWrap::ClearBuffer),
@@ -84,6 +85,10 @@ LocalAudioTrackWrap::LocalAudioTrackWrap(const Napi::CallbackInfo& info)
 }
 
 LocalAudioTrackWrap::~LocalAudioTrackWrap() {
+}
+
+Napi::Value LocalAudioTrackWrap::GetKind(const Napi::CallbackInfo& info) {
+    return Napi::String::New(info.Env(), "audio");
 }
 
 Napi::Value LocalAudioTrackWrap::GetName(const Napi::CallbackInfo& info) {

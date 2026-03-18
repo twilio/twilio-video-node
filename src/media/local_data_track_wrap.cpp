@@ -11,6 +11,7 @@ bool LocalDataTrackWrap::IsInstance(Napi::Object obj) {
 void LocalDataTrackWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "LocalDataTrack", {
         InstanceAccessor("name", &LocalDataTrackWrap::GetName, nullptr),
+        InstanceAccessor("kind", &LocalDataTrackWrap::GetKind, nullptr),
         InstanceAccessor("maxPacketLifeTime", &LocalDataTrackWrap::GetMaxPacketLifeTime, nullptr),
         InstanceAccessor("maxRetransmits", &LocalDataTrackWrap::GetMaxRetransmits, nullptr),
         InstanceAccessor("reliable", &LocalDataTrackWrap::IsReliable, nullptr),
@@ -42,6 +43,10 @@ LocalDataTrackWrap::LocalDataTrackWrap(const Napi::CallbackInfo& info)
 }
 
 LocalDataTrackWrap::~LocalDataTrackWrap() {
+}
+
+Napi::Value LocalDataTrackWrap::GetKind(const Napi::CallbackInfo& info) {
+    return Napi::String::New(info.Env(), "data");
 }
 
 Napi::Value LocalDataTrackWrap::GetName(const Napi::CallbackInfo& info) {

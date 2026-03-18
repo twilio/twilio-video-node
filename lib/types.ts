@@ -67,8 +67,11 @@ export interface ConnectOptions {
   encodingParameters?: EncodingParameters;
 }
 
+export type TrackKind = 'video' | 'audio' | 'data';
+
 export interface LocalVideoTrack {
   readonly name: string;
+  readonly kind: 'video';
   enabled: boolean;
   pushFrame(
     yPlane: Buffer,
@@ -82,6 +85,7 @@ export interface LocalVideoTrack {
 
 export interface LocalAudioTrack {
   readonly name: string;
+  readonly kind: 'audio';
   enabled: boolean;
   pushSamples(samples: Buffer): void;
   clearBuffer(): void;
@@ -96,6 +100,7 @@ export interface LocalDataTrackOptions {
 
 export interface LocalDataTrack {
   readonly name: string;
+  readonly kind: 'data';
   readonly maxPacketLifeTime: number;
   readonly maxRetransmits: number;
   readonly reliable: boolean;
@@ -105,6 +110,7 @@ export interface LocalDataTrack {
 
 export interface RemoteVideoTrack {
   readonly name: string;
+  readonly kind: 'video';
   readonly sid: string;
   readonly enabled: boolean;
   readonly isSwitchedOff: boolean;
@@ -121,6 +127,7 @@ export interface RemoteVideoTrack {
 
 export interface RemoteAudioTrack {
   readonly name: string;
+  readonly kind: 'audio';
   readonly sid: string;
   readonly enabled: boolean;
   onData(callback: (samples: Buffer, metadata: AudioFrameMetadata) => void): void;
@@ -129,6 +136,7 @@ export interface RemoteAudioTrack {
 
 export interface RemoteDataTrack {
   readonly name: string;
+  readonly kind: 'data';
   readonly sid: string;
   readonly reliable: boolean;
   readonly ordered: boolean;

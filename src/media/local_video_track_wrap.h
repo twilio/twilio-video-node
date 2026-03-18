@@ -47,6 +47,7 @@ private:
     static Napi::FunctionReference constructor_;
 
     Napi::Value GetName(const Napi::CallbackInfo& info);
+    Napi::Value GetKind(const Napi::CallbackInfo& info);
     Napi::Value IsEnabled(const Napi::CallbackInfo& info);
     void SetEnabled(const Napi::CallbackInfo& info, const Napi::Value& value);
     Napi::Value PushFrame(const Napi::CallbackInfo& info);

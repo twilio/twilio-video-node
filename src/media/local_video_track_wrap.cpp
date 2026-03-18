@@ -33,6 +33,7 @@ bool LocalVideoTrackWrap::IsInstance(Napi::Object obj) {
 void LocalVideoTrackWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "LocalVideoTrack", {
         InstanceAccessor("name", &LocalVideoTrackWrap::GetName, nullptr),
+        InstanceAccessor("kind", &LocalVideoTrackWrap::GetKind, nullptr),
         InstanceAccessor("enabled", &LocalVideoTrackWrap::IsEnabled, &LocalVideoTrackWrap::SetEnabled),
         InstanceMethod("pushFrame", &LocalVideoTrackWrap::PushFrame),
     });
@@ -64,6 +65,10 @@ LocalVideoTrackWrap::LocalVideoTrackWrap(const Napi::CallbackInfo& info)
 }
 
 LocalVideoTrackWrap::~LocalVideoTrackWrap() {
+}
+
+Napi::Value LocalVideoTrackWrap::GetKind(const Napi::CallbackInfo& info) {
+    return Napi::String::New(info.Env(), "video");
 }
 
 Napi::Value LocalVideoTrackWrap::GetName(const Napi::CallbackInfo& info) {
