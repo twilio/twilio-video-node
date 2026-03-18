@@ -51,7 +51,7 @@ async function connectPair(roomName: string, optsA = {}) {
   );
   const connB = await connectToRoom('bob', roomName);
 
-  let remoteA: RemoteParticipant | undefined = connB.room.remoteParticipants.find(
+  let remoteA: RemoteParticipant | undefined = [...connB.room.participants.values()].find(
     (p: RemoteParticipant) => p.identity === 'alice',
   );
   if (!remoteA) {
@@ -403,14 +403,14 @@ describe('Track publish/unpublish lifecycle', () => {
 
     try {
       const pubs = connA.room.localParticipant.videoTracks;
-      expect(pubs.length).toBeGreaterThanOrEqual(1);
-      expect(pubs.some(p => p.trackName === 'lifecycle-cam')).toBe(true);
+      expect(pubs.size).toBeGreaterThanOrEqual(1);
+      expect([...pubs.values()].some(p => p.trackName === 'lifecycle-cam')).toBe(true);
 
       connA.room.localParticipant.unpublishTrack(videoTrack);
       await sleep(1000);
 
       const pubsAfter = connA.room.localParticipant.videoTracks;
-      expect(pubsAfter.some(p => p.trackName === 'lifecycle-cam')).toBe(false);
+      expect([...pubsAfter.values()].some(p => p.trackName === 'lifecycle-cam')).toBe(false);
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
