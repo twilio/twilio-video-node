@@ -9,13 +9,18 @@ public:
         : wrap_(wrap), ctx_(ctx) {}
 
     void close() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire)) return;
         closed_.store(true, std::memory_order_release);
         wrap_ = nullptr;
-        ctx_ = nullptr;
     }
 
     void onMessage(twilio::media::RemoteDataTrack* track, const std::string& message) override {
-        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire)) return;
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+
         ctx_->dispatch([this, message](Napi::Env env) {
             if (closed_.load(std::memory_order_acquire) || !wrap_) return;
             wrap_->onMessage(message);
@@ -23,8 +28,11 @@ public:
     }
 
     void onMessage(twilio::media::RemoteDataTrack* track, const uint8_t* message, size_t size) override {
-        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
-        // Copy data before dispatching since the pointer won't survive the callback
+        if (closed_.load(std::memory_order_acquire)) return;
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+
         std::vector<uint8_t> dataCopy(message, message + size);
         ctx_->dispatch([this, dataCopy = std::move(dataCopy)](Napi::Env env) {
             if (closed_.load(std::memory_order_acquire) || !wrap_) return;
@@ -36,6 +44,7 @@ private:
     RemoteDataTrackWrap* wrap_;
     AsyncContext* ctx_;
     std::atomic<bool> closed_{false};
+    std::mutex mutex_;
 };
 
 Napi::FunctionReference RemoteDataTrackWrap::constructor_;
@@ -73,11 +82,12 @@ RemoteDataTrackWrap::RemoteDataTrackWrap(const Napi::CallbackInfo& info)
 }
 
 RemoteDataTrackWrap::~RemoteDataTrackWrap() {
-    if (observer_) {
-        observer_->close();
-    }
+    // Detach observer from track first to stop new callbacks arriving
     if (track_) {
         track_->setObserver(std::weak_ptr<twilio::media::RemoteDataTrackObserver>());
+    }
+    if (observer_) {
+        observer_->close();
     }
     if (asyncContext_) {
         asyncContext_->close();

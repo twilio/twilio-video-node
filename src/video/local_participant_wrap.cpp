@@ -12,103 +12,86 @@ public:
         : wrap_(wrap), ctx_(ctx) {}
 
     void close() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire)) return;
         closed_.store(true, std::memory_order_release);
         wrap_ = nullptr;
-        ctx_ = nullptr;
     }
 
     void onAudioTrackPublished(twilio::video::LocalParticipant*,
                                std::shared_ptr<twilio::media::LocalAudioTrackPublication> pub) override {
-        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
-        auto sid = pub->getTrackSid();
-        auto name = pub->getTrackName();
-        ctx_->dispatch([this, sid, name](Napi::Env env) {
-            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            auto obj = Napi::Object::New(env);
-            obj.Set("trackSid", Napi::String::New(env, sid));
-            obj.Set("trackName", Napi::String::New(env, name));
-            wrap_->emitEvent("trackPublished", obj);
-        });
+        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
     }
 
     void onVideoTrackPublished(twilio::video::LocalParticipant*,
                                std::shared_ptr<twilio::media::LocalVideoTrackPublication> pub) override {
-        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
-        auto sid = pub->getTrackSid();
-        auto name = pub->getTrackName();
-        ctx_->dispatch([this, sid, name](Napi::Env env) {
-            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            auto obj = Napi::Object::New(env);
-            obj.Set("trackSid", Napi::String::New(env, sid));
-            obj.Set("trackName", Napi::String::New(env, name));
-            wrap_->emitEvent("trackPublished", obj);
-        });
+        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
     }
 
     void onDataTrackPublished(twilio::video::LocalParticipant*,
                               std::shared_ptr<twilio::media::LocalDataTrackPublication> pub) override {
-        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
-        auto sid = pub->getTrackSid();
-        auto name = pub->getTrackName();
-        ctx_->dispatch([this, sid, name](Napi::Env env) {
-            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            auto obj = Napi::Object::New(env);
-            obj.Set("trackSid", Napi::String::New(env, sid));
-            obj.Set("trackName", Napi::String::New(env, name));
-            wrap_->emitEvent("trackPublished", obj);
-        });
+        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
     }
 
     void onAudioTrackPublicationFailed(twilio::video::LocalParticipant*,
                                        std::shared_ptr<twilio::media::LocalAudioTrack>,
                                        const twilio::video::Error error) override {
-        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
-        auto code = error.getCode();
-        auto message = error.getMessage();
-        ctx_->dispatch([this, code, message](Napi::Env env) {
-            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            wrap_->emitEvent("trackPublicationFailed", createTwilioErrorObject(env, code, message));
-        });
+        dispatchErrorEvent("trackPublicationFailed", error.getCode(), error.getMessage());
     }
 
     void onVideoTrackPublicationFailed(twilio::video::LocalParticipant*,
                                        std::shared_ptr<twilio::media::LocalVideoTrack>,
                                        const twilio::video::Error error) override {
-        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
-        auto code = error.getCode();
-        auto message = error.getMessage();
-        ctx_->dispatch([this, code, message](Napi::Env env) {
-            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            wrap_->emitEvent("trackPublicationFailed", createTwilioErrorObject(env, code, message));
-        });
+        dispatchErrorEvent("trackPublicationFailed", error.getCode(), error.getMessage());
     }
 
     void onDataTrackPublicationFailed(twilio::video::LocalParticipant*,
                                       std::shared_ptr<twilio::media::LocalDataTrack>,
                                       const twilio::video::Error error) override {
-        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
-        auto code = error.getCode();
-        auto message = error.getMessage();
-        ctx_->dispatch([this, code, message](Napi::Env env) {
-            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            wrap_->emitEvent("trackPublicationFailed", createTwilioErrorObject(env, code, message));
-        });
+        dispatchErrorEvent("trackPublicationFailed", error.getCode(), error.getMessage());
     }
 
     void onNetworkQualityLevelChanged(twilio::video::LocalParticipant*,
                                       twilio::video::NetworkQualityLevel level) override {
-        if (closed_.load(std::memory_order_acquire) || !ctx_ || !wrap_) return;
         auto lvl = static_cast<int>(level);
-        ctx_->dispatch([this, lvl](Napi::Env env) {
-            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            wrap_->emitEvent("networkQualityLevelChanged", Napi::Number::New(env, lvl));
+        dispatchEvent("networkQualityLevelChanged", [lvl](Napi::Env env) {
+            return Napi::Number::New(env, lvl);
         });
     }
 
 private:
+    void dispatchEvent(const std::string& eventName, std::function<Napi::Value(Napi::Env)> createArgs = nullptr) {
+        if (closed_.load(std::memory_order_acquire)) return;
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+
+        ctx_->dispatch([this, eventName, createArgs](Napi::Env env) {
+            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+            Napi::Value arg = createArgs ? createArgs(env) : env.Undefined();
+            wrap_->emitEvent(eventName, arg);
+        });
+    }
+
+    void dispatchTrackEvent(const std::string& eventName, std::string sid, std::string name) {
+        dispatchEvent(eventName, [sid = std::move(sid), name = std::move(name)](Napi::Env env) {
+            auto obj = Napi::Object::New(env);
+            obj.Set("trackSid", Napi::String::New(env, sid));
+            obj.Set("trackName", Napi::String::New(env, name));
+            return obj;
+        });
+    }
+
+    void dispatchErrorEvent(const std::string& eventName, uint32_t code, std::string message) {
+        dispatchEvent(eventName, [code, message = std::move(message)](Napi::Env env) {
+            return createTwilioErrorObject(env, code, message);
+        });
+    }
+
     LocalParticipantWrap* wrap_;
     AsyncContext* ctx_;
     std::atomic<bool> closed_{false};
+    std::mutex mutex_;
 };
 
 Napi::FunctionReference LocalParticipantWrap::constructor_;
@@ -150,11 +133,12 @@ LocalParticipantWrap::LocalParticipantWrap(const Napi::CallbackInfo& info)
 }
 
 LocalParticipantWrap::~LocalParticipantWrap() {
-    if (observer_) {
-        observer_->close();
-    }
+    // Detach observer from track first to stop new callbacks arriving
     if (participant_) {
         participant_->setObserver(std::weak_ptr<twilio::video::LocalParticipantObserver>());
+    }
+    if (observer_) {
+        observer_->close();
     }
     eventCallback_.Reset();
     if (asyncContext_) {

@@ -27,7 +27,8 @@ void AsyncContext::dispatch(std::function<void(Napi::Env)> fn) {
         }
         queue_.push(std::move(fn));
     }
-    uv_async_send(async_);
+    // async_ may be null if close() raced with this call
+    if (async_) uv_async_send(async_);
 }
 
 void AsyncContext::close() {
@@ -40,13 +41,17 @@ void AsyncContext::close() {
         std::queue<std::function<void(Napi::Env)>> empty;
         std::swap(queue_, empty);
     }
+    // Null out data before uv_close so any in-flight onAsync sees null
+    async_->data = nullptr;
     uv_close(reinterpret_cast<uv_handle_t*>(async_), [](uv_handle_t* h) {
         delete reinterpret_cast<uv_async_t*>(h);
     });
+    async_ = nullptr;
 }
 
 void AsyncContext::onAsync(uv_async_t* handle) {
     auto* ctx = static_cast<AsyncContext*>(handle->data);
+    if (!ctx) return;
     ctx->drain();
 }
 
