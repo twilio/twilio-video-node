@@ -4,6 +4,7 @@ import {
   setLogLevel,
   createLocalVideoTrack,
   createLocalAudioTrack,
+  createLocalDataTrack,
 } from '../dist/index.mjs';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
@@ -34,6 +35,7 @@ describe('Video Track', () => {
 
     expect(track).toBeDefined();
     expect(track.name).toBe('test-video');
+    expect(track.kind).toBe('video');
     expect(track.enabled).toBe(true);
   });
 
@@ -63,6 +65,7 @@ describe('Audio Track', () => {
 
     expect(track).toBeDefined();
     expect(track.name).toBe('test-audio');
+    expect(track.kind).toBe('audio');
     expect(track.enabled).toBe(true);
   });
 
@@ -83,5 +86,15 @@ describe('Audio Track', () => {
     expect(() => {
       track.pushSamples(samples);
     }).not.toThrow();
+  });
+});
+
+describe('Data Track', () => {
+  it('createLocalDataTrack creates track', () => {
+    const track = createLocalDataTrack('test-data');
+
+    expect(track).toBeDefined();
+    expect(track.name).toBe('test-data');
+    expect(track.kind).toBe('data');
   });
 });
