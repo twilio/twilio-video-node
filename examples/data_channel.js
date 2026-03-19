@@ -25,7 +25,7 @@ async function main() {
   console.log(`[${IDENTITY}] Connected! Room SID: ${room.sid}`);
 
   // Handle remote participants already in the room
-  for (const participant of room.remoteParticipants) {
+  for (const participant of room.participants.values()) {
     handleRemoteParticipant(participant);
   }
 
