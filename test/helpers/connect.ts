@@ -4,7 +4,10 @@ import { generateToken } from './token.js';
 
 const CONNECTION_TIMEOUT = 15_000;
 
-type ConnectTrackOptions = Pick<ConnectOptions, 'videoTracks' | 'audioTracks' | 'dataTracks'>;
+type ConnectTrackOptions = Pick<
+  ConnectOptions,
+  'videoTracks' | 'audioTracks' | 'dataTracks' | 'enableDominantSpeaker' | 'enableNetworkQuality'
+>;
 
 async function connectToRoom(
   identity: string,
@@ -18,6 +21,8 @@ async function connectToRoom(
     videoTracks: opts.videoTracks || [],
     audioTracks: opts.audioTracks || [],
     dataTracks: opts.dataTracks || [],
+    ...('enableDominantSpeaker' in opts && { enableDominantSpeaker: opts.enableDominantSpeaker }),
+    ...('enableNetworkQuality' in opts && { enableNetworkQuality: opts.enableNetworkQuality }),
   });
 
   const timeoutPromise = new Promise<never>((_, reject) =>
