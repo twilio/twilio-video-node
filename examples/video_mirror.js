@@ -42,7 +42,7 @@ async function main() {
     participant.on('trackSubscribed', track => handleTrack(track, participant));
 
     const poll = setInterval(() => {
-      for (const pub of participant.videoTracks) {
+      for (const pub of participant.videoTracks.values()) {
         if (pub.isSubscribed && pub.track) {
           handleTrack(pub.track, participant);
           clearInterval(poll);
@@ -53,7 +53,7 @@ async function main() {
     setTimeout(() => clearInterval(poll), 30000);
   }
 
-  room.remoteParticipants.forEach(handleParticipant);
+  room.participants.forEach(handleParticipant);
   room.on('participantConnected', handleParticipant);
 
   room.on('disconnected', error => {

@@ -16,8 +16,24 @@ import type {
 } from './types.js';
 
 export { Room } from './room.js';
+export type { RoomEvents } from './room.js';
 export { LocalParticipant } from './local_participant.js';
+export type { LocalParticipantEvents } from './local_participant.js';
 export { RemoteParticipant } from './remote_participant.js';
+export type { RemoteParticipantEvents } from './remote_participant.js';
+export { TypedEventEmitter } from './typed_emitter.js';
+export {
+  TrackPublication,
+  LocalTrackPublication,
+  LocalVideoTrackPublication,
+  LocalAudioTrackPublication,
+  LocalDataTrackPublication,
+  RemoteTrackPublication,
+  RemoteVideoTrackPublication,
+  RemoteAudioTrackPublication,
+  RemoteDataTrackPublication,
+} from './track_publication.js';
+export type { LocalTrack, RemoteTrack } from './track_publication.js';
 export type {
   ConnectOptions,
   IceOptions,
@@ -26,15 +42,15 @@ export type {
   VideoFrameMetadata,
   AudioFrameMetadata,
   TwilioError,
+  TrackKind,
   LocalVideoTrack,
   LocalAudioTrack,
   LocalDataTrackOptions,
   RemoteVideoTrack,
   RemoteAudioTrack,
   RemoteDataTrack,
-  TrackPublication,
-  RemoteTrackPublication,
   RoomState,
+  ParticipantState,
   LogLevel,
   VideoTrackOptions,
   AudioTrackOptions,

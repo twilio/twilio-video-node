@@ -66,7 +66,7 @@ async function main() {
     });
   }
 
-  room.remoteParticipants.forEach(handleParticipant);
+  room.participants.forEach(handleParticipant);
   room.on('participantConnected', handleParticipant);
 
   setInterval(() => {

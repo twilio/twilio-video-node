@@ -52,6 +52,7 @@ Napi::FunctionReference RemoteDataTrackWrap::constructor_;
 void RemoteDataTrackWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "RemoteDataTrack", {
         InstanceAccessor("name", &RemoteDataTrackWrap::GetName, nullptr),
+        InstanceAccessor("kind", &RemoteDataTrackWrap::GetKind, nullptr),
         InstanceAccessor("sid", &RemoteDataTrackWrap::GetSid, nullptr),
         InstanceAccessor("reliable", &RemoteDataTrackWrap::IsReliable, nullptr),
         InstanceAccessor("ordered", &RemoteDataTrackWrap::IsOrdered, nullptr),
@@ -106,6 +107,10 @@ void RemoteDataTrackWrap::onBufferMessage(const uint8_t* data, size_t length) {
     Napi::HandleScope scope(env);
     auto buffer = Napi::Buffer<uint8_t>::Copy(env, data, length);
     messageCallback_.Call({buffer});
+}
+
+Napi::Value RemoteDataTrackWrap::GetKind(const Napi::CallbackInfo& info) {
+    return Napi::String::New(info.Env(), "data");
 }
 
 Napi::Value RemoteDataTrackWrap::GetName(const Napi::CallbackInfo& info) {

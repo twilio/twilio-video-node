@@ -1,7 +1,34 @@
-import { EventEmitter } from 'node:events';
-import type { NativeRemoteParticipant, RemoteTrackPublication } from './types.js';
+import type {
+  NativeRemoteParticipant,
+  ParticipantState,
+  RemoteVideoTrack,
+  RemoteAudioTrack,
+  RemoteDataTrack,
+  TwilioError,
+  RemoteTrackPublication as RawRemoteTrackPublication,
+} from './types.js';
+import { TypedEventEmitter } from './typed_emitter.js';
+import {
+  RemoteVideoTrackPublication,
+  RemoteAudioTrackPublication,
+  RemoteDataTrackPublication,
+  type RemoteTrackPublication,
+} from './track_publication.js';
 
-export class RemoteParticipant extends EventEmitter {
+export type RemoteParticipantEvents = {
+  trackSubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  trackUnsubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  trackPublished: (publication: RawRemoteTrackPublication) => void;
+  trackUnpublished: (publication: RawRemoteTrackPublication) => void;
+  trackEnabled: (publication: RawRemoteTrackPublication) => void;
+  trackDisabled: (publication: RawRemoteTrackPublication) => void;
+  trackSubscriptionFailed: (error: TwilioError) => void;
+  videoTrackSwitchedOff: (track: RemoteVideoTrack) => void;
+  videoTrackSwitchedOn: (track: RemoteVideoTrack) => void;
+  networkQualityLevelChanged: (level: number) => void;
+};
+
+export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents> {
   /** @internal */
   readonly _native: NativeRemoteParticipant;
 
@@ -22,15 +49,43 @@ export class RemoteParticipant extends EventEmitter {
     return this._native.sid;
   }
 
-  get videoTracks(): RemoteTrackPublication[] {
-    return this._native.videoTracks;
+  get state(): ParticipantState {
+    return this._native.state as ParticipantState;
   }
 
-  get audioTracks(): RemoteTrackPublication[] {
-    return this._native.audioTracks;
+  get networkQualityLevel(): number | null {
+    return this._native.networkQualityLevel;
   }
 
-  get dataTracks(): RemoteTrackPublication[] {
-    return this._native.dataTracks;
+  get videoTracks(): Map<string, RemoteVideoTrackPublication> {
+    const map = new Map<string, RemoteVideoTrackPublication>();
+    for (const raw of this._native.videoTracks) {
+      map.set(raw.trackSid, new RemoteVideoTrackPublication(raw));
+    }
+    return map;
+  }
+
+  get audioTracks(): Map<string, RemoteAudioTrackPublication> {
+    const map = new Map<string, RemoteAudioTrackPublication>();
+    for (const raw of this._native.audioTracks) {
+      map.set(raw.trackSid, new RemoteAudioTrackPublication(raw));
+    }
+    return map;
+  }
+
+  get dataTracks(): Map<string, RemoteDataTrackPublication> {
+    const map = new Map<string, RemoteDataTrackPublication>();
+    for (const raw of this._native.dataTracks) {
+      map.set(raw.trackSid, new RemoteDataTrackPublication(raw));
+    }
+    return map;
+  }
+
+  get tracks(): Map<string, RemoteTrackPublication> {
+    const map = new Map<string, RemoteTrackPublication>();
+    for (const [sid, pub] of this.videoTracks) map.set(sid, pub);
+    for (const [sid, pub] of this.audioTracks) map.set(sid, pub);
+    for (const [sid, pub] of this.dataTracks) map.set(sid, pub);
+    return map;
   }
 }

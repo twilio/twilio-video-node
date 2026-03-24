@@ -2,6 +2,7 @@
 
 #include <napi.h>
 #include <twilio/video/remote_participant.h>
+#include <twilio/video/network_quality.h>
 
 // WORKAROUND: Include track.h BEFORE remote_participant_observer.h
 // This defines media::TrackPriority which remote_participant_observer.h references but doesn't include
@@ -31,6 +32,8 @@ private:
 
     Napi::Value GetIdentity(const Napi::CallbackInfo& info);
     Napi::Value GetSid(const Napi::CallbackInfo& info);
+    Napi::Value GetState(const Napi::CallbackInfo& info);
+    Napi::Value GetNetworkQualityLevel(const Napi::CallbackInfo& info);
     Napi::Value GetVideoTracks(const Napi::CallbackInfo& info);
     Napi::Value GetAudioTracks(const Napi::CallbackInfo& info);
     Napi::Value GetDataTracks(const Napi::CallbackInfo& info);

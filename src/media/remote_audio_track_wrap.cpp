@@ -7,6 +7,7 @@ Napi::FunctionReference RemoteAudioTrackWrap::constructor_;
 void RemoteAudioTrackWrap::Init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "RemoteAudioTrack", {
         InstanceAccessor("name", &RemoteAudioTrackWrap::GetName, nullptr),
+        InstanceAccessor("kind", &RemoteAudioTrackWrap::GetKind, nullptr),
         InstanceAccessor("sid", &RemoteAudioTrackWrap::GetSid, nullptr),
         InstanceAccessor("enabled", &RemoteAudioTrackWrap::IsEnabled, nullptr),
         InstanceMethod("onData", &RemoteAudioTrackWrap::OnData),
@@ -40,6 +41,10 @@ RemoteAudioTrackWrap::~RemoteAudioTrackWrap() {
         }
         audioSink_->close();
     }
+}
+
+Napi::Value RemoteAudioTrackWrap::GetKind(const Napi::CallbackInfo& info) {
+    return Napi::String::New(info.Env(), "audio");
 }
 
 Napi::Value RemoteAudioTrackWrap::GetName(const Napi::CallbackInfo& info) {

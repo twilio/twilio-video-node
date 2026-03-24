@@ -25,6 +25,7 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("mediaRegion", &RoomWrap::GetMediaRegion, nullptr),
         InstanceAccessor("isRecording", &RoomWrap::IsRecording, nullptr),
         InstanceAccessor("localParticipant", &RoomWrap::GetLocalParticipant, nullptr),
+        InstanceAccessor("dominantSpeaker", &RoomWrap::GetDominantSpeaker, nullptr),
         InstanceAccessor("remoteParticipants", &RoomWrap::GetRemoteParticipants, nullptr),
         InstanceMethod("disconnect", &RoomWrap::Disconnect),
         InstanceMethod("dispose", &RoomWrap::Dispose),
@@ -282,6 +283,15 @@ Napi::Value RoomWrap::GetLocalParticipant(const Napi::CallbackInfo& info) {
     auto obj = LocalParticipantWrap::NewInstance(info.Env(), participant);
     localParticipantCache_ = Napi::Persistent(obj);
     return obj;
+}
+
+Napi::Value RoomWrap::GetDominantSpeaker(const Napi::CallbackInfo& info) {
+    if (!room_) return info.Env().Null();
+
+    auto participant = room_->getDominantSpeaker();
+    if (!participant) return info.Env().Null();
+
+    return RemoteParticipantWrap::NewInstance(info.Env(), participant);
 }
 
 Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {

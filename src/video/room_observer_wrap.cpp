@@ -113,4 +113,11 @@ void RoomObserverWrap::onDominantSpeakerChanged(const twilio::video::Room* room,
     });
 }
 
+void RoomObserverWrap::onTranscription(const twilio::video::Room* room, const std::string& transcriptionJson) {
+    auto json = transcriptionJson;
+    dispatchEvent("transcription", [json = std::move(json)](Napi::Env env) -> Napi::Value {
+        return Napi::String::New(env, json);
+    });
+}
+
 }

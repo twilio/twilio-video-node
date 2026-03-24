@@ -30,6 +30,7 @@ public:
     void onRecordingStarted(twilio::video::Room* room) override;
     void onRecordingStopped(twilio::video::Room* room) override;
     void onDominantSpeakerChanged(const twilio::video::Room* room, std::shared_ptr<twilio::video::RemoteParticipant> participant) override;
+    void onTranscription(const twilio::video::Room* room, const std::string& transcriptionJson) override;
 
     void close();
 

@@ -9,6 +9,8 @@ import type {
   RemoteParticipant,
   VideoFrameMetadata,
   AudioFrameMetadata,
+  LocalVideoTrackPublication,
+  RemoteTrack,
 } from '../dist/index.mjs';
 import { createLocalVideoTrack, createLocalAudioTrack, LocalDataTrack } from '../dist/index.mjs';
 import type { EventEmitter } from 'node:events';
@@ -41,17 +43,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function connectPair(roomName: string, optsA = {}) {
-  const connA = await connectToRoom('alice', roomName, optsA);
+async function connectPair(roomName: string, opts = {}) {
+  const connA = await connectToRoom('alice', roomName, opts);
 
   const aSeesBPromise = waitForEvent<RemoteParticipant>(
     connA.room,
     'participantConnected',
     TRACK_SUBSCRIBE_TIMEOUT,
   );
-  const connB = await connectToRoom('bob', roomName);
+  const connB = await connectToRoom('bob', roomName, opts);
 
-  let remoteA: RemoteParticipant | undefined = connB.room.remoteParticipants.find(
+  let remoteA: RemoteParticipant | undefined = [...connB.room.participants.values()].find(
     (p: RemoteParticipant) => p.identity === 'alice',
   );
   if (!remoteA) {
@@ -227,13 +229,13 @@ describe('Multiple tracks', () => {
 
     const { connA, connB, remoteA } = await connectPair(roomName);
 
-    const tracks: (RemoteVideoTrack | RemoteAudioTrack)[] = [];
+    const tracks: RemoteTrack[] = [];
     const tracksPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Only received ${tracks.length}/2 trackSubscribed events`));
       }, TRACK_SUBSCRIBE_TIMEOUT);
 
-      remoteA.on('trackSubscribed', (track: RemoteVideoTrack | RemoteAudioTrack) => {
+      remoteA.on('trackSubscribed', (track: RemoteTrack) => {
         tracks.push(track);
         if (tracks.length >= 2) {
           clearTimeout(timeout);
@@ -403,14 +405,258 @@ describe('Track publish/unpublish lifecycle', () => {
 
     try {
       const pubs = connA.room.localParticipant.videoTracks;
-      expect(pubs.length).toBeGreaterThanOrEqual(1);
-      expect(pubs.some(p => p.trackName === 'lifecycle-cam')).toBe(true);
+      expect(pubs.size).toBeGreaterThanOrEqual(1);
+      expect([...pubs.values()].some(p => p.trackName === 'lifecycle-cam')).toBe(true);
 
+      const unsubPromise = waitForEvent(remoteA, 'trackUnsubscribed', TRACK_SUBSCRIBE_TIMEOUT);
       connA.room.localParticipant.unpublishTrack(videoTrack);
-      await sleep(1000);
+      await unsubPromise;
 
       const pubsAfter = connA.room.localParticipant.videoTracks;
-      expect(pubsAfter.some(p => p.trackName === 'lifecycle-cam')).toBe(false);
+      expect([...pubsAfter.values()].some(p => p.trackName === 'lifecycle-cam')).toBe(false);
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
+describe('participants Map + participant state', () => {
+  it('participants is a Map keyed by SID with correct state', async () => {
+    const roomName = uniqueRoom();
+    const { connA, connB, remoteA } = await connectPair(roomName);
+
+    try {
+      expect(connA.room.participants).toBeInstanceOf(Map);
+      expect(connA.room.participants.size).toBeGreaterThanOrEqual(1);
+
+      const bobFromMap = [...connA.room.participants.values()].find(p => p.identity === 'bob');
+      expect(bobFromMap).toBeTruthy();
+      expect(connA.room.participants.get(bobFromMap!.sid)).toBeTruthy();
+
+      expect(connA.room.localParticipant.state).toBe('connected');
+      expect(remoteA.state).toBe('connected');
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
+describe('networkQualityLevel', () => {
+  it('networkQualityLevelChanged fires and matches property', async () => {
+    const roomName = uniqueRoom();
+    const { connA, connB } = await connectPair(roomName, {
+      enableNetworkQuality: true,
+    });
+
+    try {
+      const level = await waitForEvent<number>(
+        connA.room.localParticipant,
+        'networkQualityLevelChanged',
+        TRACK_SUBSCRIBE_TIMEOUT,
+      );
+
+      expect(typeof level).toBe('number');
+      expect(level).toBeGreaterThanOrEqual(1);
+      expect(level).toBeLessThanOrEqual(5);
+      expect(level).toBe(connA.room.localParticipant.networkQualityLevel);
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
+describe('dominantSpeaker', () => {
+  it('dominantSpeakerChanged fires when participant has audio', async () => {
+    const roomName = uniqueRoom();
+    const audioTrack = createLocalAudioTrack('dominant-mic');
+
+    const { connA, connB } = await connectPair(roomName, {
+      enableDominantSpeaker: true,
+    });
+
+    connA.room.localParticipant.publishTrack(audioTrack);
+
+    // Push audio so Alice becomes dominant speaker
+    await sleep(NEGOTIATION_SETTLE_MS);
+    const pushInterval = setInterval(() => {
+      const samples = generateAudioSamples(480, 48000, 1);
+      audioTrack.pushSamples(samples);
+    }, 10);
+
+    try {
+      const speaker = await waitForEvent<RemoteParticipant>(
+        connB.room,
+        'dominantSpeakerChanged',
+        TRACK_SUBSCRIBE_TIMEOUT,
+      );
+
+      expect(speaker).toBeTruthy();
+      expect(speaker.identity).toBe('alice');
+      expect(connB.room.dominantSpeaker).toBeTruthy();
+      expect(connB.room.dominantSpeaker!.identity).toBe('alice');
+    } finally {
+      clearInterval(pushInterval);
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
+describe('LocalTrackPublication', () => {
+  it('trackPublished returns publication with correct properties and track reference', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('pub-props-cam');
+    const { connA, connB } = await connectPair(roomName);
+
+    const publishedPromise = waitForEvent<{ trackName: string; trackSid: string }>(
+      connA.room.localParticipant,
+      'trackPublished',
+      TRACK_SUBSCRIBE_TIMEOUT,
+    );
+    connA.room.localParticipant.publishTrack(videoTrack);
+    const published = await publishedPromise;
+
+    try {
+      expect(published.trackSid).toMatch(/^MT/);
+      expect(published.trackName).toBe('pub-props-cam');
+
+      const pub = connA.room.localParticipant.tracks.get(published.trackSid);
+      expect(pub).toBeTruthy();
+      expect(pub!.track).toBe(videoTrack);
+      expect(pub!.kind).toBe('video');
+      expect(pub!.isTrackEnabled).toBe(true);
+
+      expect(connA.room.localParticipant.videoTracks.get(published.trackSid)).toBeTruthy();
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
+describe('publishTracks / unpublishTracks', () => {
+  it('batch publish adds publications to .tracks, batch unpublish removes them', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('batch-cam');
+    const audioTrack = createLocalAudioTrack('batch-mic');
+
+    const { connA, connB, remoteA } = await connectPair(roomName);
+
+    const publishedEvents: { trackSid: string }[] = [];
+    const publishedPromise = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error(`Only ${publishedEvents.length}/2 trackPublished events`)),
+        TRACK_SUBSCRIBE_TIMEOUT,
+      );
+      connA.room.localParticipant.on('trackPublished', (pub: { trackSid: string }) => {
+        publishedEvents.push(pub);
+        if (publishedEvents.length == 2) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+
+    connA.room.localParticipant.publishTracks([videoTrack, audioTrack]);
+    await publishedPromise;
+
+    try {
+      for (const pub of publishedEvents) {
+        expect(connA.room.localParticipant.tracks.get(pub.trackSid)).toBeTruthy();
+      }
+
+      const unsubEvents: unknown[] = [];
+      const unsubPromise = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error(`Only ${unsubEvents.length}/2 trackUnsubscribed events`)),
+          TRACK_SUBSCRIBE_TIMEOUT,
+        );
+        remoteA.on('trackUnsubscribed', (track: unknown) => {
+          unsubEvents.push(track);
+          if (unsubEvents.length >= 2) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+      });
+
+      connA.room.localParticipant.unpublishTracks([videoTrack, audioTrack]);
+      await unsubPromise;
+
+      for (const pub of publishedEvents) {
+        expect(connA.room.localParticipant.tracks.has(pub.trackSid)).toBe(false);
+      }
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
+describe('Room-level track event bubbling', () => {
+  it('room emits trackSubscribed with track and participant', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('bubble-cam');
+
+    const { connA, connB } = await connectPair(roomName);
+
+    const bubblePromise = new Promise<{
+      track: RemoteTrack;
+      participant: RemoteParticipant;
+    }>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error('Timeout waiting for room trackSubscribed')),
+        TRACK_SUBSCRIBE_TIMEOUT,
+      );
+      connB.room.on('trackSubscribed', (track, participant) => {
+        clearTimeout(timeout);
+        resolve({ track, participant });
+      });
+    });
+
+    connA.room.localParticipant.publishTrack(videoTrack);
+    const { track, participant } = await bubblePromise;
+
+    try {
+      expect(track.sid).toBeTruthy();
+      expect(participant.identity).toBe('alice');
+
+      // Verify the track is accessible via the participant's publication Map
+      const remotePub = participant.videoTracks.get(track.sid);
+      expect(remotePub).toBeTruthy();
+      expect(remotePub!.track).toBe(track);
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
+describe('RemoteTrackPublication', () => {
+  it('remote videoTracks Map has publication with correct properties after subscription', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('remote-pub-cam');
+
+    const { connA, connB, remoteA } = await connectPair(roomName);
+
+    // Wait for trackPublished on local side to get the trackSid
+    const publishedPromise = waitForEvent<LocalVideoTrackPublication>(
+      connA.room.localParticipant,
+      'trackPublished',
+      TRACK_SUBSCRIBE_TIMEOUT,
+    );
+    const subscribedPromise = waitForEvent<RemoteVideoTrack>(
+      remoteA,
+      'trackSubscribed',
+      TRACK_SUBSCRIBE_TIMEOUT,
+    );
+
+    connA.room.localParticipant.publishTrack(videoTrack);
+    const [published, remoteTrack] = await Promise.all([publishedPromise, subscribedPromise]);
+
+    try {
+      const pub = remoteA.videoTracks.get(published.trackSid);
+      expect(pub).toBeTruthy();
+      expect(pub!.kind).toBe('video');
+      expect(pub!.isSubscribed).toBe(true);
+      expect(pub!.track).toBe(remoteTrack);
+      expect(pub!.trackSid).toBe(published.trackSid);
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }

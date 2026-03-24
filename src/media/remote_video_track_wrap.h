@@ -20,6 +20,7 @@ private:
     static Napi::FunctionReference constructor_;
 
     Napi::Value GetName(const Napi::CallbackInfo& info);
+    Napi::Value GetKind(const Napi::CallbackInfo& info);
     Napi::Value GetSid(const Napi::CallbackInfo& info);
     Napi::Value IsEnabled(const Napi::CallbackInfo& info);
     Napi::Value IsSwitchedOff(const Napi::CallbackInfo& info);

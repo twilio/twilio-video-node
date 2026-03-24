@@ -24,6 +24,7 @@ private:
     static Napi::FunctionReference constructor_;
 
     Napi::Value GetName(const Napi::CallbackInfo& info);
+    Napi::Value GetKind(const Napi::CallbackInfo& info);
     Napi::Value GetSid(const Napi::CallbackInfo& info);
     Napi::Value IsReliable(const Napi::CallbackInfo& info);
     Napi::Value IsOrdered(const Napi::CallbackInfo& info);

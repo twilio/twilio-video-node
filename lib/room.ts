@@ -1,7 +1,45 @@
-import { EventEmitter } from 'node:events';
 import { LocalParticipant } from './local_participant.js';
 import { RemoteParticipant } from './remote_participant.js';
-import type { NativeRoom, NativeRemoteParticipant, RoomState } from './types.js';
+import { TypedEventEmitter } from './typed_emitter.js';
+import type {
+  NativeRoom,
+  NativeRemoteParticipant,
+  RoomState,
+  TwilioError,
+  RemoteVideoTrack,
+  RemoteAudioTrack,
+  RemoteDataTrack,
+} from './types.js';
+
+export type RoomEvents = {
+  connected: () => void;
+  disconnected: (error?: TwilioError) => void;
+  connectFailure: (error: TwilioError) => void;
+  reconnecting: (error: TwilioError) => void;
+  reconnected: () => void;
+  participantConnected: (participant: RemoteParticipant) => void;
+  participantDisconnected: (participant: RemoteParticipant) => void;
+  participantReconnecting: (participant: RemoteParticipant) => void;
+  participantReconnected: (participant: RemoteParticipant) => void;
+  dominantSpeakerChanged: (participant: RemoteParticipant | null) => void;
+  recordingStarted: () => void;
+  recordingStopped: () => void;
+  transcription: (transcriptionJson: string) => void;
+  trackSubscribed: (
+    track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    participant: RemoteParticipant,
+  ) => void;
+  trackUnsubscribed: (
+    track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    participant: RemoteParticipant,
+  ) => void;
+  trackPublished: (publication: unknown, participant: RemoteParticipant) => void;
+  trackUnpublished: (publication: unknown, participant: RemoteParticipant) => void;
+  trackEnabled: (publication: unknown, participant: RemoteParticipant) => void;
+  trackDisabled: (publication: unknown, participant: RemoteParticipant) => void;
+  videoTrackSwitchedOff: (track: RemoteVideoTrack, participant: RemoteParticipant) => void;
+  videoTrackSwitchedOn: (track: RemoteVideoTrack, participant: RemoteParticipant) => void;
+};
 
 const PARTICIPANT_EVENTS = new Set([
   'participantConnected',
@@ -11,7 +49,18 @@ const PARTICIPANT_EVENTS = new Set([
   'dominantSpeakerChanged',
 ]);
 
-export class Room extends EventEmitter {
+const BUBBLED_TRACK_EVENTS = [
+  'trackSubscribed',
+  'trackUnsubscribed',
+  'trackPublished',
+  'trackUnpublished',
+  'trackEnabled',
+  'trackDisabled',
+  'videoTrackSwitchedOff',
+  'videoTrackSwitchedOn',
+] as const;
+
+export class Room extends TypedEventEmitter<RoomEvents> {
   /** @internal */
   readonly _native: NativeRoom;
   private _localParticipant: LocalParticipant | null = null;
@@ -24,6 +73,9 @@ export class Room extends EventEmitter {
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (PARTICIPANT_EVENTS.has(event)) {
         const wrapped = data ? this._wrapRemoteParticipant(data as NativeRemoteParticipant) : null;
+        if (event === 'participantConnected' && wrapped) {
+          this._bubbleTrackEvents(wrapped);
+        }
         this.emit(event, wrapped);
         if (event === 'participantDisconnected' && wrapped) {
           this._remoteParticipantCache.delete(wrapped.sid);
@@ -54,6 +106,12 @@ export class Room extends EventEmitter {
     return this._native.isRecording;
   }
 
+  get dominantSpeaker(): RemoteParticipant | null {
+    const native = this._native.dominantSpeaker;
+    if (!native) return null;
+    return this._wrapRemoteParticipant(native);
+  }
+
   get localParticipant(): LocalParticipant {
     if (!this._localParticipant) {
       this._localParticipant = new LocalParticipant(this._native.localParticipant);
@@ -61,24 +119,27 @@ export class Room extends EventEmitter {
     return this._localParticipant;
   }
 
-  get remoteParticipants(): RemoteParticipant[] {
+  get participants(): Map<string, RemoteParticipant> {
     const natives = this._native.remoteParticipants;
-    const activeSids = new Set<string>();
-    const result: RemoteParticipant[] = [];
+    const map = new Map<string, RemoteParticipant>();
 
     for (const native of natives) {
-      activeSids.add(native.sid);
-      result.push(this._wrapRemoteParticipant(native));
+      map.set(native.sid, this._wrapRemoteParticipant(native));
     }
 
     // Evict stale cache entries
     for (const sid of this._remoteParticipantCache.keys()) {
-      if (!activeSids.has(sid)) {
+      if (!map.has(sid)) {
         this._remoteParticipantCache.delete(sid);
       }
     }
 
-    return result;
+    return map;
+  }
+
+  /** @deprecated Use `participants` instead. */
+  get remoteParticipants(): RemoteParticipant[] {
+    return [...this.participants.values()];
   }
 
   disconnect(): void {
@@ -92,11 +153,20 @@ export class Room extends EventEmitter {
     this.removeAllListeners();
   }
 
+  private _bubbleTrackEvents(participant: RemoteParticipant): void {
+    for (const event of BUBBLED_TRACK_EVENTS) {
+      participant.on(event, (trackOrPub: unknown) => {
+        this.emit(event, trackOrPub, participant);
+      });
+    }
+  }
+
   private _wrapRemoteParticipant(native: NativeRemoteParticipant): RemoteParticipant {
     const sid = native.sid;
     let wrapped = this._remoteParticipantCache.get(sid);
     if (!wrapped) {
       wrapped = new RemoteParticipant(native);
+      this._bubbleTrackEvents(wrapped);
       this._remoteParticipantCache.set(sid, wrapped);
     }
     return wrapped;
