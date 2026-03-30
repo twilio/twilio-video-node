@@ -166,7 +166,6 @@ export interface NativeAddon {
   setLogLevel(level: LogLevel | number): void;
   connect(token: string, options: Record<string, unknown>): NativeRoom;
   MediaFactory: new () => NativeMediaFactory;
-  LocalDataTrack: new (options?: Record<string, unknown>) => LocalDataTrack;
 }
 
 export interface NativeMediaFactory {

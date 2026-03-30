@@ -90,11 +90,70 @@ describe('Audio Track', () => {
 });
 
 describe('Data Track', () => {
-  it('createLocalDataTrack creates track', () => {
-    const track = createLocalDataTrack('test-data');
+  // rtc-cpp uses UINT16_MAX when maxRetransmits/maxPacketLifeTime are unset (reliable mode)
+  const RELIABLE_DEFAULT = 65535;
 
-    expect(track).toBeDefined();
-    expect(track.name).toBe('test-data');
-    expect(track.kind).toBe('data');
+  it('creates a named data track with expected defaults', () => {
+    const track = createLocalDataTrack('my-channel');
+    expect(track.name).toBe('my-channel');
+    expect(track.ordered).toBe(true);
+    expect(track.reliable).toBe(true);
+    expect(track.maxRetransmits).toBe(RELIABLE_DEFAULT);
+    expect(track.maxPacketLifeTime).toBe(RELIABLE_DEFAULT);
+  });
+
+  it('creates a data track with defaults when called with no arguments', () => {
+    const track = createLocalDataTrack();
+    expect(track.name).toBeDefined();
+    expect(track.ordered).toBe(true);
+    expect(track.reliable).toBe(true);
+    expect(track.maxRetransmits).toBe(RELIABLE_DEFAULT);
+    expect(track.maxPacketLifeTime).toBe(RELIABLE_DEFAULT);
+  });
+
+  it('accepts maxRetransmits option', () => {
+    const track = createLocalDataTrack({ name: 'retransmit-track', maxRetransmits: 3 });
+    expect(track.name).toBe('retransmit-track');
+    expect(track.maxRetransmits).toBe(3);
+    expect(track.maxPacketLifeTime).toBe(RELIABLE_DEFAULT);
+    expect(track.reliable).toBe(false);
+    expect(track.ordered).toBe(true);
+  });
+
+  it('accepts maxPacketLifeTime option', () => {
+    const track = createLocalDataTrack({ name: 'lifetime-track', maxPacketLifeTime: 1000 });
+    expect(track.name).toBe('lifetime-track');
+    expect(track.maxPacketLifeTime).toBe(1000);
+    expect(track.maxRetransmits).toBe(RELIABLE_DEFAULT);
+    expect(track.reliable).toBe(false);
+    expect(track.ordered).toBe(true);
+  });
+
+  it('accepts ordered: false', () => {
+    const track = createLocalDataTrack({ name: 'unordered', ordered: false });
+    expect(track.ordered).toBe(false);
+    expect(track.reliable).toBe(true);
+  });
+
+  it('throws when both maxRetransmits and maxPacketLifeTime are set', () => {
+    expect(() => createLocalDataTrack({ maxRetransmits: 3, maxPacketLifeTime: 1000 }))
+      .toThrow('maxRetransmits and maxPacketLifeTime are mutually exclusive');
+  });
+
+  it('throws on negative maxRetransmits', () => {
+    expect(() => createLocalDataTrack({ maxRetransmits: -1 }))
+      .toThrow('maxRetransmits and maxPacketLifeTime must be non-negative');
+  });
+
+  it('throws on negative maxPacketLifeTime', () => {
+    expect(() => createLocalDataTrack({ maxPacketLifeTime: -1 }))
+      .toThrow('maxRetransmits and maxPacketLifeTime must be non-negative');
+  });
+
+  it('send does not throw on disconnected track', () => {
+    const track = createLocalDataTrack('send-test');
+    expect(track.name).toBe('send-test');
+    expect(() => track.send('hello')).not.toThrow();
+    expect(() => track.send(Buffer.from([0xde, 0xad]))).not.toThrow();
   });
 });

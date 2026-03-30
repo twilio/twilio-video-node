@@ -6,14 +6,14 @@
  *   Terminal 2: node examples/data_channel.js my-room bob
  */
 
-const { connect, LocalDataTrack } = require('../dist/index.cjs');
+const { connect, createLocalDataTrack } = require('../dist/index.cjs');
 const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'data-room';
 const IDENTITY = process.argv[3] || 'alice';
 
 async function main() {
-  const dataTrack = new LocalDataTrack(`${IDENTITY}-chat`);
+  const dataTrack = createLocalDataTrack(`${IDENTITY}-chat`);
 
   console.log(`[${IDENTITY}] Connecting to room: ${ROOM_NAME}`);
 

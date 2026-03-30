@@ -12,7 +12,7 @@ import type {
   LocalVideoTrackPublication,
   RemoteTrack,
 } from '../dist/index.mjs';
-import { createLocalVideoTrack, createLocalAudioTrack, LocalDataTrack } from '../dist/index.mjs';
+import { createLocalVideoTrack, createLocalAudioTrack, createLocalDataTrack } from '../dist/index.mjs';
 import type { EventEmitter } from 'node:events';
 
 const TRACK_SUBSCRIBE_TIMEOUT = 15_000;
@@ -262,7 +262,7 @@ describe('Multiple tracks', () => {
 describe('Data track send/receive', () => {
   it('Bob receives string and Buffer messages from Alice', async () => {
     const roomName = uniqueRoom();
-    const dataTrack: any = new LocalDataTrack('chat');
+    const dataTrack = createLocalDataTrack('chat');
 
     const { connA, connB, remoteA } = await connectPair(roomName);
 

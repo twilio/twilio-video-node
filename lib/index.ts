@@ -9,7 +9,7 @@ import type {
   ConnectOptions,
   LocalVideoTrack,
   LocalAudioTrack,
-  LocalDataTrack as LocalDataTrackInterface,
+  LocalDataTrack,
   LocalDataTrackOptions,
   LogLevel,
   PlatformInfo,
@@ -45,6 +45,7 @@ export type {
   TrackKind,
   LocalVideoTrack,
   LocalAudioTrack,
+  LocalDataTrack,
   LocalDataTrackOptions,
   RemoteVideoTrack,
   RemoteAudioTrack,
@@ -158,15 +159,16 @@ export function createLocalAudioTrack(name?: string): LocalAudioTrack {
   return getDefaultMediaFactory().createAudioTrack(name ? { name } : {});
 }
 
-export function createLocalDataTrack(name?: string): LocalDataTrackInterface {
-  return getDefaultMediaFactory().createDataTrack(name ? { name } : {});
-}
-
-export class LocalDataTrack {
-  constructor(options: LocalDataTrackOptions | string = {}) {
-    const opts = typeof options === 'string' ? { name: options } : options;
-    return getDefaultMediaFactory().createDataTrack(opts) as unknown as LocalDataTrack;
+export function createLocalDataTrack(options: LocalDataTrackOptions | string = {}): LocalDataTrack {
+  const opts = typeof options === 'string' ? { name: options } : options;
+  if (opts.maxRetransmits != null && opts.maxPacketLifeTime != null) {
+    throw new Error('maxRetransmits and maxPacketLifeTime are mutually exclusive');
   }
+  if ((opts.maxRetransmits != null && opts.maxRetransmits < 0) ||
+      (opts.maxPacketLifeTime != null && opts.maxPacketLifeTime < 0)) {
+    throw new Error('maxRetransmits and maxPacketLifeTime must be non-negative');
+  }
+  return getDefaultMediaFactory().createDataTrack(opts);
 }
 
 export const ErrorCode = Object.freeze({
