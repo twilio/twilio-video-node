@@ -12,7 +12,11 @@ import type {
   LocalVideoTrackPublication,
   RemoteTrack,
 } from '../dist/index.mjs';
-import { createLocalVideoTrack, createLocalAudioTrack, createLocalDataTrack } from '../dist/index.mjs';
+import {
+  createLocalVideoTrack,
+  createLocalAudioTrack,
+  createLocalDataTrack,
+} from '../dist/index.mjs';
 import type { EventEmitter } from 'node:events';
 
 const TRACK_SUBSCRIBE_TIMEOUT = 15_000;

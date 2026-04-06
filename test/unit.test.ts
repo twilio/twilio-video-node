@@ -136,18 +136,21 @@ describe('Data Track', () => {
   });
 
   it('throws when both maxRetransmits and maxPacketLifeTime are set', () => {
-    expect(() => createLocalDataTrack({ maxRetransmits: 3, maxPacketLifeTime: 1000 }))
-      .toThrow('maxRetransmits and maxPacketLifeTime are mutually exclusive');
+    expect(() => createLocalDataTrack({ maxRetransmits: 3, maxPacketLifeTime: 1000 })).toThrow(
+      'maxRetransmits and maxPacketLifeTime are mutually exclusive',
+    );
   });
 
   it('throws on negative maxRetransmits', () => {
-    expect(() => createLocalDataTrack({ maxRetransmits: -1 }))
-      .toThrow('maxRetransmits and maxPacketLifeTime must be non-negative');
+    expect(() => createLocalDataTrack({ maxRetransmits: -1 })).toThrow(
+      'maxRetransmits and maxPacketLifeTime must be non-negative',
+    );
   });
 
   it('throws on negative maxPacketLifeTime', () => {
-    expect(() => createLocalDataTrack({ maxPacketLifeTime: -1 }))
-      .toThrow('maxRetransmits and maxPacketLifeTime must be non-negative');
+    expect(() => createLocalDataTrack({ maxPacketLifeTime: -1 })).toThrow(
+      'maxRetransmits and maxPacketLifeTime must be non-negative',
+    );
   });
 
   it('send does not throw on disconnected track', () => {

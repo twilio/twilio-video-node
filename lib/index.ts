@@ -164,8 +164,10 @@ export function createLocalDataTrack(options: LocalDataTrackOptions | string = {
   if (opts.maxRetransmits != null && opts.maxPacketLifeTime != null) {
     throw new Error('maxRetransmits and maxPacketLifeTime are mutually exclusive');
   }
-  if ((opts.maxRetransmits != null && opts.maxRetransmits < 0) ||
-      (opts.maxPacketLifeTime != null && opts.maxPacketLifeTime < 0)) {
+  if (
+    (opts.maxRetransmits != null && opts.maxRetransmits < 0) ||
+    (opts.maxPacketLifeTime != null && opts.maxPacketLifeTime < 0)
+  ) {
     throw new Error('maxRetransmits and maxPacketLifeTime must be non-negative');
   }
   return getDefaultMediaFactory().createDataTrack(opts);
