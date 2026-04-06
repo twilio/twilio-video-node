@@ -1,0 +1,20 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@7.2.1
+
+jobs:
+  lint:
+    docker:
+      - image: cimg/node:24.14
+    steps:
+      - checkout
+      - node/install-packages:
+          override-ci-command: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm run format:check
+
+workflows:
+  ci:
+    jobs:
+      - lint
