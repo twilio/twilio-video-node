@@ -2,7 +2,7 @@ import twilio from 'twilio';
 const AccessToken = twilio.jwt.AccessToken;
 const VideoGrant = AccessToken.VideoGrant;
 
-const PREFIX = 'TWILIO_STAGE_';
+const PREFIX = 'TWILIO_';
 
 function generateToken(identity: string, roomName?: string): string {
   const accountSid = process.env[`${PREFIX}ACCOUNT_SID`];
