@@ -11,6 +11,7 @@ import type {
   AudioFrameMetadata,
   LocalVideoTrackPublication,
   RemoteTrack,
+  StatsReport,
 } from '../dist/index.mjs';
 import {
   createLocalVideoTrack,
@@ -661,6 +662,155 @@ describe('RemoteTrackPublication', () => {
       expect(pub!.isSubscribed).toBe(true);
       expect(pub!.track).toBe(remoteTrack);
       expect(pub!.trackSid).toBe(published.trackSid);
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
+describe('Room.getStats()', () => {
+  it('returns stats reports with correct shape for published tracks', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('stats-cam');
+    const audioTrack = createLocalAudioTrack('stats-mic');
+
+    const { connA, connB, remoteA } = await connectPair(roomName);
+
+    const tracksSubscribed: unknown[] = [];
+    const tracksPromise = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error(`Only ${tracksSubscribed.length}/2 trackSubscribed events`)),
+        TRACK_SUBSCRIBE_TIMEOUT,
+      );
+      remoteA.on('trackSubscribed', (track: unknown) => {
+        tracksSubscribed.push(track);
+        if (tracksSubscribed.length >= 2) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+
+    connA.room.localParticipant.publishTrack(videoTrack);
+    connA.room.localParticipant.publishTrack(audioTrack);
+    await tracksPromise;
+
+    await sleep(NEGOTIATION_SETTLE_MS);
+
+    // Push media so stats accumulate
+    const pushInterval = setInterval(() => {
+      const { y, u, v } = generateI420Frame(640, 480);
+      videoTrack.pushFrame(y, u, v, 640, 480);
+      audioTrack.pushSamples(generateAudioSamples(480, 48000, 1));
+    }, 33);
+
+    await sleep(3_000);
+
+    try {
+      const reports: StatsReport[] = await connA.room.getStats();
+
+      expect(Array.isArray(reports)).toBe(true);
+      expect(reports.length).toBeGreaterThan(0);
+
+      const report = reports[0];
+      expect(typeof report.peerConnectionId).toBe('string');
+      expect(Array.isArray(report.localAudioTrackStats)).toBe(true);
+      expect(Array.isArray(report.localVideoTrackStats)).toBe(true);
+      expect(Array.isArray(report.remoteAudioTrackStats)).toBe(true);
+      expect(Array.isArray(report.remoteVideoTrackStats)).toBe(true);
+
+      // Verify local video stats shape
+      if (report.localVideoTrackStats.length > 0) {
+        const vs = report.localVideoTrackStats[0];
+        expect(typeof vs.codec).toBe('string');
+        expect(typeof vs.packetsLost).toBe('number');
+        expect(typeof vs.ssrc).toBe('string');
+        expect(typeof vs.timestamp).toBe('number');
+        expect(vs.timestamp).toBeGreaterThan(0);
+        expect(typeof vs.bytesSent).toBe('number');
+        expect(typeof vs.packetsSent).toBe('number');
+        expect(typeof vs.roundTripTime).toBe('number');
+        expect(vs.dimensions).toBeDefined();
+        expect(typeof vs.dimensions.width).toBe('number');
+        expect(typeof vs.dimensions.height).toBe('number');
+        expect(vs.captureDimensions).toBeDefined();
+        expect(typeof vs.captureFrameRate).toBe('number');
+        expect(typeof vs.frameRate).toBe('number');
+        expect(typeof vs.framesEncoded).toBe('number');
+      }
+
+      // Verify local audio stats shape
+      if (report.localAudioTrackStats.length > 0) {
+        const as = report.localAudioTrackStats[0];
+        expect(typeof as.audioLevel).toBe('number');
+        expect(typeof as.jitter).toBe('number');
+        expect(typeof as.bytesSent).toBe('number');
+      }
+    } finally {
+      clearInterval(pushInterval);
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+
+  it('returns remote track stats for the subscriber', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('remote-stats-cam');
+
+    const { connA, connB, remoteA } = await connectPair(roomName);
+
+    const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
+    connA.room.localParticipant.publishTrack(videoTrack);
+    await trackPromise;
+
+    await sleep(NEGOTIATION_SETTLE_MS);
+
+    const pushInterval = setInterval(() => {
+      const { y, u, v } = generateI420Frame(640, 480);
+      videoTrack.pushFrame(y, u, v, 640, 480);
+    }, 33);
+
+    await sleep(3_000);
+
+    try {
+      const reports: StatsReport[] = await connB.room.getStats();
+      expect(reports.length).toBeGreaterThan(0);
+
+      const report = reports[0];
+      if (report.remoteVideoTrackStats.length > 0) {
+        const rvs = report.remoteVideoTrackStats[0];
+        expect(typeof rvs.bytesReceived).toBe('number');
+        expect(typeof rvs.packetsReceived).toBe('number');
+        expect(typeof rvs.dimensions.width).toBe('number');
+        expect(typeof rvs.frameRate).toBe('number');
+      }
+    } finally {
+      clearInterval(pushInterval);
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+
+  it('rejects when room is disconnected', async () => {
+    const roomName = uniqueRoom();
+    const { room, cleanup } = await connectToRoom('alice', roomName);
+
+    room.disconnect();
+    await waitForEvent(room, 'disconnected', 5_000);
+
+    await expect(room.getStats()).rejects.toThrow(/disconnected/i);
+    await cleanup();
+  });
+
+  it('returns empty stats arrays when no tracks are published', async () => {
+    const roomName = uniqueRoom();
+    const { connA, connB } = await connectPair(roomName);
+
+    try {
+      const reports: StatsReport[] = await connA.room.getStats();
+      expect(Array.isArray(reports)).toBe(true);
+      if (reports.length > 0) {
+        expect(reports[0].localVideoTrackStats).toEqual([]);
+        expect(reports[0].localAudioTrackStats).toEqual([]);
+      }
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }

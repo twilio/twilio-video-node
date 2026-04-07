@@ -55,6 +55,15 @@ export type {
   LogLevel,
   VideoTrackOptions,
   AudioTrackOptions,
+  StatsReport,
+  TrackStats,
+  LocalTrackStats,
+  RemoteTrackStats,
+  LocalAudioTrackStats,
+  LocalVideoTrackStats,
+  RemoteAudioTrackStats,
+  RemoteVideoTrackStats,
+  StatsVideoDimensions,
 } from './types.js';
 
 // --- Addon loading ---

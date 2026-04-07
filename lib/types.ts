@@ -156,6 +156,61 @@ export interface RemoteTrackPublication extends TrackPublication {
   track?: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack;
 }
 
+export interface StatsVideoDimensions {
+  width: number;
+  height: number;
+}
+
+export interface TrackStats {
+  codec: string;
+  packetsLost: number;
+  ssrc: string;
+  timestamp: number;
+  trackSid: string;
+}
+
+export interface LocalTrackStats extends TrackStats {
+  bytesSent: number;
+  packetsSent: number;
+  roundTripTime: number;
+}
+
+export interface RemoteTrackStats extends TrackStats {
+  bytesReceived: number;
+  packetsReceived: number;
+}
+
+export interface LocalAudioTrackStats extends LocalTrackStats {
+  audioLevel: number;
+  jitter: number;
+}
+
+export interface LocalVideoTrackStats extends LocalTrackStats {
+  captureDimensions: StatsVideoDimensions;
+  dimensions: StatsVideoDimensions;
+  captureFrameRate: number;
+  frameRate: number;
+  framesEncoded: number;
+}
+
+export interface RemoteAudioTrackStats extends RemoteTrackStats {
+  audioLevel: number;
+  jitter: number;
+}
+
+export interface RemoteVideoTrackStats extends RemoteTrackStats {
+  dimensions: StatsVideoDimensions;
+  frameRate: number;
+}
+
+export interface StatsReport {
+  peerConnectionId: string;
+  localAudioTrackStats: LocalAudioTrackStats[];
+  localVideoTrackStats: LocalVideoTrackStats[];
+  remoteAudioTrackStats: RemoteAudioTrackStats[];
+  remoteVideoTrackStats: RemoteVideoTrackStats[];
+}
+
 export type RoomState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
 export type LogLevel = 'off' | 'fatal' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'all';
@@ -186,6 +241,7 @@ export interface NativeRoom {
   disconnect(): void;
   dispose(): void;
   setEventCallback(cb: (event: string, data?: unknown) => void): void;
+  getStats(callback: (error: Error | null, reports: StatsReport[]) => void): void;
 }
 
 export type ParticipantState = 'connected' | 'reconnecting' | 'disconnected';

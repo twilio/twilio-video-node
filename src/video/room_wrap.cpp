@@ -30,6 +30,7 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceMethod("disconnect", &RoomWrap::Disconnect),
         InstanceMethod("dispose", &RoomWrap::Dispose),
         InstanceMethod("setEventCallback", &RoomWrap::SetEventCallback),
+        InstanceMethod("getStats", &RoomWrap::GetStats),
     });
 
     constructor_ = Napi::Persistent(func);
@@ -52,7 +53,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     RoomWrap* roomWrap = Napi::ObjectWrap<RoomWrap>::Unwrap(obj);
 
     roomWrap->observer_ = std::make_shared<RoomObserverWrap>(env, roomWrap);
-    roomWrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
+    roomWrap->asyncContext_ = std::make_shared<AsyncContext>(env, 0);
 
     std::string token = info[0].As<Napi::String>().Utf8Value();
     twilio::video::ConnectOptions::Builder builder(token);
@@ -200,6 +201,15 @@ RoomWrap::RoomWrap(const Napi::CallbackInfo& info)
 }
 
 RoomWrap::~RoomWrap() {
+    {
+        std::lock_guard<std::mutex> lock(statsObserversMutex_);
+        for (auto& obs : pendingStatsObservers_) {
+            auto* oneShot = static_cast<OneShotStatsObserver*>(obs.get());
+            oneShot->cancel();
+        }
+        pendingStatsObservers_.clear();
+    }
+
     // Order: disconnect first (may trigger callbacks), then close observer, then close async
     if (room_) {
         room_->disconnect();
@@ -342,6 +352,16 @@ Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
     if (room_) {
         room_->disconnect();
     }
+
+    {
+        std::lock_guard<std::mutex> lock(statsObserversMutex_);
+        for (auto& obs : pendingStatsObservers_) {
+            auto* oneShot = static_cast<OneShotStatsObserver*>(obs.get());
+            oneShot->cancel();
+        }
+        pendingStatsObservers_.clear();
+    }
+
     if (observer_) {
         observer_->close();
         observer_.reset();
@@ -377,6 +397,191 @@ Napi::Value RoomWrap::SetEventCallback(const Napi::CallbackInfo& info) {
     }
 
     eventCallback_ = Napi::Persistent(info[0].As<Napi::Function>());
+    return env.Undefined();
+}
+
+static Napi::Object convertDimensions(Napi::Env env, const twilio::media::VideoDimensions& dims) {
+    auto obj = Napi::Object::New(env);
+    obj.Set("width", dims.width);
+    obj.Set("height", dims.height);
+    return obj;
+}
+
+template <typename T>
+static void setBaseTrackStats(Napi::Env env, Napi::Object& obj, const T& s) {
+    obj.Set("codec", Napi::String::New(env, s.codec));
+    obj.Set("packetsLost", Napi::Number::New(env, s.packets_lost));
+    obj.Set("ssrc", Napi::String::New(env, s.ssrc));
+    obj.Set("timestamp", Napi::Number::New(env, s.timestamp));
+    obj.Set("trackSid", Napi::String::New(env, s.track_sid));
+}
+
+template <typename T>
+static void setLocalTrackStats(Napi::Env env, Napi::Object& obj, const T& s) {
+    setBaseTrackStats(env, obj, s);
+    obj.Set("bytesSent", Napi::Number::New(env, static_cast<double>(s.bytes_sent)));
+    obj.Set("packetsSent", Napi::Number::New(env, s.packets_sent));
+    obj.Set("roundTripTime", Napi::Number::New(env, static_cast<double>(s.round_trip_time)));
+}
+
+template <typename T>
+static void setRemoteTrackStats(Napi::Env env, Napi::Object& obj, const T& s) {
+    setBaseTrackStats(env, obj, s);
+    obj.Set("bytesReceived", Napi::Number::New(env, static_cast<double>(s.bytes_received)));
+    obj.Set("packetsReceived", Napi::Number::New(env, s.packets_received));
+}
+
+static Napi::Value convertStatsReportsToJS(Napi::Env env,
+    const std::vector<twilio::media::StatsReport>& reports) {
+    auto jsArray = Napi::Array::New(env, reports.size());
+
+    for (uint32_t i = 0; i < reports.size(); i++) {
+        const auto& report = reports[i];
+        auto obj = Napi::Object::New(env);
+        obj.Set("peerConnectionId", Napi::String::New(env, report.peer_connection_id));
+
+        auto laStats = Napi::Array::New(env, report.local_audio_track_stats.size());
+        for (uint32_t j = 0; j < report.local_audio_track_stats.size(); j++) {
+            auto o = Napi::Object::New(env);
+            const auto& s = report.local_audio_track_stats[j];
+            setLocalTrackStats(env, o, s);
+            o.Set("audioLevel", Napi::Number::New(env, s.audio_level));
+            o.Set("jitter", Napi::Number::New(env, s.jitter));
+            laStats.Set(j, o);
+        }
+        obj.Set("localAudioTrackStats", laStats);
+
+        auto lvStats = Napi::Array::New(env, report.local_video_track_stats.size());
+        for (uint32_t j = 0; j < report.local_video_track_stats.size(); j++) {
+            auto o = Napi::Object::New(env);
+            const auto& s = report.local_video_track_stats[j];
+            setLocalTrackStats(env, o, s);
+            o.Set("captureDimensions", convertDimensions(env, s.capture_dimensions));
+            o.Set("dimensions", convertDimensions(env, s.dimensions));
+            o.Set("captureFrameRate", Napi::Number::New(env, s.capture_frame_rate));
+            o.Set("frameRate", Napi::Number::New(env, s.frame_rate));
+            o.Set("framesEncoded", Napi::Number::New(env, s.frames_encoded));
+            lvStats.Set(j, o);
+        }
+        obj.Set("localVideoTrackStats", lvStats);
+
+        auto raStats = Napi::Array::New(env, report.remote_audio_track_stats.size());
+        for (uint32_t j = 0; j < report.remote_audio_track_stats.size(); j++) {
+            auto o = Napi::Object::New(env);
+            const auto& s = report.remote_audio_track_stats[j];
+            setRemoteTrackStats(env, o, s);
+            o.Set("audioLevel", Napi::Number::New(env, s.audio_level));
+            o.Set("jitter", Napi::Number::New(env, s.jitter));
+            raStats.Set(j, o);
+        }
+        obj.Set("remoteAudioTrackStats", raStats);
+
+        auto rvStats = Napi::Array::New(env, report.remote_video_track_stats.size());
+        for (uint32_t j = 0; j < report.remote_video_track_stats.size(); j++) {
+            auto o = Napi::Object::New(env);
+            const auto& s = report.remote_video_track_stats[j];
+            setRemoteTrackStats(env, o, s);
+            o.Set("dimensions", convertDimensions(env, s.dimensions));
+            o.Set("frameRate", Napi::Number::New(env, s.frame_rate));
+            rvStats.Set(j, o);
+        }
+        obj.Set("remoteVideoTrackStats", rvStats);
+
+        jsArray.Set(i, obj);
+    }
+
+    return jsArray;
+}
+
+OneShotStatsObserver::OneShotStatsObserver(
+    std::shared_ptr<AsyncContext> ctx,
+    std::shared_ptr<Napi::FunctionReference> cb)
+    : asyncContext_(std::move(ctx)),
+      callback_(std::move(cb)) {}
+
+OneShotStatsObserver::~OneShotStatsObserver() {
+    // cancel() or onStats() must have moved callback_ away before destruction.
+    // If this fires, a code path is missing cleanup.
+    assert(!callback_ && "OneShotStatsObserver destroyed with live callback");
+}
+
+void OneShotStatsObserver::onStats(
+    const std::vector<twilio::media::StatsReport>& stats_reports) {
+    if (fired_.exchange(true)) return;
+
+    auto reports = stats_reports;
+    auto cb = std::move(callback_);
+    auto ctx = asyncContext_;
+
+    if (!ctx || ctx->isClosed()) return;
+
+    ctx->dispatch([reports = std::move(reports), cb](Napi::Env env) {
+        if (!cb || cb->IsEmpty()) return;
+        Napi::HandleScope scope(env);
+        auto jsReports = convertStatsReportsToJS(env, reports);
+        cb->Call({env.Null(), jsReports});
+    });
+}
+
+void OneShotStatsObserver::cancel() {
+    if (fired_.exchange(true)) return;
+
+    auto cb = std::move(callback_);
+    auto ctx = asyncContext_;
+
+    if (!ctx || ctx->isClosed()) return;
+
+    ctx->dispatch([cb](Napi::Env env) {
+        if (!cb || cb->IsEmpty()) return;
+        cb->Call({Napi::Error::New(env, "Room was disconnected").Value()});
+    });
+}
+
+Napi::Value RoomWrap::GetStats(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsFunction()) {
+        Napi::TypeError::New(env, "Expected callback function").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto callback = std::make_shared<Napi::FunctionReference>(
+        Napi::Persistent(info[0].As<Napi::Function>()));
+
+    if (!room_) {
+        if (asyncContext_ && !asyncContext_->isClosed()) {
+            asyncContext_->dispatch([callback](Napi::Env env) {
+                callback->Call({Napi::Error::New(env, "Room is not connected").Value()});
+            });
+        } else {
+            callback->Call({Napi::Error::New(env, "Room is not connected").Value()});
+        }
+        return env.Undefined();
+    }
+
+    // rtc-cpp silently drops getStats when not connected/reconnecting
+    auto state = room_->getState();
+    if (state != twilio::video::Room::State::kConnected &&
+        state != twilio::video::Room::State::kReconnecting) {
+        if (asyncContext_ && !asyncContext_->isClosed()) {
+            asyncContext_->dispatch([callback](Napi::Env env) {
+                callback->Call({Napi::Error::New(env, "Room is not connected").Value()});
+            });
+        } else {
+            callback->Call({Napi::Error::New(env, "Room is not connected").Value()});
+        }
+        return env.Undefined();
+    }
+
+    auto observer = std::make_shared<OneShotStatsObserver>(asyncContext_, callback);
+
+    {
+        std::lock_guard<std::mutex> lock(statsObserversMutex_);
+        pendingStatsObservers_.insert(observer);
+    }
+
+    room_->getStats(observer);
+
     return env.Undefined();
 }
 

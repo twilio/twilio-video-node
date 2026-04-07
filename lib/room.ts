@@ -9,6 +9,7 @@ import type {
   RemoteVideoTrack,
   RemoteAudioTrack,
   RemoteDataTrack,
+  StatsReport,
 } from './types.js';
 
 export type RoomEvents = {
@@ -140,6 +141,21 @@ export class Room extends TypedEventEmitter<RoomEvents> {
   /** @deprecated Use `participants` instead. */
   get remoteParticipants(): RemoteParticipant[] {
     return [...this.participants.values()];
+  }
+
+  getStats(): Promise<StatsReport[]> {
+    if (this.state === 'disconnected') {
+      return Promise.reject(new Error('Room is disconnected'));
+    }
+    return new Promise((resolve, reject) => {
+      this._native.getStats((error: Error | null, reports: StatsReport[]) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(reports);
+        }
+      });
+    });
   }
 
   disconnect(): void {
