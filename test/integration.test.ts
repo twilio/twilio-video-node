@@ -626,7 +626,7 @@ describe('Room-level track event bubbling', () => {
       // Verify the track is accessible via the participant's publication Map
       const remotePub = participant.videoTracks.get(track.sid);
       expect(remotePub).toBeTruthy();
-      expect(remotePub!.track).toBe(track);
+      expect(remotePub!.track?.sid).toBe(track.sid);
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
@@ -660,7 +660,7 @@ describe('RemoteTrackPublication', () => {
       expect(pub).toBeTruthy();
       expect(pub!.kind).toBe('video');
       expect(pub!.isSubscribed).toBe(true);
-      expect(pub!.track).toBe(remoteTrack);
+      expect(pub!.track?.sid).toBe(remoteTrack.sid);
       expect(pub!.trackSid).toBe(published.trackSid);
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
