@@ -8,8 +8,9 @@ namespace twilio_video_node {
 
 class RemoteParticipantObserverImpl : public twilio::video::RemoteParticipantObserver {
 public:
-    RemoteParticipantObserverImpl(RemoteParticipantWrap* wrap, AsyncContext* ctx)
-        : wrap_(wrap), ctx_(ctx) {}
+    RemoteParticipantObserverImpl(RemoteParticipantWrap* wrap, AsyncContext* ctx,
+                                   std::shared_ptr<std::atomic<bool>> alive)
+        : wrap_(wrap), ctx_(ctx), alive_(alive) {}
 
     void close() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -141,7 +142,9 @@ private:
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_.load(std::memory_order_acquire) || !wrap_) return;
 
-        ctx_->dispatch([this, eventName, createArgs](Napi::Env env) {
+        auto alive = alive_;
+        ctx_->dispatch([this, alive, eventName, createArgs](Napi::Env env) {
+            if (!alive->load(std::memory_order_acquire)) return;
             if (closed_.load(std::memory_order_acquire) || !wrap_) return;
             Napi::Value arg = createArgs ? createArgs(env) : env.Undefined();
             wrap_->emitEvent(eventName, arg);
@@ -175,6 +178,7 @@ private:
 
     RemoteParticipantWrap* wrap_;
     AsyncContext* ctx_;
+    std::shared_ptr<std::atomic<bool>> alive_;
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
 };
@@ -205,7 +209,7 @@ Napi::Object RemoteParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<t
     RemoteParticipantWrap* wrap = Napi::ObjectWrap<RemoteParticipantWrap>::Unwrap(obj);
     wrap->participant_ = participant;
     wrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
-    wrap->observer_ = std::make_shared<RemoteParticipantObserverImpl>(wrap, wrap->asyncContext_.get());
+    wrap->observer_ = std::make_shared<RemoteParticipantObserverImpl>(wrap, wrap->asyncContext_.get(), wrap->alive_);
     participant->setObserver(wrap->observer_);
 
     return scope.Escape(obj).ToObject();
@@ -216,7 +220,7 @@ RemoteParticipantWrap::RemoteParticipantWrap(const Napi::CallbackInfo& info)
 }
 
 RemoteParticipantWrap::~RemoteParticipantWrap() {
-    // Detach observer from track first to stop new callbacks arriving
+    alive_->store(false, std::memory_order_release);
     if (participant_) {
         participant_->setObserver(std::weak_ptr<twilio::video::RemoteParticipantObserver>());
     }

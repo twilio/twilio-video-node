@@ -10,6 +10,7 @@
 
 #include <twilio/video/remote_participant_observer.h>
 #include "../common/async_context.h"
+#include <memory>
 
 namespace twilio_video_node {
 
@@ -42,6 +43,7 @@ private:
     std::shared_ptr<twilio::video::RemoteParticipant> participant_;
     std::shared_ptr<RemoteParticipantObserverImpl> observer_;
     std::unique_ptr<AsyncContext> asyncContext_;
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 };
 
 }
