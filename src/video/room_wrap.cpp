@@ -201,6 +201,7 @@ RoomWrap::RoomWrap(const Napi::CallbackInfo& info)
 }
 
 RoomWrap::~RoomWrap() {
+    // 1. Cancel pending stats observers (they hold asyncContext_ refs)
     {
         std::lock_guard<std::mutex> lock(statsObserversMutex_);
         for (auto& obs : pendingStatsObservers_) {
@@ -210,13 +211,17 @@ RoomWrap::~RoomWrap() {
         pendingStatsObservers_.clear();
     }
 
-    // Order: disconnect first (may trigger callbacks), then close observer, then close async
-    if (room_) {
-        room_->disconnect();
-    }
+    // 2. Close observer BEFORE disconnect to prevent callbacks during teardown
     if (observer_) {
         observer_->close();
     }
+
+    // 3. Now safe to disconnect — observer is closed so callbacks are no-ops
+    if (room_) {
+        room_->disconnect();
+    }
+
+    // 4. Clean up JS references
     if (asyncContext_) {
         asyncContext_->close();
     }
@@ -349,6 +354,11 @@ Napi::Value RoomWrap::Disconnect(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
+    // Close observer before disconnect to prevent callbacks during teardown
+    if (observer_) {
+        observer_->close();
+    }
+
     if (room_) {
         room_->disconnect();
     }

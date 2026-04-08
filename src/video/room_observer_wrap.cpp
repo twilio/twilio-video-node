@@ -24,6 +24,7 @@ void RoomObserverWrap::close() {
     }
     if (asyncContext_) {
         asyncContext_->close();
+        asyncContext_.reset();
     }
 }
 
