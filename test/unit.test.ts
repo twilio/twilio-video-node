@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getVersion,
   setLogLevel,
+  connect,
   createLocalVideoTrack,
   createLocalAudioTrack,
   createLocalDataTrack,
@@ -26,6 +27,29 @@ describe('Log Level', () => {
 
   it('setLogLevel rejects invalid level', () => {
     expect(() => setLogLevel('invalid' as any)).toThrow(/Invalid log level/);
+  });
+});
+
+describe('connect() validation', () => {
+  it('rejects with empty token', async () => {
+    await expect(connect('')).rejects.toThrow(/token/i);
+  });
+
+  it('rejects with non-string token', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect(123)).rejects.toThrow(/token/i);
+  });
+});
+
+describe('createLocalVideoTrack validation', () => {
+  it('throws on empty string name', () => {
+    expect(() => createLocalVideoTrack('')).toThrow(/name/i);
+  });
+});
+
+describe('createLocalAudioTrack validation', () => {
+  it('throws on empty string name', () => {
+    expect(() => createLocalAudioTrack('')).toThrow(/name/i);
   });
 });
 

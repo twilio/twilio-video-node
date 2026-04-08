@@ -128,6 +128,9 @@ function getDefaultMediaFactory(): NativeMediaFactory {
 // --- Public API ---
 
 export function connect(token: string, options: ConnectOptions = {}): Promise<Room> {
+  if (!token || typeof token !== 'string') {
+    return Promise.reject(new TypeError('token must be a non-empty string'));
+  }
   const internalOpts: Record<string, unknown> = { ...options };
 
   // Pre-populate platformInfo so C++ just reads it
@@ -161,10 +164,16 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
 }
 
 export function createLocalVideoTrack(name?: string): LocalVideoTrack {
+  if (name !== undefined && (typeof name !== 'string' || name.length === 0)) {
+    throw new TypeError('name must be a non-empty string');
+  }
   return getDefaultMediaFactory().createVideoTrack(name ? { name } : {});
 }
 
 export function createLocalAudioTrack(name?: string): LocalAudioTrack {
+  if (name !== undefined && (typeof name !== 'string' || name.length === 0)) {
+    throw new TypeError('name must be a non-empty string');
+  }
   return getDefaultMediaFactory().createAudioTrack(name ? { name } : {});
 }
 
