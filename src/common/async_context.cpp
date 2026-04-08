@@ -16,22 +16,21 @@ AsyncContext::~AsyncContext() {
 }
 
 void AsyncContext::dispatch(std::function<void(Napi::Env)> fn) {
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire)) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_.load(std::memory_order_acquire)) return;
 
-        // Drop oldest items when queue exceeds max depth (backpressure)
-        // maxQueueDepth_ == 0 means unlimited (no dropping)
-        while (maxQueueDepth_ > 0 && queue_.size() >= maxQueueDepth_) {
-            queue_.pop();
-        }
-        queue_.push(std::move(fn));
+    // Drop oldest items when queue exceeds max depth (backpressure)
+    // maxQueueDepth_ == 0 means unlimited (no dropping)
+    while (maxQueueDepth_ > 0 && queue_.size() >= maxQueueDepth_) {
+        queue_.pop();
     }
-    // async_ may be null if close() raced with this call
+    queue_.push(std::move(fn));
+
     if (async_) uv_async_send(async_);
 }
 
 void AsyncContext::close() {
+    uv_async_t* handle = nullptr;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_.load(std::memory_order_acquire)) return;
@@ -40,13 +39,16 @@ void AsyncContext::close() {
         // Drain pending items so lambdas capturing shared_ptrs are freed
         std::queue<std::function<void(Napi::Env)>> empty;
         std::swap(queue_, empty);
+
+        handle = async_;
+        async_ = nullptr;
     }
-    // Null out data before uv_close so any in-flight onAsync sees null
-    async_->data = nullptr;
-    uv_close(reinterpret_cast<uv_handle_t*>(async_), [](uv_handle_t* h) {
-        delete reinterpret_cast<uv_async_t*>(h);
-    });
-    async_ = nullptr;
+    if (handle) {
+        handle->data = nullptr;
+        uv_close(reinterpret_cast<uv_handle_t*>(handle), [](uv_handle_t* h) {
+            delete reinterpret_cast<uv_async_t*>(h);
+        });
+    }
 }
 
 void AsyncContext::onAsync(uv_async_t* handle) {
