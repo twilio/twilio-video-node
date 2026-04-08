@@ -129,6 +129,9 @@ Napi::Value LocalVideoTrackWrap::PushFrame(const Napi::CallbackInfo& info) {
 
     if (videoSource_) {
         videoSource_->PushFrame(i420Buffer, timestampUs);
+    } else {
+        Napi::Error::New(env, "Video source not available — track may not be published").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
     return env.Undefined();
