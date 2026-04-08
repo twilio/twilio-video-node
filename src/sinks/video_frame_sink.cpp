@@ -18,6 +18,7 @@ void VideoFrameSink::close() {
     closed_ = true;
     if (asyncContext_) {
         asyncContext_->close();
+        asyncContext_.reset();
     }
     callback_.Reset();
 }
@@ -26,32 +27,36 @@ void VideoFrameSink::close() {
 void VideoFrameSink::OnFrame(const webrtc::VideoFrame& frame) {
     if (closed_) return;
 
-    auto i420Buffer = frame.video_frame_buffer()->ToI420();
-    if (!i420Buffer) return;
+    try {
+        auto i420Buffer = frame.video_frame_buffer()->ToI420();
+        if (!i420Buffer) return;
 
-    VideoFrameData frameData;
-    frameData.width = i420Buffer->width();
-    frameData.height = i420Buffer->height();
-    frameData.strideY = i420Buffer->StrideY();
-    frameData.strideU = i420Buffer->StrideU();
-    frameData.strideV = i420Buffer->StrideV();
-    frameData.timestampUs = frame.timestamp_us();
-    frameData.rotation = frame.rotation();
+        VideoFrameData frameData;
+        frameData.width = i420Buffer->width();
+        frameData.height = i420Buffer->height();
+        frameData.strideY = i420Buffer->StrideY();
+        frameData.strideU = i420Buffer->StrideU();
+        frameData.strideV = i420Buffer->StrideV();
+        frameData.timestampUs = frame.timestamp_us();
+        frameData.rotation = frame.rotation();
 
-    int ySize = frameData.strideY * frameData.height;
-    int uvHeight = (frameData.height + 1) / 2;
-    int uSize = frameData.strideU * uvHeight;
-    int vSize = frameData.strideV * uvHeight;
+        int ySize = frameData.strideY * frameData.height;
+        int uvHeight = (frameData.height + 1) / 2;
+        int uSize = frameData.strideU * uvHeight;
+        int vSize = frameData.strideV * uvHeight;
 
-    frameData.yPlane.resize(ySize);
-    frameData.uPlane.resize(uSize);
-    frameData.vPlane.resize(vSize);
+        frameData.yPlane.resize(ySize);
+        frameData.uPlane.resize(uSize);
+        frameData.vPlane.resize(vSize);
 
-    memcpy(frameData.yPlane.data(), i420Buffer->DataY(), ySize);
-    memcpy(frameData.uPlane.data(), i420Buffer->DataU(), uSize);
-    memcpy(frameData.vPlane.data(), i420Buffer->DataV(), vSize);
+        memcpy(frameData.yPlane.data(), i420Buffer->DataY(), ySize);
+        memcpy(frameData.uPlane.data(), i420Buffer->DataU(), uSize);
+        memcpy(frameData.vPlane.data(), i420Buffer->DataV(), vSize);
 
-    deliverFrame(std::move(frameData));
+        deliverFrame(std::move(frameData));
+    } catch (...) {
+        // Swallow exceptions on WebRTC callback thread to prevent crash
+    }
 }
 
 void VideoFrameSink::deliverFrame(VideoFrameData frameData) {

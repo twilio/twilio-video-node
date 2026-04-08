@@ -19,6 +19,7 @@ void AudioFrameSink::close() {
     closed_ = true;
     if (asyncContext_) {
         asyncContext_->close();
+        asyncContext_.reset();
     }
     callback_.Reset();
 }
@@ -30,27 +31,31 @@ void AudioFrameSink::OnData(const void* audio_data,
                             size_t number_of_frames) {
     if (closed_) return;
 
-    AudioFrameData frameData;
-    frameData.bitsPerSample = bits_per_sample;
-    frameData.sampleRate = sample_rate;
-    frameData.numberOfChannels = number_of_channels;
-    frameData.numberOfFrames = number_of_frames;
+    try {
+        AudioFrameData frameData;
+        frameData.bitsPerSample = bits_per_sample;
+        frameData.sampleRate = sample_rate;
+        frameData.numberOfChannels = number_of_channels;
+        frameData.numberOfFrames = number_of_frames;
 
-    auto now = std::chrono::high_resolution_clock::now();
-    frameData.timestampUs = std::chrono::duration_cast<std::chrono::microseconds>(
-        now.time_since_epoch()).count();
+        auto now = std::chrono::high_resolution_clock::now();
+        frameData.timestampUs = std::chrono::duration_cast<std::chrono::microseconds>(
+            now.time_since_epoch()).count();
 
-    size_t sampleCount = number_of_frames * number_of_channels;
-    frameData.samples.resize(sampleCount);
+        size_t sampleCount = number_of_frames * number_of_channels;
+        frameData.samples.resize(sampleCount);
 
-    if (bits_per_sample == 16) {
-        const int16_t* src = static_cast<const int16_t*>(audio_data);
-        memcpy(frameData.samples.data(), src, sampleCount * sizeof(int16_t));
-    } else {
-        memset(frameData.samples.data(), 0, sampleCount * sizeof(int16_t));
+        if (bits_per_sample == 16) {
+            const int16_t* src = static_cast<const int16_t*>(audio_data);
+            memcpy(frameData.samples.data(), src, sampleCount * sizeof(int16_t));
+        } else {
+            memset(frameData.samples.data(), 0, sampleCount * sizeof(int16_t));
+        }
+
+        deliverFrame(std::move(frameData));
+    } catch (...) {
+        // Swallow exceptions on WebRTC callback thread to prevent crash
     }
-
-    deliverFrame(std::move(frameData));
 }
 
 void AudioFrameSink::deliverFrame(AudioFrameData frameData) {
