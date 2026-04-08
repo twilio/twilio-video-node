@@ -119,4 +119,10 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   setEncodingParameters(params?: EncodingParameters): void {
     this._native.setEncodingParameters(params);
   }
+
+  dispose(): void {
+    this._native.setEventCallback(null!);
+    this._publishedTracks.clear();
+    this.removeAllListeners();
+  }
 }

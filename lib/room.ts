@@ -79,6 +79,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
         }
         this.emit(event, wrapped);
         if (event === 'participantDisconnected' && wrapped) {
+          wrapped.removeAllListeners();
           this._remoteParticipantCache.delete(wrapped.sid);
         }
       } else {
@@ -163,9 +164,16 @@ export class Room extends TypedEventEmitter<RoomEvents> {
   }
 
   dispose(): void {
-    this._native.dispose();
-    this._localParticipant = null;
+    this._native.setEventCallback(null!);
+    if (this._localParticipant) {
+      this._localParticipant.dispose();
+      this._localParticipant = null;
+    }
+    for (const participant of this._remoteParticipantCache.values()) {
+      participant.dispose();
+    }
     this._remoteParticipantCache.clear();
+    this._native.dispose();
     this.removeAllListeners();
   }
 

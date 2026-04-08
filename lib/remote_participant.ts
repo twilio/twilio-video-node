@@ -88,4 +88,9 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
     for (const [sid, pub] of this.dataTracks) map.set(sid, pub);
     return map;
   }
+
+  dispose(): void {
+    this._native.setEventCallback(null!);
+    this.removeAllListeners();
+  }
 }
