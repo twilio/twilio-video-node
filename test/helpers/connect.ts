@@ -35,9 +35,12 @@ async function connectToRoom(
     room,
     cleanup() {
       return new Promise<void>(resolve => {
-        room.on('disconnected', () => resolve());
-        room.disconnect();
-        setTimeout(resolve, 3000);
+        const fallback = setTimeout(resolve, 3000);
+        room.once('disconnected', () => {
+          clearTimeout(fallback);
+          resolve();
+        });
+        room.dispose();
       });
     },
   };

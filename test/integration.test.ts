@@ -20,11 +20,14 @@ import {
 } from '../dist/index.mjs';
 import type { EventEmitter } from 'node:events';
 
-const TRACK_SUBSCRIBE_TIMEOUT = 15_000;
-const MEDIA_FLOW_TIMEOUT = 10_000;
-// SDP renegotiation after publishTrack + trackSubscribed needs time to complete
-// before the encoder sink attaches and frames actually flow
-const NEGOTIATION_SETTLE_MS = 3_000;
+const TIMEOUT = {
+  subscribe: 15_000,
+  mediaFlow: 10_000,
+  // SDP renegotiation after publishTrack + trackSubscribed needs time to complete
+  // before the encoder sink attaches and frames actually flow
+  negotiate: 3_000,
+  connect: 15_000,
+} as const;
 
 function uniqueRoom(): string {
   return `test-${crypto.randomUUID()}`;
@@ -37,10 +40,12 @@ function waitForEvent<T = unknown>(
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`Timeout waiting for '${event}'`)), timeout);
-    emitter.on(event, (arg: T) => {
+    const handler = (arg: T) => {
       clearTimeout(timer);
+      emitter.removeListener(event, handler);
       resolve(arg);
-    });
+    };
+    emitter.on(event, handler);
   });
 }
 
@@ -54,7 +59,7 @@ async function connectPair(roomName: string, opts = {}) {
   const aSeesBPromise = waitForEvent<RemoteParticipant>(
     connA.room,
     'participantConnected',
-    TRACK_SUBSCRIBE_TIMEOUT,
+    TIMEOUT.subscribe,
   );
   const connB = await connectToRoom('bob', roomName, opts);
 
@@ -65,7 +70,7 @@ async function connectPair(roomName: string, opts = {}) {
     remoteA = await waitForEvent<RemoteParticipant>(
       connB.room,
       'participantConnected',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
   }
 
@@ -116,13 +121,13 @@ describe('Video publish + receive', () => {
     const trackPromise = waitForEvent<RemoteVideoTrack>(
       remoteA,
       'trackSubscribed',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
     connA.room.localParticipant.publishTrack(videoTrack);
     const remoteTrack = await trackPromise;
 
     // Wait for peer connection renegotiation so encoder sink attaches
-    await sleep(NEGOTIATION_SETTLE_MS);
+    await sleep(TIMEOUT.negotiate);
 
     // Register frame callback, then start pushing
     const receivedFrames: {
@@ -134,7 +139,7 @@ describe('Video publish + receive', () => {
     const framesPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Only received ${receivedFrames.length} frames`));
-      }, MEDIA_FLOW_TIMEOUT);
+      }, TIMEOUT.mediaFlow);
 
       remoteTrack.onFrame((yBuf, uBuf, vBuf, metadata) => {
         receivedFrames.push({ yBuf, uBuf, vBuf, metadata });
@@ -178,18 +183,18 @@ describe('Audio publish + receive', () => {
     const trackPromise = waitForEvent<RemoteAudioTrack>(
       remoteA,
       'trackSubscribed',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
     connA.room.localParticipant.publishTrack(audioTrack);
     const remoteTrack = await trackPromise;
 
-    await sleep(NEGOTIATION_SETTLE_MS);
+    await sleep(TIMEOUT.negotiate);
 
     const receivedAudio: { samples: Buffer; metadata: AudioFrameMetadata }[] = [];
     const audioPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Only received ${receivedAudio.length} audio callbacks`));
-      }, MEDIA_FLOW_TIMEOUT);
+      }, TIMEOUT.mediaFlow);
 
       remoteTrack.onData((samples, metadata) => {
         receivedAudio.push({ samples, metadata });
@@ -238,7 +243,7 @@ describe('Multiple tracks', () => {
     const tracksPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Only received ${tracks.length}/2 trackSubscribed events`));
-      }, TRACK_SUBSCRIBE_TIMEOUT);
+      }, TIMEOUT.subscribe);
 
       remoteA.on('trackSubscribed', (track: RemoteTrack) => {
         tracks.push(track);
@@ -274,18 +279,18 @@ describe('Data track send/receive', () => {
     const trackPromise = waitForEvent<RemoteDataTrack>(
       remoteA,
       'trackSubscribed',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
     connA.room.localParticipant.publishTrack(dataTrack);
     const remoteDataTrack = await trackPromise;
 
-    await sleep(NEGOTIATION_SETTLE_MS);
+    await sleep(TIMEOUT.negotiate);
 
     const received: (string | Buffer)[] = [];
     const messagesPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Only received ${received.length}/2 messages`));
-      }, MEDIA_FLOW_TIMEOUT);
+      }, TIMEOUT.mediaFlow);
 
       remoteDataTrack.onMessage((data: string | Buffer) => {
         received.push(data);
@@ -322,7 +327,7 @@ describe('participantDisconnected', () => {
     const disconnectPromise = waitForEvent<RemoteParticipant>(
       connA.room,
       'participantDisconnected',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
     connB.room.disconnect();
     const participant = await disconnectPromise;
@@ -345,7 +350,7 @@ describe('LocalParticipant observer events', () => {
     const publishedPromise = waitForEvent<{ trackName: string; trackSid: string }>(
       connA.room.localParticipant,
       'trackPublished',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
 
     connA.room.localParticipant.publishTrack(videoTrack);
@@ -370,7 +375,7 @@ describe('RemoteParticipant trackPublished/trackUnpublished', () => {
     const publishedPromise = waitForEvent<{ trackName: string; trackSid: string }>(
       remoteA,
       'trackPublished',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
     connA.room.localParticipant.publishTrack(videoTrack);
     const publication = await publishedPromise;
@@ -379,12 +384,12 @@ describe('RemoteParticipant trackPublished/trackUnpublished', () => {
     expect(publication.trackSid).toBeTruthy();
 
     // Wait for subscription to complete before unpublishing
-    await waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
+    await waitForEvent(remoteA, 'trackSubscribed', TIMEOUT.subscribe);
 
     const unpublishedPromise = waitForEvent<{ trackName: string }>(
       remoteA,
       'trackUnpublished',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
     connA.room.localParticipant.unpublishTrack(videoTrack);
     const unpubResult = await unpublishedPromise;
@@ -404,7 +409,7 @@ describe('Track publish/unpublish lifecycle', () => {
 
     const { connA, connB, remoteA } = await connectPair(roomName);
 
-    const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
+    const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TIMEOUT.subscribe);
     connA.room.localParticipant.publishTrack(videoTrack);
     await trackPromise;
 
@@ -413,7 +418,7 @@ describe('Track publish/unpublish lifecycle', () => {
       expect(pubs.size).toBeGreaterThanOrEqual(1);
       expect([...pubs.values()].some(p => p.trackName === 'lifecycle-cam')).toBe(true);
 
-      const unsubPromise = waitForEvent(remoteA, 'trackUnsubscribed', TRACK_SUBSCRIBE_TIMEOUT);
+      const unsubPromise = waitForEvent(remoteA, 'trackUnsubscribed', TIMEOUT.subscribe);
       connA.room.localParticipant.unpublishTrack(videoTrack);
       await unsubPromise;
 
@@ -457,7 +462,7 @@ describe('networkQualityLevel', () => {
       const level = await waitForEvent<number>(
         connA.room.localParticipant,
         'networkQualityLevelChanged',
-        TRACK_SUBSCRIBE_TIMEOUT,
+        TIMEOUT.subscribe,
       );
 
       expect(typeof level).toBe('number');
@@ -482,7 +487,7 @@ describe('dominantSpeaker', () => {
     connA.room.localParticipant.publishTrack(audioTrack);
 
     // Push audio so Alice becomes dominant speaker
-    await sleep(NEGOTIATION_SETTLE_MS);
+    await sleep(TIMEOUT.negotiate);
     const pushInterval = setInterval(() => {
       const samples = generateAudioSamples(480, 48000, 1);
       audioTrack.pushSamples(samples);
@@ -492,7 +497,7 @@ describe('dominantSpeaker', () => {
       const speaker = await waitForEvent<RemoteParticipant>(
         connB.room,
         'dominantSpeakerChanged',
-        TRACK_SUBSCRIBE_TIMEOUT,
+        TIMEOUT.subscribe,
       );
 
       expect(speaker).toBeTruthy();
@@ -515,7 +520,7 @@ describe('LocalTrackPublication', () => {
     const publishedPromise = waitForEvent<{ trackName: string; trackSid: string }>(
       connA.room.localParticipant,
       'trackPublished',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
     connA.room.localParticipant.publishTrack(videoTrack);
     const published = await publishedPromise;
@@ -549,7 +554,7 @@ describe('publishTracks / unpublishTracks', () => {
     const publishedPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(
         () => reject(new Error(`Only ${publishedEvents.length}/2 trackPublished events`)),
-        TRACK_SUBSCRIBE_TIMEOUT,
+        TIMEOUT.subscribe,
       );
       connA.room.localParticipant.on('trackPublished', (pub: { trackSid: string }) => {
         publishedEvents.push(pub);
@@ -572,7 +577,7 @@ describe('publishTracks / unpublishTracks', () => {
       const unsubPromise = new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(
           () => reject(new Error(`Only ${unsubEvents.length}/2 trackUnsubscribed events`)),
-          TRACK_SUBSCRIBE_TIMEOUT,
+          TIMEOUT.subscribe,
         );
         remoteA.on('trackUnsubscribed', (track: unknown) => {
           unsubEvents.push(track);
@@ -608,7 +613,7 @@ describe('Room-level track event bubbling', () => {
     }>((resolve, reject) => {
       const timeout = setTimeout(
         () => reject(new Error('Timeout waiting for room trackSubscribed')),
-        TRACK_SUBSCRIBE_TIMEOUT,
+        TIMEOUT.subscribe,
       );
       connB.room.on('trackSubscribed', (track, participant) => {
         clearTimeout(timeout);
@@ -644,12 +649,12 @@ describe('RemoteTrackPublication', () => {
     const publishedPromise = waitForEvent<LocalVideoTrackPublication>(
       connA.room.localParticipant,
       'trackPublished',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
     const subscribedPromise = waitForEvent<RemoteVideoTrack>(
       remoteA,
       'trackSubscribed',
-      TRACK_SUBSCRIBE_TIMEOUT,
+      TIMEOUT.subscribe,
     );
 
     connA.room.localParticipant.publishTrack(videoTrack);
@@ -680,7 +685,7 @@ describe('Room.getStats()', () => {
     const tracksPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(
         () => reject(new Error(`Only ${tracksSubscribed.length}/2 trackSubscribed events`)),
-        TRACK_SUBSCRIBE_TIMEOUT,
+        TIMEOUT.subscribe,
       );
       remoteA.on('trackSubscribed', (track: unknown) => {
         tracksSubscribed.push(track);
@@ -695,7 +700,7 @@ describe('Room.getStats()', () => {
     connA.room.localParticipant.publishTrack(audioTrack);
     await tracksPromise;
 
-    await sleep(NEGOTIATION_SETTLE_MS);
+    await sleep(TIMEOUT.negotiate);
 
     // Push media so stats accumulate
     const pushInterval = setInterval(() => {
@@ -758,11 +763,11 @@ describe('Room.getStats()', () => {
 
     const { connA, connB, remoteA } = await connectPair(roomName);
 
-    const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TRACK_SUBSCRIBE_TIMEOUT);
+    const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TIMEOUT.subscribe);
     connA.room.localParticipant.publishTrack(videoTrack);
     await trackPromise;
 
-    await sleep(NEGOTIATION_SETTLE_MS);
+    await sleep(TIMEOUT.negotiate);
 
     const pushInterval = setInterval(() => {
       const { y, u, v } = generateI420Frame(640, 480);
