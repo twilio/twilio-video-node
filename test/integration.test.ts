@@ -14,6 +14,7 @@ import type {
   StatsReport,
 } from '../dist/index.mjs';
 import {
+  connect,
   createLocalVideoTrack,
   createLocalAudioTrack,
   createLocalDataTrack,
@@ -724,7 +725,7 @@ describe('Room.getStats()', () => {
       expect(Array.isArray(report.remoteAudioTrackStats)).toBe(true);
       expect(Array.isArray(report.remoteVideoTrackStats)).toBe(true);
 
-      // Verify local video stats shape
+      // Verify local video stats shape + accuracy
       if (report.localVideoTrackStats.length > 0) {
         const vs = report.localVideoTrackStats[0];
         expect(typeof vs.codec).toBe('string');
@@ -742,14 +743,17 @@ describe('Room.getStats()', () => {
         expect(typeof vs.captureFrameRate).toBe('number');
         expect(typeof vs.frameRate).toBe('number');
         expect(typeof vs.framesEncoded).toBe('number');
+        expect(vs.bytesSent).toBeGreaterThan(0);
+        expect(vs.packetsSent).toBeGreaterThan(0);
       }
 
-      // Verify local audio stats shape
+      // Verify local audio stats shape + accuracy
       if (report.localAudioTrackStats.length > 0) {
         const as = report.localAudioTrackStats[0];
         expect(typeof as.audioLevel).toBe('number');
         expect(typeof as.jitter).toBe('number');
         expect(typeof as.bytesSent).toBe('number');
+        expect(as.bytesSent).toBeGreaterThan(0);
       }
     } finally {
       clearInterval(pushInterval);
@@ -787,6 +791,8 @@ describe('Room.getStats()', () => {
         expect(typeof rvs.packetsReceived).toBe('number');
         expect(typeof rvs.dimensions.width).toBe('number');
         expect(typeof rvs.frameRate).toBe('number');
+        expect(rvs.bytesReceived).toBeGreaterThan(0);
+        expect(rvs.packetsReceived).toBeGreaterThan(0);
       }
     } finally {
       clearInterval(pushInterval);
@@ -819,5 +825,11 @@ describe('Room.getStats()', () => {
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
+  });
+});
+
+describe('Error paths', () => {
+  it('connect rejects with invalid token', async () => {
+    await expect(connect('invalid-token', { name: uniqueRoom() })).rejects.toThrow();
   });
 });
