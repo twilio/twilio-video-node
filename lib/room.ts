@@ -74,12 +74,9 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (PARTICIPANT_EVENTS.has(event)) {
         const wrapped = data ? this._wrapRemoteParticipant(data as NativeRemoteParticipant) : null;
-        if (event === 'participantConnected' && wrapped) {
-          this._bubbleTrackEvents(wrapped);
-        }
         this.emit(event, wrapped);
         if (event === 'participantDisconnected' && wrapped) {
-          wrapped.removeAllListeners();
+          wrapped.dispose();
           this._remoteParticipantCache.delete(wrapped.sid);
         }
       } else {
@@ -164,7 +161,6 @@ export class Room extends TypedEventEmitter<RoomEvents> {
   }
 
   dispose(): void {
-    this._native.setEventCallback(null!);
     if (this._localParticipant) {
       this._localParticipant.dispose();
       this._localParticipant = null;

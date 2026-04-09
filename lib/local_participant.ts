@@ -121,7 +121,6 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   }
 
   dispose(): void {
-    this._native.setEventCallback(null!);
     this._publishedTracks.clear();
     this.removeAllListeners();
   }

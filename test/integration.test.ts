@@ -27,7 +27,6 @@ const TIMEOUT = {
   // SDP renegotiation after publishTrack + trackSubscribed needs time to complete
   // before the encoder sink attaches and frames actually flow
   negotiate: 3_000,
-  connect: 15_000,
 } as const;
 
 function uniqueRoom(): string {

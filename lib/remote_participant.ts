@@ -90,7 +90,6 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
   }
 
   dispose(): void {
-    this._native.setEventCallback(null!);
     this.removeAllListeners();
   }
 }
