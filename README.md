@@ -5,7 +5,7 @@ Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access
 ## Installation
 
 ```bash
-npm install git+ssh://git@code.hq.twilio.com/client/twilio-video-node.git
+npm install git+ssh://git@github.com/twilio/twilio-video-node.git
 ```
 
 A prebuilt native binary is downloaded automatically during `npm install` via the [GitHub CLI](https://cli.github.com/) (`gh`). No compilation required.
@@ -14,7 +14,7 @@ A prebuilt native binary is downloaded automatically during `npm install` via th
 
 - Node.js >= 24
 - macOS x64 or Linux x64
-- [`gh` CLI](https://cli.github.com/) installed and authenticated (`gh auth login --hostname code.hq.twilio.com`)
+- [`gh` CLI](https://cli.github.com/) installed and authenticated (`gh auth login`)
 
 > **Apple Silicon:** The native binary is x64-only. Install Rosetta (`softwareupdate --install-rosetta`) and run Node under x64: `arch -x86_64 node ...`
 
@@ -235,25 +235,6 @@ Audio is delivered as a single `Buffer` of interleaved 16-bit signed little-endi
 - **Linux** x64
 - **Node.js** >= 24.0.0
 
-## Contributing
-
-### Building from Source
-
-```bash
-# Prerequisites: cmake, C++17 compiler, rtc-cpp built at ../rtc-cpp/
-TWILIO_VIDEO_NODE_SKIP_DOWNLOAD=1 npm install
-npm run build           # Release
-npm run build:debug     # Debug with symbols
-npm run rebuild         # Clean + build
-```
-
-## Environment Variables
-
-| Variable                          | Description                                                       |
-| --------------------------------- | ----------------------------------------------------------------- |
-| `TWILIO_VIDEO_NODE_SKIP_DOWNLOAD` | Set to `1` to skip prebuilt binary download during `npm install`. |
-| `TWILIO_ACCESS_TOKEN`             | Twilio access token, used by the examples.                        |
-
 ## Examples
 
 See the [`examples/`](examples/) directory:
@@ -269,14 +250,6 @@ See the [`examples/`](examples/) directory:
 TWILIO_ACCESS_TOKEN=xxx node examples/virtual_camera.js [room-name]
 ```
 
-## Testing
-
-```bash
-npm test                # Run all tests
-npm run test:unit       # Unit tests only
-npm run test:integration # Integration tests (requires TWILIO_ACCESS_TOKEN)
-```
-
 ## License
 
-See [LICENSE.md](https://code.hq.twilio.com/client/twilio-video-node/blob/master/LICENSE.md).
+See [LICENSE.md](https://github.com/twilio/twilio-video-node/blob/main/LICENSE.md).
