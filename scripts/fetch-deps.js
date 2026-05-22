@@ -115,12 +115,12 @@ function main() {
       process.exit(1);
     }
 
-    const compilerDirs = fs.readdirSync(compilerRoot, { withFileTypes: true })
+    const compilerDirs = fs.readdirSync(archLibDir, { withFileTypes: true })
       .filter(entry => entry.isDirectory())
-      .map(entry => path.join(compilerRoot, entry.name));
+      .map(entry => path.join(archLibDir, entry.name));
 
     if (compilerDirs.length === 0) {
-      console.error(`[fetch-deps] Extracted archive is missing compiler directories under ${compilerRoot}`);
+      console.error(`[fetch-deps] Extracted archive is missing compiler directories under ${archLibDir}`);
       process.exit(1);
     }
 
