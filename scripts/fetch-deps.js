@@ -10,8 +10,7 @@ const ROOT = path.join(__dirname, '..');
 const DEPS_DIR = path.join(ROOT, 'deps');
 
 const platformMap = { darwin: 'darwin', linux: 'linux' };
-const archMap = { x64: 'x86_64', arm64: 'aarch64' };
-
+const archMap = { x64: 'x86_64', arm64: 'arm64' };
 const platform = platformMap[process.platform];
 const arch = archMap[process.arch];
 
@@ -20,6 +19,7 @@ if (!arch) {
   process.exit(1);
 }
 const buildType = process.env.RTC_CPP_BUILD_TYPE || 'release';
+const targetArch = process.env.RTC_CPP_ARCH || archMap[process.arch] || process.arch;
 
 if (!platform) {
   console.error(`[fetch-deps] Unsupported platform: ${process.platform}`);
@@ -112,6 +112,28 @@ function main() {
       missing.forEach(p => console.error(`  ${p}`));
       console.error('');
       console.error('  Check the twilio-video artifact layout from rtc-cpp.');
+      process.exit(1);
+    }
+
+    const compilerDirs = fs.readdirSync(compilerRoot, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(compilerRoot, entry.name));
+
+    if (compilerDirs.length === 0) {
+      console.error(`[fetch-deps] Extracted archive is missing compiler directories under ${compilerRoot}`);
+      process.exit(1);
+    }
+
+    const libNames = ['libtwilio-video.a', 'libwebrtc.a', 'libjsoncpp.a'];
+    const libDir = compilerDirs
+      .map(compilerDir => path.join(compilerDir, buildType))
+      .find(candidate => libNames.every(lib => fs.existsSync(path.join(candidate, lib))));
+
+    if (!libDir) {
+      console.error(`[fetch-deps] Extracted archive is missing required ${buildType} libraries for ${targetArch}:`);
+      compilerDirs.forEach(compilerDir => console.error(`  ${path.join(compilerDir, buildType)}`));
+      console.error('');
+      console.error(`  Expected: ${libNames.join(', ')}`);
       process.exit(1);
     }
 
