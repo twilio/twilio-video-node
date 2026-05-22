@@ -1,19 +1,81 @@
-export interface VideoFrameMetadata {
+export interface I420Plane {
+  data: Buffer;
+  stride: number;
   width: number;
   height: number;
-  strideY: number;
-  strideU: number;
-  strideV: number;
-  timestampUs: number;
-  rotation: 0 | 90 | 180 | 270;
 }
 
-export interface AudioFrameMetadata {
-  bitsPerSample: number;
-  sampleRate: number;
-  numberOfChannels: number;
-  numberOfFrames: number;
-  timestampUs: number;
+export interface VideoFrameInput {
+  width: number;
+  height: number;
+  y: Buffer;
+  u: Buffer;
+  v: Buffer;
+  yStride: number;
+  uStride: number;
+  vStride: number;
+  timestampNs: bigint;
+  frameId?: number;
+  rotation?: 0 | 90 | 180 | 270;
+}
+
+export interface VideoFrame {
+  format: 'I420';
+  width: number;
+  height: number;
+  y: I420Plane;
+  u: I420Plane;
+  v: I420Plane;
+  timestampNs: bigint;
+  captureTimestampNs?: bigint;
+  rtpTimestamp?: number;
+  frameId: number;
+  isKeyFrame?: boolean;
+  rotation?: 0 | 90 | 180 | 270;
+}
+
+export interface AudioFrameInput {
+  pcm: Buffer;
+  frames: number;
+  timestampNs: bigint;
+  frameId?: number;
+}
+
+export interface AudioFrame {
+  format: 'PCM_S16LE';
+  sampleRate: 48000;
+  channels: 1;
+  frames: number;
+  pcm: Buffer;
+  timestampNs: bigint;
+  captureTimestampNs?: bigint;
+  rtpTimestamp?: number;
+  frameId: number;
+}
+
+export interface RawVideoSourceOptions {
+  type: 'raw';
+  format: 'I420';
+  width: number;
+  height: number;
+  fps?: number;
+}
+
+export interface RawAudioSourceOptions {
+  type: 'raw';
+  format: 'PCM_S16LE';
+  sampleRate: 48000;
+  channels: 1;
+}
+
+export interface CreateLocalVideoTrackOptions {
+  name?: string;
+  source?: RawVideoSourceOptions;
+}
+
+export interface CreateLocalAudioTrackOptions {
+  name?: string;
+  source?: RawAudioSourceOptions;
 }
 
 export interface TwilioError {
@@ -73,21 +135,14 @@ export interface LocalVideoTrack {
   readonly name: string;
   readonly kind: 'video';
   enabled: boolean;
-  pushFrame(
-    yPlane: Buffer,
-    uPlane: Buffer,
-    vPlane: Buffer,
-    width: number,
-    height: number,
-    timestampUs?: number,
-  ): void;
+  write(frame: VideoFrameInput): boolean;
 }
 
 export interface LocalAudioTrack {
   readonly name: string;
   readonly kind: 'audio';
   enabled: boolean;
-  pushSamples(samples: Buffer): void;
+  write(frame: AudioFrameInput): boolean;
   clearBuffer(): void;
 }
 
@@ -114,14 +169,7 @@ export interface RemoteVideoTrack {
   readonly sid: string;
   readonly enabled: boolean;
   readonly isSwitchedOff: boolean;
-  onFrame(
-    callback: (
-      yPlane: Buffer,
-      uPlane: Buffer,
-      vPlane: Buffer,
-      metadata: VideoFrameMetadata,
-    ) => void,
-  ): void;
+  onFrame(callback: (frame: VideoFrame) => void): void;
   removeFrameCallback(): void;
 }
 
@@ -130,8 +178,8 @@ export interface RemoteAudioTrack {
   readonly kind: 'audio';
   readonly sid: string;
   readonly enabled: boolean;
-  onData(callback: (samples: Buffer, metadata: AudioFrameMetadata) => void): void;
-  removeDataCallback(): void;
+  onFrame(callback: (frame: AudioFrame) => void): void;
+  removeFrameCallback(): void;
 }
 
 export interface RemoteDataTrack {

@@ -53,7 +53,7 @@ void LocalAudioTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("name", &LocalAudioTrackWrap::GetName, nullptr),
         InstanceAccessor("kind", &LocalAudioTrackWrap::GetKind, nullptr),
         InstanceAccessor("enabled", &LocalAudioTrackWrap::IsEnabled, &LocalAudioTrackWrap::SetEnabled),
-        InstanceMethod("pushSamples", &LocalAudioTrackWrap::PushSamples),
+        InstanceMethod("write", &LocalAudioTrackWrap::Write),
         InstanceMethod("clearBuffer", &LocalAudioTrackWrap::ClearBuffer),
     });
 
@@ -106,23 +106,42 @@ void LocalAudioTrackWrap::SetEnabled(const Napi::CallbackInfo& info, const Napi:
     track_->setEnabled(value.As<Napi::Boolean>().Value());
 }
 
-Napi::Value LocalAudioTrackWrap::PushSamples(const Napi::CallbackInfo& info) {
+Napi::Value LocalAudioTrackWrap::Write(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 1 || !info[0].IsBuffer()) {
-        Napi::TypeError::New(env, "Expected 1 argument: Buffer of int16 PCM samples (48kHz mono)")
+    if (info.Length() < 1 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "write() expects an AudioFrameInput object").ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
+    Napi::Object frame = info[0].As<Napi::Object>();
+
+    if (!frame.Has("pcm") || !frame.Get("pcm").IsBuffer()) {
+        Napi::TypeError::New(env, "AudioFrameInput requires a pcm Buffer").ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
+    if (!frame.Has("frames") || !frame.Get("frames").IsNumber()) {
+        Napi::TypeError::New(env, "AudioFrameInput requires frames (number of samples per channel)")
             .ThrowAsJavaScriptException();
-        return env.Undefined();
+        return Napi::Boolean::New(env, false);
     }
 
-    auto buffer = info[0].As<Napi::Buffer<int16_t>>();
-    size_t number_of_frames = buffer.Length();
+    auto buffer = frame.Get("pcm").As<Napi::Buffer<int16_t>>();
+    size_t number_of_frames = static_cast<size_t>(
+        frame.Get("frames").As<Napi::Number>().Int64Value());
 
-    if (audioSource_) {
-        audioSource_->PushSamples(buffer.Data(), 16, 48000, 1, number_of_frames);
+    // TODO(blueprint-Q1.2): Blueprint types timestampNs as required but we don't
+    // forward it downstream yet. Accept and ignore for now; revisit once
+    // timestamp plumbing to WebRTC ADM is wired up.
+
+    if (!audioSource_) {
+        // TODO(blueprint-Q1.3): Pre-connection write — returning false for now.
+        return Napi::Boolean::New(env, false);
     }
 
-    return env.Undefined();
+    audioSource_->PushSamples(buffer.Data(), 16, 48000, 1, number_of_frames);
+    return Napi::Boolean::New(env, true);
 }
 
 Napi::Value LocalAudioTrackWrap::ClearBuffer(const Napi::CallbackInfo& info) {

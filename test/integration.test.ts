@@ -7,8 +7,8 @@ import type {
   RemoteAudioTrack,
   RemoteDataTrack,
   RemoteParticipant,
-  VideoFrameMetadata,
-  AudioFrameMetadata,
+  VideoFrame,
+  AudioFrame,
   LocalVideoTrackPublication,
   RemoteTrack,
   StatsReport,
@@ -130,19 +130,14 @@ describe('Video publish + receive', () => {
     await sleep(TIMEOUT.negotiate);
 
     // Register frame callback, then start pushing
-    const receivedFrames: {
-      yBuf: Buffer;
-      uBuf: Buffer;
-      vBuf: Buffer;
-      metadata: VideoFrameMetadata;
-    }[] = [];
+    const receivedFrames: VideoFrame[] = [];
     const framesPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Only received ${receivedFrames.length} frames`));
       }, TIMEOUT.mediaFlow);
 
-      remoteTrack.onFrame((yBuf, uBuf, vBuf, metadata) => {
-        receivedFrames.push({ yBuf, uBuf, vBuf, metadata });
+      remoteTrack.onFrame(frame => {
+        receivedFrames.push(frame);
         if (receivedFrames.length >= 3) {
           clearTimeout(timeout);
           resolve();
@@ -152,7 +147,17 @@ describe('Video publish + receive', () => {
 
     const pushInterval = setInterval(() => {
       const { y, u, v } = generateI420Frame(640, 480);
-      videoTrack.pushFrame(y, u, v, 640, 480);
+      videoTrack.write({
+        y,
+        u,
+        v,
+        width: 640,
+        height: 480,
+        yStride: 640,
+        uStride: 320,
+        vStride: 320,
+        timestampNs: process.hrtime.bigint(),
+      });
     }, 33);
 
     await framesPromise;
@@ -161,11 +166,13 @@ describe('Video publish + receive', () => {
     try {
       expect(receivedFrames.length).toBeGreaterThanOrEqual(3);
       const frame = receivedFrames[0];
-      expect(Buffer.isBuffer(frame.yBuf)).toBe(true);
-      expect(Buffer.isBuffer(frame.uBuf)).toBe(true);
-      expect(Buffer.isBuffer(frame.vBuf)).toBe(true);
-      expect(frame.metadata.width).toBeGreaterThan(0);
-      expect(frame.metadata.height).toBeGreaterThan(0);
+      expect(frame.format).toBe('I420');
+      expect(Buffer.isBuffer(frame.y.data)).toBe(true);
+      expect(Buffer.isBuffer(frame.u.data)).toBe(true);
+      expect(Buffer.isBuffer(frame.v.data)).toBe(true);
+      expect(frame.width).toBeGreaterThan(0);
+      expect(frame.height).toBeGreaterThan(0);
+      expect(typeof frame.timestampNs).toBe('bigint');
     } finally {
       remoteTrack.removeFrameCallback();
       await Promise.all([connA.cleanup(), connB.cleanup()]);
@@ -190,14 +197,14 @@ describe('Audio publish + receive', () => {
 
     await sleep(TIMEOUT.negotiate);
 
-    const receivedAudio: { samples: Buffer; metadata: AudioFrameMetadata }[] = [];
+    const receivedAudio: AudioFrame[] = [];
     const audioPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Only received ${receivedAudio.length} audio callbacks`));
       }, TIMEOUT.mediaFlow);
 
-      remoteTrack.onData((samples, metadata) => {
-        receivedAudio.push({ samples, metadata });
+      remoteTrack.onFrame(frame => {
+        receivedAudio.push(frame);
         if (receivedAudio.length >= 5) {
           clearTimeout(timeout);
           resolve();
@@ -211,7 +218,11 @@ describe('Audio publish + receive', () => {
 
     const pushInterval = setInterval(() => {
       const samples = generateAudioSamples(FRAME_SIZE, SAMPLE_RATE, CHANNELS);
-      (audioTrack as any).pushSamples(samples, SAMPLE_RATE, CHANNELS);
+      audioTrack.write({
+        pcm: samples,
+        frames: FRAME_SIZE,
+        timestampNs: process.hrtime.bigint(),
+      });
     }, 10);
 
     await audioPromise;
@@ -220,12 +231,14 @@ describe('Audio publish + receive', () => {
     try {
       expect(receivedAudio.length).toBeGreaterThanOrEqual(5);
       const frame = receivedAudio[0];
-      expect(Buffer.isBuffer(frame.samples)).toBe(true);
-      expect(frame.metadata.sampleRate).toBeGreaterThan(0);
-      expect(frame.metadata.numberOfChannels).toBeGreaterThan(0);
-      expect(frame.metadata.numberOfFrames).toBeGreaterThan(0);
+      expect(frame.format).toBe('PCM_S16LE');
+      expect(Buffer.isBuffer(frame.pcm)).toBe(true);
+      expect(frame.sampleRate).toBe(48000);
+      expect(frame.channels).toBe(1);
+      expect(frame.frames).toBeGreaterThan(0);
+      expect(typeof frame.timestampNs).toBe('bigint');
     } finally {
-      remoteTrack.removeDataCallback();
+      remoteTrack.removeFrameCallback();
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
@@ -490,7 +503,11 @@ describe('dominantSpeaker', () => {
     await sleep(TIMEOUT.negotiate);
     const pushInterval = setInterval(() => {
       const samples = generateAudioSamples(480, 48000, 1);
-      audioTrack.pushSamples(samples);
+      audioTrack.write({
+        pcm: samples,
+        frames: 480,
+        timestampNs: process.hrtime.bigint(),
+      });
     }, 10);
 
     try {
@@ -705,8 +722,22 @@ describe('Room.getStats()', () => {
     // Push media so stats accumulate
     const pushInterval = setInterval(() => {
       const { y, u, v } = generateI420Frame(640, 480);
-      videoTrack.pushFrame(y, u, v, 640, 480);
-      audioTrack.pushSamples(generateAudioSamples(480, 48000, 1));
+      videoTrack.write({
+        y,
+        u,
+        v,
+        width: 640,
+        height: 480,
+        yStride: 640,
+        uStride: 320,
+        vStride: 320,
+        timestampNs: process.hrtime.bigint(),
+      });
+      audioTrack.write({
+        pcm: generateAudioSamples(480, 48000, 1),
+        frames: 480,
+        timestampNs: process.hrtime.bigint(),
+      });
     }, 33);
 
     await sleep(3_000);
@@ -774,7 +805,17 @@ describe('Room.getStats()', () => {
 
     const pushInterval = setInterval(() => {
       const { y, u, v } = generateI420Frame(640, 480);
-      videoTrack.pushFrame(y, u, v, 640, 480);
+      videoTrack.write({
+        y,
+        u,
+        v,
+        width: 640,
+        height: 480,
+        yStride: 640,
+        uStride: 320,
+        vStride: 320,
+        timestampNs: process.hrtime.bigint(),
+      });
     }, 33);
 
     await sleep(3_000);

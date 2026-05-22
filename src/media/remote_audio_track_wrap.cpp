@@ -10,8 +10,8 @@ void RemoteAudioTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("kind", &RemoteAudioTrackWrap::GetKind, nullptr),
         InstanceAccessor("sid", &RemoteAudioTrackWrap::GetSid, nullptr),
         InstanceAccessor("enabled", &RemoteAudioTrackWrap::IsEnabled, nullptr),
-        InstanceMethod("onData", &RemoteAudioTrackWrap::OnData),
-        InstanceMethod("removeDataCallback", &RemoteAudioTrackWrap::RemoveDataCallback),
+        InstanceMethod("onFrame", &RemoteAudioTrackWrap::OnFrame),
+        InstanceMethod("removeFrameCallback", &RemoteAudioTrackWrap::RemoveFrameCallback),
     });
 
     constructor_ = Napi::Persistent(func);
@@ -62,7 +62,7 @@ Napi::Value RemoteAudioTrackWrap::IsEnabled(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(info.Env(), track_->isEnabled());
 }
 
-Napi::Value RemoteAudioTrackWrap::OnData(const Napi::CallbackInfo& info) {
+Napi::Value RemoteAudioTrackWrap::OnFrame(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     if (info.Length() < 1 || !info[0].IsFunction()) {
@@ -91,7 +91,7 @@ Napi::Value RemoteAudioTrackWrap::OnData(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
-Napi::Value RemoteAudioTrackWrap::RemoveDataCallback(const Napi::CallbackInfo& info) {
+Napi::Value RemoteAudioTrackWrap::RemoveFrameCallback(const Napi::CallbackInfo& info) {
     if (audioSink_ && track_) {
         auto webrtcTrack = track_->getWebRtcTrack();
         if (webrtcTrack) {

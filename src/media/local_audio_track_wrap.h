@@ -65,7 +65,7 @@ private:
     Napi::Value GetKind(const Napi::CallbackInfo& info);
     Napi::Value IsEnabled(const Napi::CallbackInfo& info);
     void SetEnabled(const Napi::CallbackInfo& info, const Napi::Value& value);
-    Napi::Value PushSamples(const Napi::CallbackInfo& info);
+    Napi::Value Write(const Napi::CallbackInfo& info);
     Napi::Value ClearBuffer(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::media::LocalAudioTrack> track_;

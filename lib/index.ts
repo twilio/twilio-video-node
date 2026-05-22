@@ -7,6 +7,8 @@ import type {
   NativeAddon,
   NativeMediaFactory,
   ConnectOptions,
+  CreateLocalVideoTrackOptions,
+  CreateLocalAudioTrackOptions,
   LocalVideoTrack,
   LocalAudioTrack,
   LocalDataTrack,
@@ -39,8 +41,15 @@ export type {
   IceOptions,
   IceServer,
   EncodingParameters,
-  VideoFrameMetadata,
-  AudioFrameMetadata,
+  I420Plane,
+  VideoFrameInput,
+  VideoFrame,
+  AudioFrameInput,
+  AudioFrame,
+  RawVideoSourceOptions,
+  RawAudioSourceOptions,
+  CreateLocalVideoTrackOptions,
+  CreateLocalAudioTrackOptions,
   TwilioError,
   TrackKind,
   LocalVideoTrack,
@@ -163,14 +172,20 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
   });
 }
 
-export function createLocalVideoTrack(name?: string): LocalVideoTrack {
+export function createLocalVideoTrack(
+  options?: string | CreateLocalVideoTrackOptions,
+): LocalVideoTrack {
+  const name = typeof options === 'string' ? options : options?.name;
   if (name !== undefined && (typeof name !== 'string' || name.length === 0)) {
     throw new TypeError('name must be a non-empty string');
   }
   return getDefaultMediaFactory().createVideoTrack(name ? { name } : {});
 }
 
-export function createLocalAudioTrack(name?: string): LocalAudioTrack {
+export function createLocalAudioTrack(
+  options?: string | CreateLocalAudioTrackOptions,
+): LocalAudioTrack {
+  const name = typeof options === 'string' ? options : options?.name;
   if (name !== undefined && (typeof name !== 'string' || name.length === 0)) {
     throw new TypeError('name must be a non-empty string');
   }

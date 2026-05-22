@@ -17,7 +17,9 @@ public:
     PushableVideoSource() = default;
     ~PushableVideoSource() override = default;
 
-    void PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffer, int64_t timestampUs);
+    void PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffer,
+                   int64_t timestampUs,
+                   webrtc::VideoRotation rotation);
 
     SourceState state() const override { return kLive; }
     bool remote() const override { return false; }
@@ -50,7 +52,7 @@ private:
     Napi::Value GetKind(const Napi::CallbackInfo& info);
     Napi::Value IsEnabled(const Napi::CallbackInfo& info);
     void SetEnabled(const Napi::CallbackInfo& info, const Napi::Value& value);
-    Napi::Value PushFrame(const Napi::CallbackInfo& info);
+    Napi::Value Write(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::media::LocalVideoTrack> track_;
     std::shared_ptr<twilio::media::MediaFactory> factory_;

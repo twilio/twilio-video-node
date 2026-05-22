@@ -52,13 +52,13 @@ async function main() {
     console.log('Participant connected:', participant.identity);
     let remoteFrames = 0;
     participant.on('trackSubscribed', track => {
-      if (track.onData) {
+      if (track.onFrame && track.kind === 'audio') {
         console.log('Subscribed to remote audio from', participant.identity);
-        track.onData((samples, metadata) => {
+        track.onFrame(frame => {
           remoteFrames++;
           if (remoteFrames % 100 === 0) {
             console.log(
-              `Remote audio: ${remoteFrames} callbacks, ${metadata.sampleRate}Hz ${metadata.numberOfChannels}ch ${metadata.numberOfFrames} frames`,
+              `Remote audio: ${remoteFrames} callbacks, ${frame.sampleRate}Hz ${frame.channels}ch ${frame.frames} frames`,
             );
           }
         });
@@ -84,7 +84,11 @@ function startPushingAudio(audioTrack) {
 
   setInterval(() => {
     const samples = generateSineFrame(frameIndex);
-    audioTrack.pushSamples(samples);
+    audioTrack.write({
+      pcm: samples,
+      frames: SAMPLES_PER_FRAME,
+      timestampNs: process.hrtime.bigint(),
+    });
     frameIndex++;
     if (frameIndex % 100 === 0) {
       console.log('Pushed', frameIndex, 'audio frames');

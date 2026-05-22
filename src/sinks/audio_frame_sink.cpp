@@ -37,6 +37,7 @@ void AudioFrameSink::OnData(const void* audio_data,
         frameData.sampleRate = sample_rate;
         frameData.numberOfChannels = number_of_channels;
         frameData.numberOfFrames = number_of_frames;
+        frameData.frameId = nextFrameId_.fetch_add(1);
 
         auto now = std::chrono::high_resolution_clock::now();
         frameData.timestampUs = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -66,17 +67,18 @@ void AudioFrameSink::deliverFrame(AudioFrameData frameData) {
 
         Napi::HandleScope scope(env);
 
-        size_t byteLength = frameData.samples.size() * sizeof(int16_t);
-        auto samplesBuffer = Napi::Buffer<int16_t>::Copy(env, frameData.samples.data(), frameData.samples.size());
+        auto pcmBuffer = Napi::Buffer<int16_t>::Copy(env, frameData.samples.data(), frameData.samples.size());
 
-        auto metadata = Napi::Object::New(env);
-        metadata.Set("bitsPerSample", Napi::Number::New(env, frameData.bitsPerSample));
-        metadata.Set("sampleRate", Napi::Number::New(env, frameData.sampleRate));
-        metadata.Set("numberOfChannels", Napi::Number::New(env, static_cast<uint32_t>(frameData.numberOfChannels)));
-        metadata.Set("numberOfFrames", Napi::Number::New(env, static_cast<uint32_t>(frameData.numberOfFrames)));
-        metadata.Set("timestampUs", Napi::Number::New(env, static_cast<double>(frameData.timestampUs)));
+        auto audioFrame = Napi::Object::New(env);
+        audioFrame.Set("format", Napi::String::New(env, "PCM_S16LE"));
+        audioFrame.Set("sampleRate", Napi::Number::New(env, frameData.sampleRate));
+        audioFrame.Set("channels", Napi::Number::New(env, static_cast<uint32_t>(frameData.numberOfChannels)));
+        audioFrame.Set("frames", Napi::Number::New(env, static_cast<uint32_t>(frameData.numberOfFrames)));
+        audioFrame.Set("pcm", pcmBuffer);
+        audioFrame.Set("timestampNs", Napi::BigInt::New(env, frameData.timestampUs * 1000));
+        audioFrame.Set("frameId", Napi::Number::New(env, frameData.frameId));
 
-        callback_.Call({samplesBuffer, metadata});
+        callback_.Call({audioFrame});
     });
 }
 
