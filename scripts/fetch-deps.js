@@ -24,7 +24,7 @@ function log(msg) {
 }
 
 const RETRIES = 5;
-const version = process.env.RTC_CPP_VERSION || 'LATEST';
+const version = process.env.RTC_CPP_VERSION || '7.2.2';
 const repo = process.env.MAVEN_REPO || 'internal-releases';
 const repoUrl = `https://twilio.jfrog.io/artifactory/${repo}`;
 const artifact = `com.twilio.sdk:twilio-video:${version}:tar.bz2:${platform}`;
@@ -62,7 +62,17 @@ function mvnGet() {
 
 function main() {
   try {
-    mvnGet();
+    const localArchive = process.env.RTC_CPP_ARCHIVE;
+    if (localArchive) {
+      const resolved = path.resolve(localArchive);
+      if (!fs.existsSync(resolved)) {
+        throw new Error(`RTC_CPP_ARCHIVE not found: ${resolved}`);
+      }
+      log(`Using local archive: ${resolved}`);
+      fs.copyFileSync(resolved, tmpFile);
+    } else {
+      mvnGet();
+    }
 
     const size = fs.statSync(tmpFile).size;
     log(`Downloaded ${(size / 1024 / 1024).toFixed(1)} MB`);
