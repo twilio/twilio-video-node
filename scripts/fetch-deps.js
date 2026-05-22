@@ -4,14 +4,21 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const DEPS_DIR = path.join(ROOT, 'deps');
 
 const platformMap = { darwin: 'darwin', linux: 'linux' };
+const archMap = { x64: 'x86_64', arm64: 'aarch64' };
 
 const platform = platformMap[process.platform];
+const arch = archMap[process.arch];
+
+if (!arch) {
+  console.error(`[fetch-deps] Unsupported architecture: ${process.arch}`);
+  process.exit(1);
+}
 const buildType = process.env.RTC_CPP_BUILD_TYPE || 'release';
 
 if (!platform) {
@@ -38,19 +45,16 @@ function mvnGet() {
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     log(`Attempt #${attempt} to fetch from Artifactory...`);
     try {
-      execSync(
-        [
-          'mvn', 'dependency:get',
-          '-Partifactory',
-          '--batch-mode',
-          '-Dhttps.protocols=TLSv1.2',
-          `-DrepoUrl=${repoUrl}`,
-          '-Dtransitive=false',
-          `-Dartifact=${artifact}`,
-          `-Ddest=${tmpFile}`,
-        ].join(' '),
-        { stdio: 'inherit' },
-      );
+      execFileSync('mvn', [
+        'dependency:get',
+        '-Partifactory',
+        '--batch-mode',
+        '-Dhttps.protocols=TLSv1.2',
+        `-DrepoUrl=${repoUrl}`,
+        '-Dtransitive=false',
+        `-Dartifact=${artifact}`,
+        `-Ddest=${tmpFile}`,
+      ], { stdio: 'inherit' });
       return;
     } catch (err) {
       if (attempt === RETRIES) {
@@ -89,9 +93,17 @@ function main() {
 
     // The Maven artifact extracts to deps/twilio-video/ which CMakeLists.txt expects
     const videoDir = path.join(DEPS_DIR, 'twilio-video');
+    const archLibDir = path.join(videoDir, 'lib', arch);
+    const compilerDir = fs.existsSync(archLibDir)
+      ? fs.readdirSync(archLibDir).find(d => /^appleclang-/.test(d))
+      : null;
+
     const expectedPaths = [
       path.join(videoDir, 'include'),
       path.join(videoDir, 'lib'),
+      ...(compilerDir
+        ? [path.join(archLibDir, compilerDir, buildType, 'libtwilio-video.a')]
+        : [archLibDir]),
     ];
 
     const missing = expectedPaths.filter(p => !fs.existsSync(p));
