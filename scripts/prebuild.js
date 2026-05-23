@@ -8,7 +8,7 @@ const path = require('path');
 const { ADDON_NAME, ROOT, getPlatformDir, getPrebuiltPath, log } = require('./common');
 
 const platformDir = getPlatformDir();
-const buildType = process.env.RTC_CPP_BUILD_TYPE || 'release';
+const buildType = (process.env.RTC_CPP_BUILD_TYPE || 'release').replace(/^./, c => c.toUpperCase());
 const sourcePath = path.join(ROOT, 'build', 'Release', ADDON_NAME);
 const prebuiltPath = getPrebuiltPath(platformDir);
 
@@ -18,7 +18,7 @@ function run(cmd) {
 }
 
 log('prebuild', `Building ${platformDir} (${buildType})`);
-run(`npx cmake-js rebuild --CDRTC_CPP_BUILD_TYPE=${buildType}`);
+run(`node scripts/build.js ${process.argv.slice(2).join(' ')}`);
 
 if (!fs.existsSync(sourcePath)) {
   console.error(`[prebuild] Build output not found: ${sourcePath}`);

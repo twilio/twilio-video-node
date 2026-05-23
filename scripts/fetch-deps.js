@@ -45,20 +45,24 @@ function mvnGet() {
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     log(`Attempt #${attempt} to fetch from Artifactory...`);
     try {
-      execFileSync('mvn', [
-        'dependency:get',
-        '-Partifactory',
-        '--batch-mode',
-        '-Dhttps.protocols=TLSv1.2',
-        `-DrepoUrl=${repoUrl}`,
-        '-Dtransitive=false',
-        `-Dartifact=${artifact}`,
-        `-Ddest=${tmpFile}`,
-      ], { stdio: 'inherit' });
+      execFileSync(
+        'mvn',
+        [
+          'dependency:get',
+          '-Partifactory',
+          '--batch-mode',
+          '-Dhttps.protocols=TLSv1.2',
+          `-DrepoUrl=${repoUrl}`,
+          '-Dtransitive=false',
+          `-Dartifact=${artifact}`,
+          `-Ddest=${tmpFile}`,
+        ],
+        { stdio: 'inherit' },
+      );
       return;
     } catch (err) {
       if (attempt === RETRIES) {
-        throw new Error(`Maven fetch failed after ${RETRIES} attempts`);
+        throw new Error(`Maven fetch failed after ${RETRIES} attempts`, { cause: err });
       }
     }
   }
@@ -66,11 +70,14 @@ function mvnGet() {
 
 function main() {
   try {
-    const localArchive = process.env.RTC_CPP_ARCHIVE;
+    const args = process.argv.slice(2);
+    const pkgIndex = args.indexOf('--twilio-video-pkg');
+    const localArchive =
+      (pkgIndex !== -1 ? args[pkgIndex + 1] : null) || process.env.RTC_CPP_ARCHIVE;
     if (localArchive) {
       const resolved = path.resolve(localArchive);
       if (!fs.existsSync(resolved)) {
-        throw new Error(`RTC_CPP_ARCHIVE not found: ${resolved}`);
+        throw new Error(`Local archive not found: ${resolved}`);
       }
       log(`Using local archive: ${resolved}`);
       fs.copyFileSync(resolved, tmpFile);
@@ -115,12 +122,15 @@ function main() {
       process.exit(1);
     }
 
-    const compilerDirs = fs.readdirSync(archLibDir, { withFileTypes: true })
+    const compilerDirs = fs
+      .readdirSync(archLibDir, { withFileTypes: true })
       .filter(entry => entry.isDirectory())
       .map(entry => path.join(archLibDir, entry.name));
 
     if (compilerDirs.length === 0) {
-      console.error(`[fetch-deps] Extracted archive is missing compiler directories under ${archLibDir}`);
+      console.error(
+        `[fetch-deps] Extracted archive is missing compiler directories under ${archLibDir}`,
+      );
       process.exit(1);
     }
 
@@ -130,7 +140,9 @@ function main() {
       .find(candidate => libNames.every(lib => fs.existsSync(path.join(candidate, lib))));
 
     if (!libDir) {
-      console.error(`[fetch-deps] Extracted archive is missing required ${buildType} libraries for ${targetArch}:`);
+      console.error(
+        `[fetch-deps] Extracted archive is missing required ${buildType} libraries for ${targetArch}:`,
+      );
       compilerDirs.forEach(compilerDir => console.error(`  ${path.join(compilerDir, buildType)}`));
       console.error('');
       console.error(`  Expected: ${libNames.join(', ')}`);

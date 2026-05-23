@@ -14,20 +14,29 @@
 
 The native addon links against rtc-cpp (Twilio's C++ Video library).
 
-### Download from Artifactory
+### Download from Artifactory (default)
+
+By default, `fetch-deps` uses Maven to download the twilio-video artifact from Artifactory. You must have Maven installed and a `~/.m2/settings.xml` configured with your Artifactory credentials.
+
+Then run:
 
 ```sh
-export ARTIFACTORY_URL="<artifactory-url>"
-export ARTIFACTORY_TOKEN="<your-token>"
-
 npm run fetch-deps
 ```
 
-Downloads into `deps/twilio-video/`. Optional vars: `RTC_CPP_VERSION` (default: `latest`), `RTC_CPP_BUILD_TYPE` (default: `release`).
+Downloads into `deps/twilio-video/`. Optional vars: `RTC_CPP_VERSION` (default: `7.2.2`), `RTC_CPP_BUILD_TYPE` (default: `release`), `MAVEN_REPO` (default: `internal-releases`).
 
-### Local source checkout
+### Use a local package archive
 
-If `../rtc-cpp` exists with a matching build directory (`build-{platform}-{arch}-{build_type}/`), it takes priority over Artifactory artifacts.
+```sh
+npm run fetch-deps -- --twilio-video-pkg /path/to/twilio-video.tar.bz2
+```
+
+Alternatively, set the `RTC_CPP_ARCHIVE` environment variable:
+
+```sh
+RTC_CPP_ARCHIVE=/path/to/twilio-video.tar.bz2 npm run fetch-deps
+```
 
 ## 3. Build
 
@@ -36,14 +45,21 @@ npm install
 npm run build
 ```
 
+To build against a local rtc-cpp source checkout:
+
+```sh
+npm run build -- --twilio-video-src /path/to/rtc-cpp
+```
+
 | Script                  | Description                         |
 | ----------------------- | ----------------------------------- |
-| `npm run build`         | Native addon (debug) via cmake-js   |
+| `npm run build`         | Native addon via cmake-js           |
 | `npm run build:debug`   | Native addon (debug) via cmake-js   |
 | `npm run build:release` | Native addon (release) via cmake-js |
 | `npm run build:ts`      | TypeScript (tsdown -> dist/)        |
 | `npm run rebuild`       | Clean + full native build           |
 | `npm run clean`         | Remove native build artifacts       |
+| `npm run package`       | Build + strip + copy to prebuilds/  |
 
 ## 4. Credentials
 
