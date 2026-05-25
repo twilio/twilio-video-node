@@ -2,6 +2,9 @@
 #include <webrtc/rtc_base/ref_counted_object.h>
 #include <webrtc/rtc_base/checks.h>
 
+#include <cmath>
+#include <limits>
+
 namespace twilio_video_node {
 
 // --- PushableAudioSource ---
@@ -121,20 +124,24 @@ Napi::Value LocalAudioTrackWrap::Write(const Napi::CallbackInfo& info) {
         return Napi::Boolean::New(env, false);
     }
 
-    if (!frame.Has("frames") || !frame.Get("frames").IsNumber()) {
+    Napi::Value framesVal = frame.Get("frames");
+    if (!framesVal.IsNumber()) {
         Napi::TypeError::New(env, "AudioFrameInput requires frames (number of samples per channel)")
+            .ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+    double framesDouble = framesVal.As<Napi::Number>().DoubleValue();
+    if (!std::isfinite(framesDouble) ||
+        framesDouble != std::trunc(framesDouble) ||
+        framesDouble <= 0 ||
+        framesDouble > static_cast<double>(std::numeric_limits<int64_t>::max())) {
+        Napi::RangeError::New(env, "AudioFrameInput frames must be a positive integer")
             .ThrowAsJavaScriptException();
         return Napi::Boolean::New(env, false);
     }
 
     auto buffer = frame.Get("pcm").As<Napi::Buffer<int16_t>>();
-    int64_t framesValue = frame.Get("frames").As<Napi::Number>().Int64Value();
-    if (framesValue <= 0) {
-        Napi::RangeError::New(env, "AudioFrameInput frames must be a positive integer")
-            .ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
-    }
-    size_t number_of_frames = static_cast<size_t>(framesValue);
+    size_t number_of_frames = static_cast<size_t>(framesDouble);
 
     // pcm holds int16_t samples; for mono, length in samples must be >= frames.
     if (buffer.Length() < number_of_frames) {

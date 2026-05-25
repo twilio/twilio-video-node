@@ -1,6 +1,20 @@
 #include "local_video_track_wrap.h"
 
+#include <cmath>
+
 namespace twilio_video_node {
+
+namespace {
+bool ToFiniteInt32(Napi::Value v, int32_t* out) {
+    if (!v.IsNumber()) return false;
+    double d = v.As<Napi::Number>().DoubleValue();
+    if (!std::isfinite(d)) return false;
+    if (d != std::trunc(d)) return false;
+    if (d < std::numeric_limits<int32_t>::min() || d > std::numeric_limits<int32_t>::max()) return false;
+    *out = static_cast<int32_t>(d);
+    return true;
+}
+}
 
 void PushableVideoSource::PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffer,
                                     int64_t timestampUs,
@@ -104,14 +118,14 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         return Napi::Boolean::New(env, false);
     }
 
-    Napi::Value widthVal = frame.Get("width");
-    Napi::Value heightVal = frame.Get("height");
-    Napi::Value yStrideVal = frame.Get("yStride");
-    Napi::Value uStrideVal = frame.Get("uStride");
-    Napi::Value vStrideVal = frame.Get("vStride");
-    if (!widthVal.IsNumber() || !heightVal.IsNumber() ||
-        !yStrideVal.IsNumber() || !uStrideVal.IsNumber() || !vStrideVal.IsNumber()) {
-        Napi::TypeError::New(env, "VideoFrameInput requires numeric width, height, yStride, uStride, vStride")
+    int32_t width, height, yStride, uStride, vStride;
+    if (!ToFiniteInt32(frame.Get("width"), &width) ||
+        !ToFiniteInt32(frame.Get("height"), &height) ||
+        !ToFiniteInt32(frame.Get("yStride"), &yStride) ||
+        !ToFiniteInt32(frame.Get("uStride"), &uStride) ||
+        !ToFiniteInt32(frame.Get("vStride"), &vStride)) {
+        Napi::TypeError::New(env,
+            "VideoFrameInput requires finite integer width, height, yStride, uStride, vStride")
             .ThrowAsJavaScriptException();
         return Napi::Boolean::New(env, false);
     }
@@ -119,11 +133,6 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     auto yBuffer = frame.Get("y").As<Napi::Buffer<uint8_t>>();
     auto uBuffer = frame.Get("u").As<Napi::Buffer<uint8_t>>();
     auto vBuffer = frame.Get("v").As<Napi::Buffer<uint8_t>>();
-    int width = widthVal.As<Napi::Number>().Int32Value();
-    int height = heightVal.As<Napi::Number>().Int32Value();
-    int yStride = yStrideVal.As<Napi::Number>().Int32Value();
-    int uStride = uStrideVal.As<Napi::Number>().Int32Value();
-    int vStride = vStrideVal.As<Napi::Number>().Int32Value();
 
     if (width <= 0 || height <= 0) {
         Napi::RangeError::New(env, "VideoFrameInput width and height must be positive")
@@ -159,8 +168,13 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         }
         bool lossless = false;
         int64_t timestampNs = tsVal.As<Napi::BigInt>().Int64Value(&lossless);
-        if (!lossless || timestampNs < 0) {
-            Napi::RangeError::New(env, "timestampNs must be a non-negative BigInt that fits in int64")
+        if (!lossless) {
+            Napi::RangeError::New(env, "timestampNs out of range for int64")
+                .ThrowAsJavaScriptException();
+            return Napi::Boolean::New(env, false);
+        }
+        if (timestampNs < 0) {
+            Napi::RangeError::New(env, "timestampNs must be non-negative")
                 .ThrowAsJavaScriptException();
             return Napi::Boolean::New(env, false);
         }
