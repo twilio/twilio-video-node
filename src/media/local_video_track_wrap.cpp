@@ -150,9 +150,15 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     }
 
     int64_t timestampUs;
-    if (frame.Has("timestampNs") && frame.Get("timestampNs").IsBigInt()) {
+    if (frame.Has("timestampNs") && !frame.Get("timestampNs").IsUndefined()) {
+        Napi::Value tsVal = frame.Get("timestampNs");
+        if (!tsVal.IsBigInt()) {
+            Napi::TypeError::New(env, "VideoFrameInput timestampNs must be a BigInt")
+                .ThrowAsJavaScriptException();
+            return Napi::Boolean::New(env, false);
+        }
         bool lossless = false;
-        int64_t timestampNs = frame.Get("timestampNs").As<Napi::BigInt>().Int64Value(&lossless);
+        int64_t timestampNs = tsVal.As<Napi::BigInt>().Int64Value(&lossless);
         if (!lossless || timestampNs < 0) {
             Napi::RangeError::New(env, "timestampNs must be a non-negative BigInt that fits in int64")
                 .ThrowAsJavaScriptException();
