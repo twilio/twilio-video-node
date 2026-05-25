@@ -1,6 +1,7 @@
 #include "local_video_track_wrap.h"
 
 #include <cmath>
+#include <limits>
 
 namespace twilio_video_node {
 
