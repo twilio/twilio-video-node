@@ -14,8 +14,8 @@ export interface VideoFrameInput {
   yStride: number;
   uStride: number;
   vStride: number;
-  timestampNs: bigint;
-  frameId?: number;
+  /** Defaults to the current monotonic time when omitted. */
+  timestampNs?: bigint;
   rotation?: 0 | 90 | 180 | 270;
 }
 
@@ -37,14 +37,14 @@ export interface VideoFrame {
 export interface AudioFrameInput {
   pcm: Buffer;
   frames: number;
-  timestampNs: bigint;
-  frameId?: number;
+  /** Defaults to the current monotonic time when omitted. */
+  timestampNs?: bigint;
 }
 
 export interface AudioFrame {
   format: 'PCM_S16LE';
-  sampleRate: 48000;
-  channels: 1;
+  sampleRate: number;
+  channels: number;
   frames: number;
   pcm: Buffer;
   timestampNs: bigint;
@@ -53,29 +53,12 @@ export interface AudioFrame {
   frameId: number;
 }
 
-export interface RawVideoSourceOptions {
-  type: 'raw';
-  format: 'I420';
-  width: number;
-  height: number;
-  fps?: number;
-}
-
-export interface RawAudioSourceOptions {
-  type: 'raw';
-  format: 'PCM_S16LE';
-  sampleRate: 48000;
-  channels: 1;
-}
-
 export interface CreateLocalVideoTrackOptions {
   name?: string;
-  source?: RawVideoSourceOptions;
 }
 
 export interface CreateLocalAudioTrackOptions {
   name?: string;
-  source?: RawAudioSourceOptions;
 }
 
 export interface TwilioError {

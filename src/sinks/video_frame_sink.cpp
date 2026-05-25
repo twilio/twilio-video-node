@@ -111,10 +111,8 @@ void VideoFrameSink::deliverFrame(VideoFrameData frameData) {
             videoFrame.Set("captureTimestampNs",
                            Napi::BigInt::New(env, frameData.captureTimestampUs * 1000));
         }
-        if (frameData.rtpTimestamp != 0) {
-            videoFrame.Set("rtpTimestamp",
-                           Napi::Number::New(env, static_cast<double>(frameData.rtpTimestamp)));
-        }
+        videoFrame.Set("rtpTimestamp",
+                       Napi::Number::New(env, static_cast<double>(frameData.rtpTimestamp)));
 
         int rotation = 0;
         switch (frameData.rotation) {

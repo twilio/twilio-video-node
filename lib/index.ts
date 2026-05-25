@@ -46,8 +46,6 @@ export type {
   VideoFrame,
   AudioFrameInput,
   AudioFrame,
-  RawVideoSourceOptions,
-  RawAudioSourceOptions,
   CreateLocalVideoTrackOptions,
   CreateLocalAudioTrackOptions,
   TwilioError,
