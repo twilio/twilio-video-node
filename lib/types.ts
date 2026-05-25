@@ -37,8 +37,6 @@ export interface VideoFrame {
 export interface AudioFrameInput {
   pcm: Buffer;
   frames: number;
-  /** Defaults to the current monotonic time when omitted. */
-  timestampNs?: bigint;
 }
 
 export interface AudioFrame {
