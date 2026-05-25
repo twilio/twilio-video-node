@@ -73,7 +73,7 @@ describe('Video Track', () => {
     expect(track.enabled).toBe(true);
   });
 
-  it('write accepts I420 frame and returns boolean', () => {
+  it('write accepts I420 frame and returns true', () => {
     const track = createLocalVideoTrack('push-test');
 
     const frame = generateI420Frame(320, 240);
@@ -88,7 +88,7 @@ describe('Video Track', () => {
       vStride: 160,
       timestampNs: process.hrtime.bigint(),
     });
-    expect(typeof result).toBe('boolean');
+    expect(result).toBe(true);
   });
 });
 
@@ -112,7 +112,7 @@ describe('Audio Track', () => {
     expect(track.enabled).toBe(true);
   });
 
-  it('write accepts audio samples and returns boolean', () => {
+  it('write accepts audio samples and returns true', () => {
     const track = createLocalAudioTrack('push-test');
 
     const samples = generateAudioSamples(480, 48000, 1);
@@ -121,7 +121,7 @@ describe('Audio Track', () => {
       frames: 480,
       timestampNs: process.hrtime.bigint(),
     });
-    expect(typeof result).toBe('boolean');
+    expect(result).toBe(true);
   });
 });
 

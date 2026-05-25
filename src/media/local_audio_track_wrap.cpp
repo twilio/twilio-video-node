@@ -128,15 +128,22 @@ Napi::Value LocalAudioTrackWrap::Write(const Napi::CallbackInfo& info) {
     }
 
     auto buffer = frame.Get("pcm").As<Napi::Buffer<int16_t>>();
-    size_t number_of_frames = static_cast<size_t>(
-        frame.Get("frames").As<Napi::Number>().Int64Value());
+    int64_t framesValue = frame.Get("frames").As<Napi::Number>().Int64Value();
+    if (framesValue <= 0) {
+        Napi::RangeError::New(env, "AudioFrameInput frames must be a positive integer")
+            .ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+    size_t number_of_frames = static_cast<size_t>(framesValue);
 
-    // TODO(blueprint-Q1.2): Blueprint types timestampNs as required but we don't
-    // forward it downstream yet. Accept and ignore for now; revisit once
-    // timestamp plumbing to WebRTC ADM is wired up.
+    // pcm holds int16_t samples; for mono, length in samples must be >= frames.
+    if (buffer.Length() < number_of_frames) {
+        Napi::RangeError::New(env, "AudioFrameInput pcm buffer is smaller than frames")
+            .ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
 
     if (!audioSource_) {
-        // TODO(blueprint-Q1.3): Pre-connection write — returning false for now.
         return Napi::Boolean::New(env, false);
     }
 

@@ -104,9 +104,14 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         return Napi::Boolean::New(env, false);
     }
 
-    if (!frame.Has("width") || !frame.Has("height") ||
-        !frame.Has("yStride") || !frame.Has("uStride") || !frame.Has("vStride")) {
-        Napi::TypeError::New(env, "VideoFrameInput requires width, height, yStride, uStride, vStride")
+    Napi::Value widthVal = frame.Get("width");
+    Napi::Value heightVal = frame.Get("height");
+    Napi::Value yStrideVal = frame.Get("yStride");
+    Napi::Value uStrideVal = frame.Get("uStride");
+    Napi::Value vStrideVal = frame.Get("vStride");
+    if (!widthVal.IsNumber() || !heightVal.IsNumber() ||
+        !yStrideVal.IsNumber() || !uStrideVal.IsNumber() || !vStrideVal.IsNumber()) {
+        Napi::TypeError::New(env, "VideoFrameInput requires numeric width, height, yStride, uStride, vStride")
             .ThrowAsJavaScriptException();
         return Napi::Boolean::New(env, false);
     }
@@ -114,18 +119,45 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     auto yBuffer = frame.Get("y").As<Napi::Buffer<uint8_t>>();
     auto uBuffer = frame.Get("u").As<Napi::Buffer<uint8_t>>();
     auto vBuffer = frame.Get("v").As<Napi::Buffer<uint8_t>>();
-    int width = frame.Get("width").As<Napi::Number>().Int32Value();
-    int height = frame.Get("height").As<Napi::Number>().Int32Value();
-    int yStride = frame.Get("yStride").As<Napi::Number>().Int32Value();
-    int uStride = frame.Get("uStride").As<Napi::Number>().Int32Value();
-    int vStride = frame.Get("vStride").As<Napi::Number>().Int32Value();
+    int width = widthVal.As<Napi::Number>().Int32Value();
+    int height = heightVal.As<Napi::Number>().Int32Value();
+    int yStride = yStrideVal.As<Napi::Number>().Int32Value();
+    int uStride = uStrideVal.As<Napi::Number>().Int32Value();
+    int vStride = vStrideVal.As<Napi::Number>().Int32Value();
 
-    // TODO(blueprint-Q1.2): Blueprint types timestampNs as required. For now auto-fill
-    // when omitted; switch to strict throw once the Blueprint author confirms.
+    if (width <= 0 || height <= 0) {
+        Napi::RangeError::New(env, "VideoFrameInput width and height must be positive")
+            .ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
+    // I420 chroma planes are subsampled 2x in each dimension.
+    int uvWidth = (width + 1) / 2;
+    int uvHeight = (height + 1) / 2;
+    if (yStride < width || uStride < uvWidth || vStride < uvWidth) {
+        Napi::RangeError::New(env, "VideoFrameInput strides must be >= plane widths")
+            .ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
+    size_t yRequired = static_cast<size_t>(yStride) * static_cast<size_t>(height);
+    size_t uRequired = static_cast<size_t>(uStride) * static_cast<size_t>(uvHeight);
+    size_t vRequired = static_cast<size_t>(vStride) * static_cast<size_t>(uvHeight);
+    if (yBuffer.Length() < yRequired || uBuffer.Length() < uRequired || vBuffer.Length() < vRequired) {
+        Napi::RangeError::New(env, "VideoFrameInput plane buffers are smaller than stride*height")
+            .ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
     int64_t timestampUs;
     if (frame.Has("timestampNs") && frame.Get("timestampNs").IsBigInt()) {
         bool lossless = false;
         int64_t timestampNs = frame.Get("timestampNs").As<Napi::BigInt>().Int64Value(&lossless);
+        if (!lossless || timestampNs < 0) {
+            Napi::RangeError::New(env, "timestampNs must be a non-negative BigInt that fits in int64")
+                .ThrowAsJavaScriptException();
+            return Napi::Boolean::New(env, false);
+        }
         timestampUs = timestampNs / 1000;
     } else {
         timestampUs = rtc::TimeMicros();
@@ -149,8 +181,6 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         vBuffer.Data(), vStride);
 
     if (!videoSource_) {
-        // TODO(blueprint-Q1.3): Blueprint is silent on pre-connection writes. Currently
-        // returns false; confirm with author whether to throw or drop.
         return Napi::Boolean::New(env, false);
     }
 
