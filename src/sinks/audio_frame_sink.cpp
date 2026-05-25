@@ -39,7 +39,7 @@ void AudioFrameSink::OnData(const void* audio_data,
         frameData.numberOfFrames = number_of_frames;
         frameData.frameId = nextFrameId_.fetch_add(1);
 
-        auto now = std::chrono::high_resolution_clock::now();
+        auto now = std::chrono::steady_clock::now();
         frameData.timestampUs = std::chrono::duration_cast<std::chrono::microseconds>(
             now.time_since_epoch()).count();
 
