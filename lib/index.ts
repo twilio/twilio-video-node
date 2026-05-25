@@ -170,28 +170,47 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
   });
 }
 
+function resolveName(options: unknown, methodName: string): string | undefined {
+  if (options === undefined) return undefined;
+  if (typeof options === 'string') {
+    if (options.length === 0) {
+      throw new TypeError('name must be a non-empty string');
+    }
+    return options;
+  }
+  if (typeof options !== 'object' || options === null) {
+    throw new TypeError(`${methodName} expects a string or options object`);
+  }
+  const name = (options as { name?: unknown }).name;
+  if (name === undefined) return undefined;
+  if (typeof name !== 'string' || name.length === 0) {
+    throw new TypeError('name must be a non-empty string');
+  }
+  return name;
+}
+
 export function createLocalVideoTrack(
   options?: string | CreateLocalVideoTrackOptions,
 ): LocalVideoTrack {
-  const name = typeof options === 'string' ? options : options?.name;
-  if (name !== undefined && (typeof name !== 'string' || name.length === 0)) {
-    throw new TypeError('name must be a non-empty string');
-  }
+  const name = resolveName(options, 'createLocalVideoTrack');
   return getDefaultMediaFactory().createVideoTrack(name ? { name } : {});
 }
 
 export function createLocalAudioTrack(
   options?: string | CreateLocalAudioTrackOptions,
 ): LocalAudioTrack {
-  const name = typeof options === 'string' ? options : options?.name;
-  if (name !== undefined && (typeof name !== 'string' || name.length === 0)) {
-    throw new TypeError('name must be a non-empty string');
-  }
+  const name = resolveName(options, 'createLocalAudioTrack');
   return getDefaultMediaFactory().createAudioTrack(name ? { name } : {});
 }
 
 export function createLocalDataTrack(options: LocalDataTrackOptions | string = {}): LocalDataTrack {
-  const opts = typeof options === 'string' ? { name: options } : options;
+  if (typeof options !== 'string' && (typeof options !== 'object' || options === null)) {
+    throw new TypeError('createLocalDataTrack expects a string or options object');
+  }
+  const opts: LocalDataTrackOptions = typeof options === 'string' ? { name: options } : options;
+  if (opts.name !== undefined && (typeof opts.name !== 'string' || opts.name.length === 0)) {
+    throw new TypeError('name must be a non-empty string');
+  }
   if (opts.maxRetransmits != null && opts.maxPacketLifeTime != null) {
     throw new Error('maxRetransmits and maxPacketLifeTime are mutually exclusive');
   }
