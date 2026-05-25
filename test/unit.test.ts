@@ -119,7 +119,6 @@ describe('Audio Track', () => {
     const result = track.write({
       pcm: samples,
       frames: 480,
-      timestampNs: process.hrtime.bigint(),
     });
     expect(result).toBe(true);
   });

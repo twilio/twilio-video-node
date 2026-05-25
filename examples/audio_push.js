@@ -87,7 +87,6 @@ function startPushingAudio(audioTrack) {
     audioTrack.write({
       pcm: samples,
       frames: SAMPLES_PER_FRAME,
-      timestampNs: process.hrtime.bigint(),
     });
     frameIndex++;
     if (frameIndex % 100 === 0) {

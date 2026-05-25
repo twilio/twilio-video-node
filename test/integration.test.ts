@@ -221,7 +221,6 @@ describe('Audio publish + receive', () => {
       audioTrack.write({
         pcm: samples,
         frames: FRAME_SIZE,
-        timestampNs: process.hrtime.bigint(),
       });
     }, 10);
 
@@ -506,7 +505,6 @@ describe('dominantSpeaker', () => {
       audioTrack.write({
         pcm: samples,
         frames: 480,
-        timestampNs: process.hrtime.bigint(),
       });
     }, 10);
 
@@ -736,7 +734,6 @@ describe('Room.getStats()', () => {
       audioTrack.write({
         pcm: generateAudioSamples(480, 48000, 1),
         frames: 480,
-        timestampNs: process.hrtime.bigint(),
       });
     }, 33);
 
