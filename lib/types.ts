@@ -30,7 +30,6 @@ export interface VideoFrame {
   captureTimestampNs?: bigint;
   rtpTimestamp?: number;
   frameId: number;
-  isKeyFrame?: boolean;
   rotation?: 0 | 90 | 180 | 270;
 }
 
@@ -46,8 +45,6 @@ export interface AudioFrame {
   frames: number;
   pcm: Buffer;
   timestampNs: bigint;
-  captureTimestampNs?: bigint;
-  rtpTimestamp?: number;
   frameId: number;
 }
 
