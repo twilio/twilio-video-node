@@ -16,6 +16,7 @@ struct AudioFrameData {
     size_t numberOfChannels;
     size_t numberOfFrames;
     int64_t timestampUs;
+    uint32_t frameId;
 };
 
 class AudioFrameSink : public webrtc::AudioTrackSinkInterface {
@@ -39,7 +40,7 @@ private:
     std::unique_ptr<AsyncContext> asyncContext_;
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
-    int64_t timestampUs_ = 0;
+    std::atomic<uint32_t> nextFrameId_{0};
 };
 
 }

@@ -21,6 +21,10 @@ struct VideoFrameData {
     int strideV;
     int64_t timestampUs;
     webrtc::VideoRotation rotation;
+    uint16_t frameId;
+    bool hasCaptureTimestampUs;
+    int64_t captureTimestampUs;
+    uint32_t rtpTimestamp;
 };
 
 class VideoFrameSink : public rtc::VideoSinkInterface<webrtc::VideoFrame> {

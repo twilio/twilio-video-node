@@ -23,8 +23,8 @@ private:
     Napi::Value GetKind(const Napi::CallbackInfo& info);
     Napi::Value GetSid(const Napi::CallbackInfo& info);
     Napi::Value IsEnabled(const Napi::CallbackInfo& info);
-    Napi::Value OnData(const Napi::CallbackInfo& info);
-    Napi::Value RemoveDataCallback(const Napi::CallbackInfo& info);
+    Napi::Value OnFrame(const Napi::CallbackInfo& info);
+    Napi::Value RemoveFrameCallback(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::media::RemoteAudioTrack> track_;
     std::unique_ptr<AudioFrameSink> audioSink_;

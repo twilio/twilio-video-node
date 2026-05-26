@@ -31,9 +31,20 @@ async function main() {
     subscribedTracks.push(track);
     console.log('Subscribed to video from', participant.identity);
 
-    track.onFrame((yBuf, uBuf, vBuf, meta) => {
+    track.onFrame(frame => {
       frameCount++;
-      videoTrack.pushFrame(yBuf, uBuf, vBuf, meta.width, meta.height);
+      videoTrack.write({
+        y: frame.y.data,
+        u: frame.u.data,
+        v: frame.v.data,
+        width: frame.width,
+        height: frame.height,
+        yStride: frame.y.stride,
+        uStride: frame.u.stride,
+        vStride: frame.v.stride,
+        timestampNs: frame.timestampNs,
+        rotation: frame.rotation,
+      });
     });
   }
 

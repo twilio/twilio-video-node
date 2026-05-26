@@ -73,13 +73,22 @@ describe('Video Track', () => {
     expect(track.enabled).toBe(true);
   });
 
-  it('pushFrame accepts I420 frame', () => {
+  it('write returns false on unpublished track (no encoder sink attached)', () => {
     const track = createLocalVideoTrack('push-test');
 
     const frame = generateI420Frame(320, 240);
-    expect(() => {
-      track.pushFrame(frame.y, frame.u, frame.v, 320, 240);
-    }).not.toThrow();
+    const result = track.write({
+      y: frame.y,
+      u: frame.u,
+      v: frame.v,
+      width: 320,
+      height: 240,
+      yStride: 320,
+      uStride: 160,
+      vStride: 160,
+      timestampNs: process.hrtime.bigint(),
+    });
+    expect(result).toBe(false);
   });
 });
 
@@ -103,13 +112,15 @@ describe('Audio Track', () => {
     expect(track.enabled).toBe(true);
   });
 
-  it('pushSamples accepts audio samples', () => {
+  it('write accepts audio samples and returns true', () => {
     const track = createLocalAudioTrack('push-test');
 
     const samples = generateAudioSamples(480, 48000, 1);
-    expect(() => {
-      track.pushSamples(samples);
-    }).not.toThrow();
+    const result = track.write({
+      pcm: samples,
+      frames: 480,
+    });
+    expect(result).toBe(true);
   });
 });
 

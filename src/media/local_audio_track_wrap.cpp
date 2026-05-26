@@ -2,6 +2,9 @@
 #include <webrtc/rtc_base/ref_counted_object.h>
 #include <webrtc/rtc_base/checks.h>
 
+#include <cmath>
+#include <limits>
+
 namespace twilio_video_node {
 
 // --- PushableAudioSource ---
@@ -53,7 +56,7 @@ void LocalAudioTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("name", &LocalAudioTrackWrap::GetName, nullptr),
         InstanceAccessor("kind", &LocalAudioTrackWrap::GetKind, nullptr),
         InstanceAccessor("enabled", &LocalAudioTrackWrap::IsEnabled, &LocalAudioTrackWrap::SetEnabled),
-        InstanceMethod("pushSamples", &LocalAudioTrackWrap::PushSamples),
+        InstanceMethod("write", &LocalAudioTrackWrap::Write),
         InstanceMethod("clearBuffer", &LocalAudioTrackWrap::ClearBuffer),
     });
 
@@ -106,23 +109,54 @@ void LocalAudioTrackWrap::SetEnabled(const Napi::CallbackInfo& info, const Napi:
     track_->setEnabled(value.As<Napi::Boolean>().Value());
 }
 
-Napi::Value LocalAudioTrackWrap::PushSamples(const Napi::CallbackInfo& info) {
+Napi::Value LocalAudioTrackWrap::Write(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 1 || !info[0].IsBuffer()) {
-        Napi::TypeError::New(env, "Expected 1 argument: Buffer of int16 PCM samples (48kHz mono)")
+    if (info.Length() < 1 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "write() expects an AudioFrameInput object").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Object frame = info[0].As<Napi::Object>();
+
+    if (!frame.Has("pcm") || !frame.Get("pcm").IsBuffer()) {
+        Napi::TypeError::New(env, "AudioFrameInput requires a pcm Buffer").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Value framesVal = frame.Get("frames");
+    if (!framesVal.IsNumber()) {
+        Napi::TypeError::New(env, "AudioFrameInput requires frames (number of samples per channel)")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    double framesDouble = framesVal.As<Napi::Number>().DoubleValue();
+    if (!std::isfinite(framesDouble) ||
+        framesDouble != std::trunc(framesDouble) ||
+        framesDouble <= 0 ||
+        framesDouble > static_cast<double>(std::numeric_limits<int64_t>::max())) {
+        Napi::RangeError::New(env, "AudioFrameInput frames must be a positive integer")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    auto buffer = info[0].As<Napi::Buffer<int16_t>>();
-    size_t number_of_frames = buffer.Length();
+    auto buffer = frame.Get("pcm").As<Napi::Buffer<int16_t>>();
+    size_t number_of_frames = static_cast<size_t>(framesDouble);
 
-    if (audioSource_) {
-        audioSource_->PushSamples(buffer.Data(), 16, 48000, 1, number_of_frames);
+    // pcm holds int16_t samples; for mono, length in samples must be >= frames.
+    if (buffer.Length() < number_of_frames) {
+        Napi::RangeError::New(env, "AudioFrameInput pcm buffer is smaller than frames")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
-    return env.Undefined();
+    if (!audioSource_) {
+        Napi::Error::New(env, "LocalAudioTrack is not bound to a source").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    audioSource_->PushSamples(buffer.Data(), 16, 48000, 1, number_of_frames);
+    return Napi::Boolean::New(env, true);
 }
 
 Napi::Value LocalAudioTrackWrap::ClearBuffer(const Napi::CallbackInfo& info) {

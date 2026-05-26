@@ -86,7 +86,17 @@ function startPublishing(videoTrack) {
     const y = frame.subarray(0, ySize);
     const u = frame.subarray(ySize, ySize + uvSize);
     const v = frame.subarray(ySize + uvSize, ySize + uvSize + uvSize);
-    videoTrack.pushFrame(y, u, v, WIDTH, HEIGHT);
+    videoTrack.write({
+      y,
+      u,
+      v,
+      width: WIDTH,
+      height: HEIGHT,
+      yStride: WIDTH,
+      uStride: WIDTH / 2,
+      vStride: WIDTH / 2,
+      timestampNs: process.hrtime.bigint(),
+    });
     frameCount++;
     if (frameCount % FPS === 0) console.log('Pushed frame', frameCount);
   }, 1000 / FPS);

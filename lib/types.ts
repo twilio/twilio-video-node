@@ -1,19 +1,59 @@
-export interface VideoFrameMetadata {
+export interface I420Plane {
+  data: Buffer;
+  stride: number;
   width: number;
   height: number;
-  strideY: number;
-  strideU: number;
-  strideV: number;
-  timestampUs: number;
-  rotation: 0 | 90 | 180 | 270;
 }
 
-export interface AudioFrameMetadata {
-  bitsPerSample: number;
+export interface VideoFrameInput {
+  width: number;
+  height: number;
+  y: Buffer;
+  u: Buffer;
+  v: Buffer;
+  yStride: number;
+  uStride: number;
+  vStride: number;
+  /** Defaults to the current monotonic time when omitted. */
+  timestampNs?: bigint;
+  rotation?: 0 | 90 | 180 | 270;
+}
+
+export interface VideoFrame {
+  format: 'I420';
+  width: number;
+  height: number;
+  y: I420Plane;
+  u: I420Plane;
+  v: I420Plane;
+  timestampNs: bigint;
+  captureTimestampNs?: bigint;
+  rtpTimestamp?: number;
+  frameId: number;
+  rotation?: 0 | 90 | 180 | 270;
+}
+
+export interface AudioFrameInput {
+  pcm: Buffer;
+  frames: number;
+}
+
+export interface AudioFrame {
+  format: 'PCM_S16LE';
   sampleRate: number;
-  numberOfChannels: number;
-  numberOfFrames: number;
-  timestampUs: number;
+  channels: number;
+  frames: number;
+  pcm: Buffer;
+  timestampNs: bigint;
+  frameId: number;
+}
+
+export interface CreateLocalVideoTrackOptions {
+  name?: string;
+}
+
+export interface CreateLocalAudioTrackOptions {
+  name?: string;
 }
 
 export interface TwilioError {
@@ -73,21 +113,37 @@ export interface LocalVideoTrack {
   readonly name: string;
   readonly kind: 'video';
   enabled: boolean;
-  pushFrame(
-    yPlane: Buffer,
-    uPlane: Buffer,
-    vPlane: Buffer,
-    width: number,
-    height: number,
-    timestampUs?: number,
-  ): void;
+  /**
+   * Push an I420 frame into the track.
+   *
+   * Throws `TypeError`/`RangeError` on invalid input (bad shape, non-finite
+   * integers, non-BigInt timestamp, invalid rotation, plane buffer smaller than
+   * `stride * height`). Throws `Error` if the track is not bound to a source.
+   *
+   * Returns `true` when the frame was forwarded to the encoder sink. Returns
+   * `false` when the underlying adapter dropped the frame — most commonly
+   * because the encoder sink has not yet attached (frames pushed before the
+   * room emits `connected`), but also when the adapter rate-limits or rejects
+   * the frame's resolution.
+   */
+  write(frame: VideoFrameInput): boolean;
 }
 
 export interface LocalAudioTrack {
   readonly name: string;
   readonly kind: 'audio';
   enabled: boolean;
-  pushSamples(samples: Buffer): void;
+  /**
+   * Push a PCM audio frame into the track.
+   *
+   * Format is fixed at **48 kHz mono S16LE** — `AudioFrameInput` exposes no
+   * sampleRate/channels fields, and `pcm` is interpreted as int16 mono samples.
+   *
+   * Throws `TypeError`/`RangeError` on invalid input (missing/non-Buffer `pcm`,
+   * non-integer `frames`, `pcm` shorter than `frames`). Throws `Error` if the
+   * track is not bound to a source. Returns `true` on successful enqueue.
+   */
+  write(frame: AudioFrameInput): boolean;
   clearBuffer(): void;
 }
 
@@ -114,14 +170,7 @@ export interface RemoteVideoTrack {
   readonly sid: string;
   readonly enabled: boolean;
   readonly isSwitchedOff: boolean;
-  onFrame(
-    callback: (
-      yPlane: Buffer,
-      uPlane: Buffer,
-      vPlane: Buffer,
-      metadata: VideoFrameMetadata,
-    ) => void,
-  ): void;
+  onFrame(callback: (frame: VideoFrame) => void): void;
   removeFrameCallback(): void;
 }
 
@@ -130,8 +179,8 @@ export interface RemoteAudioTrack {
   readonly kind: 'audio';
   readonly sid: string;
   readonly enabled: boolean;
-  onData(callback: (samples: Buffer, metadata: AudioFrameMetadata) => void): void;
-  removeDataCallback(): void;
+  onFrame(callback: (frame: AudioFrame) => void): void;
+  removeFrameCallback(): void;
 }
 
 export interface RemoteDataTrack {

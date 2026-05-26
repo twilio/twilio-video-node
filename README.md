@@ -32,15 +32,26 @@ const room = await connect(token, {
 
 console.log('Connected:', room.name, room.sid);
 
-// Push I420 video frames
-videoTrack.pushFrame(yPlane, uPlane, vPlane, 1280, 720);
+// Push I420 video frames (only after `connected` — earlier frames are dropped)
+room.on('connected', () => {
+  videoTrack.write({
+    y: yPlane,
+    u: uPlane,
+    v: vPlane,
+    yStride: 1280,
+    uStride: 640,
+    vStride: 640,
+    width: 1280,
+    height: 720,
+  });
+});
 
 // Receive remote video frames
 room.on('participantConnected', participant => {
   participant.on('trackSubscribed', track => {
-    if (track.onFrame) {
-      track.onFrame((yBuf, uBuf, vBuf, metadata) => {
-        console.log(`${metadata.width}x${metadata.height}`);
+    if (track.kind === 'video') {
+      track.onFrame(frame => {
+        console.log(`${frame.width}x${frame.height}`);
       });
     }
   });
@@ -70,11 +81,11 @@ room.disconnect();
 | `Room`              | A connected video room. Emits events, exposes participants.                                                  |
 | `LocalParticipant`  | The local participant. Publish/unpublish tracks.                                                             |
 | `RemoteParticipant` | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`.                                           |
-| `LocalVideoTrack`   | Pushable video track (`pushFrame`).                                                                          |
-| `LocalAudioTrack`   | Pushable audio track (`pushSamples`).                                                                        |
+| `LocalVideoTrack`   | Pushable video track (`write(frame)`).                                                                       |
+| `LocalAudioTrack`   | Pushable audio track (`write(frame)`).                                                                       |
 | `LocalDataTrack`    | Send arbitrary data (`send`). Construct via `new LocalDataTrack(options?)` or `createLocalDataTrack(name?)`. |
 | `RemoteVideoTrack`  | Receive video frames (`onFrame`).                                                                            |
-| `RemoteAudioTrack`  | Receive audio samples (`onData`).                                                                            |
+| `RemoteAudioTrack`  | Receive audio frames (`onFrame`).                                                                            |
 | `RemoteDataTrack`   | Receive data messages (`onMessage`).                                                                         |
 | `ErrorCode`         | Enum of Twilio Video error codes.                                                                            |
 
@@ -119,21 +130,37 @@ room.disconnect();
 
 ### LocalVideoTrack
 
-Push raw I420 video frames into a room.
+Push raw I420 video frames into a room. Frames pushed before the room `connected` event are silently dropped.
 
 ```js
 const track = createLocalVideoTrack('camera');
-track.pushFrame(yPlane, uPlane, vPlane, width, height, timestampUs?);
+track.write({
+  y,
+  u,
+  v, // Buffers
+  yStride,
+  uStride,
+  vStride, // bytes per row
+  width,
+  height,
+  timestampNs, // optional bigint, defaults to monotonic now
+  rotation, // optional 0 | 90 | 180 | 270
+});
 track.enabled = false; // mute
 ```
 
+`write()` returns `false` when the underlying source is unavailable (e.g. before the room is connected) and throws `TypeError`/`RangeError` on invalid input.
+
 ### LocalAudioTrack
 
-Push raw PCM audio samples into a room.
+Push raw PCM audio samples into a room. Format is fixed to **48kHz mono S16LE**.
 
 ```js
 const track = createLocalAudioTrack('mic');
-track.pushSamples(samples, sampleRate, channels);
+track.write({
+  pcm, // Buffer of interleaved int16 samples
+  frames, // number of samples
+});
 ```
 
 ### LocalDataTrack
@@ -152,21 +179,36 @@ track.send(Buffer.from([0x01, 0x02]));
 Receive decoded I420 video frames from a remote participant.
 
 ```js
-track.onFrame((yBuf, uBuf, vBuf, metadata) => {
-  // metadata: { width, height, strideY, strideU, strideV, timestampUs, rotation }
+track.onFrame(frame => {
+  // frame: {
+  //   format: 'I420',
+  //   width, height,
+  //   y, u, v,                  // I420Plane: { data: Buffer, stride, width, height }
+  //   timestampNs: bigint,
+  //   captureTimestampNs?: bigint,
+  //   rtpTimestamp?: number,
+  //   frameId: number,
+  //   rotation?: 0 | 90 | 180 | 270,
+  // }
 });
 track.removeFrameCallback();
 ```
 
 ### RemoteAudioTrack
 
-Receive decoded PCM audio samples from a remote participant.
+Receive decoded PCM audio frames from a remote participant.
 
 ```js
-track.onData((samples, metadata) => {
-  // metadata: { bitsPerSample, sampleRate, numberOfChannels, numberOfFrames, timestampUs }
+track.onFrame(frame => {
+  // frame: {
+  //   format: 'PCM_S16LE',
+  //   sampleRate, channels, frames,
+  //   pcm: Buffer,              // interleaved int16 samples
+  //   timestampNs: bigint,
+  //   frameId: number,
+  // }
 });
-track.removeDataCallback();
+track.removeFrameCallback();
 ```
 
 ### RemoteDataTrack
@@ -182,23 +224,26 @@ track.removeMessageCallback();
 
 ## Frame Formats
 
-### Video (I420)
+### Video (`VideoFrame` / `VideoFrameInput`)
 
-Frames are split into three separate `Buffer` planes:
+I420 planar layout. Each plane is a `Buffer`; `stride` is bytes per row (≥ width, padded for alignment).
 
-| Plane | Size                 | Description      |
-| ----- | -------------------- | ---------------- |
-| Y     | `width * height`     | Luminance        |
-| U     | `width * height / 4` | Chrominance (Cb) |
-| V     | `width * height / 4` | Chrominance (Cr) |
+| Plane | Logical size             | Buffer size            | Description      |
+| ----- | ------------------------ | ---------------------- | ---------------- |
+| Y     | `width × height`         | `yStride × height`     | Luminance        |
+| U     | `⌈width/2⌉ × ⌈height/2⌉` | `uStride × ⌈height/2⌉` | Chrominance (Cb) |
+| V     | `⌈width/2⌉ × ⌈height/2⌉` | `vStride × ⌈height/2⌉` | Chrominance (Cr) |
 
-`VideoFrameMetadata` includes `strideY`, `strideU`, `strideV` for padded rows, plus `timestampUs` and `rotation` (0, 90, 180, 270).
+Inputs to `LocalVideoTrack.write()` use a flat `VideoFrameInput` shape (`y`/`u`/`v` Buffers + `yStride`/`uStride`/`vStride`); received `VideoFrame`s wrap each plane in an `I420Plane` (`{ data, stride, width, height }`).
 
-### Audio (PCM)
+Timestamps are **`bigint` nanoseconds** (`timestampNs`). `rotation` is `0 | 90 | 180 | 270`.
 
-Audio is delivered as a single `Buffer` of interleaved 16-bit signed little-endian PCM samples.
+### Audio (`AudioFrame` / `AudioFrameInput`)
 
-`AudioFrameMetadata` includes `bitsPerSample`, `sampleRate`, `numberOfChannels`, `numberOfFrames`, and `timestampUs`.
+Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
+
+- **Inputs** to `LocalAudioTrack.write()` are fixed at **48kHz mono** — only `pcm` and `frames` are accepted.
+- **Received `AudioFrame`s** include `sampleRate`, `channels`, `frames`, `pcm`, and `timestampNs: bigint`.
 
 ## Configuration
 
