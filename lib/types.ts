@@ -28,7 +28,7 @@ export interface VideoFrame {
   v: I420Plane;
   timestampNs: bigint;
   captureTimestampNs?: bigint;
-  rtpTimestamp: number;
+  rtpTimestamp?: number;
   frameId: number;
   isKeyFrame?: boolean;
   rotation?: 0 | 90 | 180 | 270;
