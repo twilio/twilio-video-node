@@ -186,9 +186,8 @@ track.onFrame(frame => {
   //   y, u, v,                  // I420Plane: { data: Buffer, stride, width, height }
   //   timestampNs: bigint,
   //   captureTimestampNs?: bigint,
-  //   rtpTimestamp: number,
+  //   rtpTimestamp?: number,
   //   frameId: number,
-  //   isKeyFrame?: boolean,
   //   rotation?: 0 | 90 | 180 | 270,
   // }
 });
@@ -206,8 +205,6 @@ track.onFrame(frame => {
   //   sampleRate, channels, frames,
   //   pcm: Buffer,              // interleaved int16 samples
   //   timestampNs: bigint,
-  //   captureTimestampNs?: bigint,
-  //   rtpTimestamp?: number,
   //   frameId: number,
   // }
 });
