@@ -187,13 +187,12 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
 
     webrtc::VideoRotation rotation = webrtc::kVideoRotation_0;
     if (frame.Has("rotation") && !frame.Get("rotation").IsUndefined()) {
-        Napi::Value rotationVal = frame.Get("rotation");
-        if (!rotationVal.IsNumber()) {
-            Napi::TypeError::New(env, "VideoFrameInput rotation must be a number")
+        int32_t r;
+        if (!ToFiniteInt32(frame.Get("rotation"), &r)) {
+            Napi::TypeError::New(env, "VideoFrameInput rotation must be a finite integer")
                 .ThrowAsJavaScriptException();
             return env.Undefined();
         }
-        int r = rotationVal.As<Napi::Number>().Int32Value();
         switch (r) {
             case 0:   rotation = webrtc::kVideoRotation_0; break;
             case 90:  rotation = webrtc::kVideoRotation_90; break;
