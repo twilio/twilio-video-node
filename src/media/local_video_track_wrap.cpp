@@ -17,7 +17,7 @@ bool ToFiniteInt32(Napi::Value v, int32_t* out) {
 }
 }
 
-void PushableVideoSource::PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffer,
+bool PushableVideoSource::PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffer,
                                     int64_t timestampUs,
                                     webrtc::VideoRotation rotation) {
     auto system_timestamp = rtc::TimeMicros();
@@ -27,7 +27,7 @@ void PushableVideoSource::PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffe
 
     if (!AdaptFrame(buffer->width(), buffer->height(), translated_timestamp,
                     &adapted_width, &adapted_height, &crop_width, &crop_height, &crop_x, &crop_y)) {
-        return;
+        return false;
     }
 
     rtc::scoped_refptr<webrtc::I420Buffer> adapted_buffer;
@@ -39,6 +39,7 @@ void PushableVideoSource::PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffe
     }
 
     OnFrame(webrtc::VideoFrame(adapted_buffer, rotation, translated_timestamp));
+    return true;
 }
 
 Napi::FunctionReference LocalVideoTrackWrap::constructor_;
@@ -108,7 +109,7 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
 
     if (info.Length() < 1 || !info[0].IsObject()) {
         Napi::TypeError::New(env, "write() expects a VideoFrameInput object").ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     Napi::Object frame = info[0].As<Napi::Object>();
@@ -116,7 +117,7 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     if (!frame.Has("y") || !frame.Has("u") || !frame.Has("v") ||
         !frame.Get("y").IsBuffer() || !frame.Get("u").IsBuffer() || !frame.Get("v").IsBuffer()) {
         Napi::TypeError::New(env, "VideoFrameInput requires y, u, v Buffers").ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     int32_t width, height, yStride, uStride, vStride;
@@ -128,7 +129,7 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         Napi::TypeError::New(env,
             "VideoFrameInput requires finite integer width, height, yStride, uStride, vStride")
             .ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     auto yBuffer = frame.Get("y").As<Napi::Buffer<uint8_t>>();
@@ -138,7 +139,7 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     if (width <= 0 || height <= 0) {
         Napi::RangeError::New(env, "VideoFrameInput width and height must be positive")
             .ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     // I420 chroma planes are subsampled 2x in each dimension.
@@ -147,7 +148,7 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     if (yStride < width || uStride < uvWidth || vStride < uvWidth) {
         Napi::RangeError::New(env, "VideoFrameInput strides must be >= plane widths")
             .ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     size_t yRequired = static_cast<size_t>(yStride) * static_cast<size_t>(height);
@@ -156,7 +157,7 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     if (yBuffer.Length() < yRequired || uBuffer.Length() < uRequired || vBuffer.Length() < vRequired) {
         Napi::RangeError::New(env, "VideoFrameInput plane buffers are smaller than stride*height")
             .ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     int64_t timestampUs;
@@ -165,19 +166,19 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         if (!tsVal.IsBigInt()) {
             Napi::TypeError::New(env, "VideoFrameInput timestampNs must be a BigInt")
                 .ThrowAsJavaScriptException();
-            return Napi::Boolean::New(env, false);
+            return env.Undefined();
         }
         bool lossless = false;
         int64_t timestampNs = tsVal.As<Napi::BigInt>().Int64Value(&lossless);
         if (!lossless) {
             Napi::RangeError::New(env, "timestampNs out of range for int64")
                 .ThrowAsJavaScriptException();
-            return Napi::Boolean::New(env, false);
+            return env.Undefined();
         }
         if (timestampNs < 0) {
             Napi::RangeError::New(env, "timestampNs must be non-negative")
                 .ThrowAsJavaScriptException();
-            return Napi::Boolean::New(env, false);
+            return env.Undefined();
         }
         timestampUs = timestampNs / 1000;
     } else {
@@ -190,7 +191,7 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         if (!rotationVal.IsNumber()) {
             Napi::TypeError::New(env, "VideoFrameInput rotation must be a number")
                 .ThrowAsJavaScriptException();
-            return Napi::Boolean::New(env, false);
+            return env.Undefined();
         }
         int r = rotationVal.As<Napi::Number>().Int32Value();
         switch (r) {
@@ -201,8 +202,13 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
             default:
                 Napi::RangeError::New(env, "VideoFrameInput rotation must be 0, 90, 180, or 270")
                     .ThrowAsJavaScriptException();
-                return Napi::Boolean::New(env, false);
+                return env.Undefined();
         }
+    }
+
+    if (!videoSource_) {
+        Napi::Error::New(env, "LocalVideoTrack is not bound to a source").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
     auto i420Buffer = webrtc::I420Buffer::Copy(
@@ -211,12 +217,8 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         uBuffer.Data(), uStride,
         vBuffer.Data(), vStride);
 
-    if (!videoSource_) {
-        return Napi::Boolean::New(env, false);
-    }
-
-    videoSource_->PushFrame(i420Buffer, timestampUs, rotation);
-    return Napi::Boolean::New(env, true);
+    bool delivered = videoSource_->PushFrame(i420Buffer, timestampUs, rotation);
+    return Napi::Boolean::New(env, delivered);
 }
 
 }

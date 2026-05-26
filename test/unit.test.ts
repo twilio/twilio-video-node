@@ -73,7 +73,7 @@ describe('Video Track', () => {
     expect(track.enabled).toBe(true);
   });
 
-  it('write accepts I420 frame and returns true', () => {
+  it('write returns false on unpublished track (no encoder sink attached)', () => {
     const track = createLocalVideoTrack('push-test');
 
     const frame = generateI420Frame(320, 240);
@@ -88,7 +88,7 @@ describe('Video Track', () => {
       vStride: 160,
       timestampNs: process.hrtime.bigint(),
     });
-    expect(result).toBe(true);
+    expect(result).toBe(false);
   });
 });
 

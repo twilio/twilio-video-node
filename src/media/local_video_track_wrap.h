@@ -17,7 +17,10 @@ public:
     PushableVideoSource() = default;
     ~PushableVideoSource() override = default;
 
-    void PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffer,
+    // Returns true if the frame was forwarded to the encoder sink; false if
+    // dropped by the adapter (e.g. before the encoder sink attaches after
+    // peer-connection negotiation).
+    bool PushFrame(rtc::scoped_refptr<webrtc::I420Buffer> buffer,
                    int64_t timestampUs,
                    webrtc::VideoRotation rotation);
 

@@ -114,21 +114,21 @@ Napi::Value LocalAudioTrackWrap::Write(const Napi::CallbackInfo& info) {
 
     if (info.Length() < 1 || !info[0].IsObject()) {
         Napi::TypeError::New(env, "write() expects an AudioFrameInput object").ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     Napi::Object frame = info[0].As<Napi::Object>();
 
     if (!frame.Has("pcm") || !frame.Get("pcm").IsBuffer()) {
         Napi::TypeError::New(env, "AudioFrameInput requires a pcm Buffer").ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     Napi::Value framesVal = frame.Get("frames");
     if (!framesVal.IsNumber()) {
         Napi::TypeError::New(env, "AudioFrameInput requires frames (number of samples per channel)")
             .ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
     double framesDouble = framesVal.As<Napi::Number>().DoubleValue();
     if (!std::isfinite(framesDouble) ||
@@ -137,7 +137,7 @@ Napi::Value LocalAudioTrackWrap::Write(const Napi::CallbackInfo& info) {
         framesDouble > static_cast<double>(std::numeric_limits<int64_t>::max())) {
         Napi::RangeError::New(env, "AudioFrameInput frames must be a positive integer")
             .ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     auto buffer = frame.Get("pcm").As<Napi::Buffer<int16_t>>();
@@ -147,11 +147,12 @@ Napi::Value LocalAudioTrackWrap::Write(const Napi::CallbackInfo& info) {
     if (buffer.Length() < number_of_frames) {
         Napi::RangeError::New(env, "AudioFrameInput pcm buffer is smaller than frames")
             .ThrowAsJavaScriptException();
-        return Napi::Boolean::New(env, false);
+        return env.Undefined();
     }
 
     if (!audioSource_) {
-        return Napi::Boolean::New(env, false);
+        Napi::Error::New(env, "LocalAudioTrack is not bound to a source").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
     audioSource_->PushSamples(buffer.Data(), 16, 48000, 1, number_of_frames);

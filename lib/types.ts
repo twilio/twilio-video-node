@@ -116,6 +116,19 @@ export interface LocalVideoTrack {
   readonly name: string;
   readonly kind: 'video';
   enabled: boolean;
+  /**
+   * Push an I420 frame into the track.
+   *
+   * Throws `TypeError`/`RangeError` on invalid input (bad shape, non-finite
+   * integers, non-BigInt timestamp, invalid rotation, plane buffer smaller than
+   * `stride * height`). Throws `Error` if the track is not bound to a source.
+   *
+   * Returns `true` when the frame was forwarded to the encoder sink. Returns
+   * `false` when the underlying adapter dropped the frame — most commonly
+   * because the encoder sink has not yet attached (frames pushed before the
+   * room emits `connected`), but also when the adapter rate-limits or rejects
+   * the frame's resolution.
+   */
   write(frame: VideoFrameInput): boolean;
 }
 
@@ -123,6 +136,16 @@ export interface LocalAudioTrack {
   readonly name: string;
   readonly kind: 'audio';
   enabled: boolean;
+  /**
+   * Push a PCM audio frame into the track.
+   *
+   * Format is fixed at **48 kHz mono S16LE** — `AudioFrameInput` exposes no
+   * sampleRate/channels fields, and `pcm` is interpreted as int16 mono samples.
+   *
+   * Throws `TypeError`/`RangeError` on invalid input (missing/non-Buffer `pcm`,
+   * non-integer `frames`, `pcm` shorter than `frames`). Throws `Error` if the
+   * track is not bound to a source. Returns `true` on successful enqueue.
+   */
   write(frame: AudioFrameInput): boolean;
   clearBuffer(): void;
 }
