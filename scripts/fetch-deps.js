@@ -4,22 +4,25 @@
 
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const http = require('http');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const DEPS_DIR = path.join(ROOT, 'deps');
 
 const platformMap = { darwin: 'darwin', linux: 'linux' };
 const archMap = { x64: 'x86_64', arm64: 'arm64' };
-
 const platform = platformMap[process.platform];
 const arch = archMap[process.arch];
-const buildType = process.env.RTC_CPP_BUILD_TYPE || 'release';
 
-if (!platform || !arch) {
-  console.error(`[fetch-deps] Unsupported platform: ${process.platform}-${process.arch}`);
+if (!arch) {
+  console.error(`[fetch-deps] Unsupported architecture: ${process.arch}`);
+  process.exit(1);
+}
+const buildType = process.env.RTC_CPP_BUILD_TYPE || 'release';
+const targetArch = process.env.RTC_CPP_ARCH || archMap[process.arch] || process.arch;
+
+if (!platform) {
+  console.error(`[fetch-deps] Unsupported platform: ${process.platform}`);
   process.exit(1);
 }
 
@@ -27,100 +30,87 @@ function log(msg) {
   console.log(`[fetch-deps] ${msg}`);
 }
 
-const artifactoryUrl = process.env.ARTIFACTORY_URL;
-if (!artifactoryUrl) {
-  console.error('[fetch-deps] ARTIFACTORY_URL is not set');
-  console.error('  Example: https://twilio.jfrog.io/artifactory/internal-releases');
-  process.exit(1);
+const RETRIES = 5;
+const version = process.env.RTC_CPP_VERSION || '7.2.2';
+const repo = process.env.MAVEN_REPO || 'internal-releases';
+const repoUrl = `https://twilio.jfrog.io/artifactory/${repo}`;
+const artifact = `com.twilio.sdk:twilio-video:${version}:tar.bz2:${platform}`;
+const tmpFile = path.join(ROOT, '.tmp-twilio-video.tar.bz2');
+
+log(`Fetching twilio-video via Maven`);
+log(`  artifact: ${artifact}`);
+log(`  repo:     ${repoUrl}`);
+
+function mvnGet() {
+  for (let attempt = 1; attempt <= RETRIES; attempt++) {
+    log(`Attempt #${attempt} to fetch from Artifactory...`);
+    try {
+      execFileSync(
+        'mvn',
+        [
+          'dependency:get',
+          '-Partifactory',
+          '--batch-mode',
+          '-Dhttps.protocols=TLSv1.2',
+          `-DrepoUrl=${repoUrl}`,
+          '-Dtransitive=false',
+          `-Dartifact=${artifact}`,
+          `-Ddest=${tmpFile}`,
+        ],
+        { stdio: 'inherit' },
+      );
+      return;
+    } catch (err) {
+      if (attempt === RETRIES) {
+        throw new Error(`Maven fetch failed after ${RETRIES} attempts`, { cause: err });
+      }
+    }
+  }
 }
 
-const token = process.env.ARTIFACTORY_TOKEN;
-if (!token) {
-  console.error('[fetch-deps] ARTIFACTORY_TOKEN is not set');
-  process.exit(1);
-}
-
-const rtcCppVersion = process.env.RTC_CPP_VERSION || 'latest';
-const artifactName = `rtc-cpp-video-package-${platform}-${arch}-${buildType}.tar.gz`;
-
-// Build the download URL
-// Adjust this path to match your actual Artifactory repo structure
-const url =
-  rtcCppVersion === 'latest'
-    ? `${artifactoryUrl.replace(/\/$/, '')}/com/twilio/sdk/rtc-cpp-video-package/${artifactName}`
-    : `${artifactoryUrl.replace(/\/$/, '')}/com/twilio/sdk/rtc-cpp-video-package/${rtcCppVersion}/${artifactName}`;
-
-log(`Downloading rtc-cpp artifacts for ${platform}-${arch} (${buildType})`);
-log(`  ${url}`);
-
-const tmpFile = path.join(ROOT, `.tmp-${artifactName}`);
-
-function download(url, dest, redirects = 0) {
-  return new Promise((resolve, reject) => {
-    if (redirects > 5) return reject(new Error('Too many redirects'));
-
-    const client = url.startsWith('https') ? https : http;
-    const parsed = new URL(url);
-
-    client
-      .get(
-        {
-          hostname: parsed.hostname,
-          path: parsed.pathname + parsed.search,
-          port: parsed.port,
-          headers: { Authorization: `Bearer ${token}` },
-        },
-        res => {
-          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            return resolve(download(res.headers.location, dest, redirects + 1));
-          }
-
-          if (res.statusCode !== 200) {
-            let body = '';
-            res.on('data', c => {
-              body += c;
-            });
-            res.on('end', () => reject(new Error(`HTTP ${res.statusCode}: ${body}`)));
-            return;
-          }
-
-          fs.mkdirSync(path.dirname(dest), { recursive: true });
-          const file = fs.createWriteStream(dest);
-          res.pipe(file);
-          file.on('finish', () => {
-            file.close();
-            resolve();
-          });
-        },
-      )
-      .on('error', reject);
-  });
-}
-
-async function main() {
+function main() {
   try {
-    await download(url, tmpFile);
+    const args = process.argv.slice(2);
+    const pkgIndex = args.indexOf('--twilio-video-pkg');
+    const localArchive =
+      (pkgIndex !== -1 ? args[pkgIndex + 1] : null) || process.env.RTC_CPP_ARCHIVE;
+    if (localArchive) {
+      const resolved = path.resolve(localArchive);
+      if (!fs.existsSync(resolved)) {
+        throw new Error(`Local archive not found: ${resolved}`);
+      }
+      log(`Using local archive: ${resolved}`);
+      fs.copyFileSync(resolved, tmpFile);
+    } else {
+      mvnGet();
+    }
 
     const size = fs.statSync(tmpFile).size;
     log(`Downloaded ${(size / 1024 / 1024).toFixed(1)} MB`);
 
-    // Clean existing deps
     if (fs.existsSync(DEPS_DIR)) {
       fs.rmSync(DEPS_DIR, { recursive: true });
     }
     fs.mkdirSync(DEPS_DIR, { recursive: true });
 
     log('Extracting...');
-    execSync(`tar xzf "${tmpFile}" -C "${DEPS_DIR}"`, { stdio: 'inherit' });
+    execSync(`tar xjf "${tmpFile}" -C "${DEPS_DIR}"`, { stdio: 'inherit' });
 
-    // Clean up temp file
     fs.unlinkSync(tmpFile);
 
-    // Verify expected structure
+    // The Maven artifact extracts to deps/twilio-video/ which CMakeLists.txt expects
+    const videoDir = path.join(DEPS_DIR, 'twilio-video');
+    const archLibDir = path.join(videoDir, 'lib', arch);
+    const compilerDir = fs.existsSync(archLibDir)
+      ? fs.readdirSync(archLibDir).find(d => /^appleclang-/.test(d))
+      : null;
+
     const expectedPaths = [
-      path.join(DEPS_DIR, 'include'),
-      path.join(DEPS_DIR, 'video', 'src', 'libtwilio-video.a'),
-      path.join(DEPS_DIR, 'third-party', 'webrtc-full-tvi'),
+      path.join(videoDir, 'include'),
+      path.join(videoDir, 'lib'),
+      ...(compilerDir
+        ? [path.join(archLibDir, compilerDir, buildType, 'libtwilio-video.a')]
+        : [archLibDir]),
     ];
 
     const missing = expectedPaths.filter(p => !fs.existsSync(p));
@@ -128,15 +118,40 @@ async function main() {
       console.error('[fetch-deps] Extracted archive is missing expected paths:');
       missing.forEach(p => console.error(`  ${p}`));
       console.error('');
-      console.error('  The archive structure may not match expectations.');
-      console.error('  Check the rtc-cpp video-package artifact layout.');
+      console.error('  Check the twilio-video artifact layout from rtc-cpp.');
       process.exit(1);
     }
 
-    log('rtc-cpp artifacts ready at deps/');
+    const compilerDirs = fs
+      .readdirSync(archLibDir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(archLibDir, entry.name));
+
+    if (compilerDirs.length === 0) {
+      console.error(
+        `[fetch-deps] Extracted archive is missing compiler directories under ${archLibDir}`,
+      );
+      process.exit(1);
+    }
+
+    const libNames = ['libtwilio-video.a', 'libwebrtc.a', 'libjsoncpp.a'];
+    const libDir = compilerDirs
+      .map(compilerDir => path.join(compilerDir, buildType))
+      .find(candidate => libNames.every(lib => fs.existsSync(path.join(candidate, lib))));
+
+    if (!libDir) {
+      console.error(
+        `[fetch-deps] Extracted archive is missing required ${buildType} libraries for ${targetArch}:`,
+      );
+      compilerDirs.forEach(compilerDir => console.error(`  ${path.join(compilerDir, buildType)}`));
+      console.error('');
+      console.error(`  Expected: ${libNames.join(', ')}`);
+      process.exit(1);
+    }
+
+    log(`rtc-cpp artifacts ready at deps/twilio-video/ (${buildType})`);
   } catch (err) {
     console.error(`[fetch-deps] Failed: ${err.message}`);
-    // Clean up on failure
     if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
     process.exit(1);
   }
