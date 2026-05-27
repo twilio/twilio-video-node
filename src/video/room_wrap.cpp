@@ -303,10 +303,22 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
                         server.urls.push_back(u.As<Napi::String>().Utf8Value());
                     }
                 }
-                if (serverObj.Has("username") && serverObj.Get("username").IsString())
-                    server.username = serverObj.Get("username").As<Napi::String>().Utf8Value();
-                if (serverObj.Has("credential") && serverObj.Get("credential").IsString())
-                    server.password = serverObj.Get("credential").As<Napi::String>().Utf8Value();
+                if (serverObj.Has("username")) {
+                    auto v = serverObj.Get("username");
+                    if (!v.IsString()) {
+                        Napi::TypeError::New(env, "iceServers[].username must be a string").ThrowAsJavaScriptException();
+                        return env.Undefined();
+                    }
+                    server.username = v.As<Napi::String>().Utf8Value();
+                }
+                if (serverObj.Has("credential")) {
+                    auto v = serverObj.Get("credential");
+                    if (!v.IsString()) {
+                        Napi::TypeError::New(env, "iceServers[].credential must be a string").ThrowAsJavaScriptException();
+                        return env.Undefined();
+                    }
+                    server.password = v.As<Napi::String>().Utf8Value();
+                }
                 iceServers.push_back(server);
             }
             iceOptions.ice_servers = iceServers;

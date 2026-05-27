@@ -61,7 +61,13 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
       if (event === 'trackPublicationFailed') {
         this.emit(event, liftTwilioError(data));
       } else if (event === 'trackPublished') {
-        const pub = this._wrapNativePublication(data as RawTrackPublication);
+        // Native payload is `{trackSid, trackName}` only; resolve the full
+        // publication (with `kind`/`isTrackEnabled`) by trackSid.
+        const sid = (data as { trackSid?: string } | undefined)?.trackSid;
+        if (!sid) return;
+        const raw = this._findRawByTrackSid(sid);
+        if (!raw) return;
+        const pub = this._wrapNativePublication(raw);
         if (pub) this.emit(event, pub);
       } else {
         this.emit(event, data);
@@ -221,6 +227,13 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
           ? this._native.audioTracks
           : this._native.dataTracks;
     for (const raw of list) if (raw.trackName === name) return raw;
+    return undefined;
+  }
+
+  private _findRawByTrackSid(sid: string): RawTrackPublication | undefined {
+    for (const raw of this._native.videoTracks) if (raw.trackSid === sid) return raw;
+    for (const raw of this._native.audioTracks) if (raw.trackSid === sid) return raw;
+    for (const raw of this._native.dataTracks) if (raw.trackSid === sid) return raw;
     return undefined;
   }
 
