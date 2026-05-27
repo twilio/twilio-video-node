@@ -275,7 +275,10 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
             auto servers = iceObj.Get("iceServers").As<Napi::Array>();
             twilio::media::IceServers iceServers;
             for (uint32_t i = 0; i < servers.Length(); i++) {
-                if (!servers.Get(i).IsObject()) continue;
+                if (!servers.Get(i).IsObject()) {
+                    Napi::TypeError::New(env, "iceServers entries must be objects").ThrowAsJavaScriptException();
+                    return env.Undefined();
+                }
                 auto serverObj = servers.Get(i).As<Napi::Object>();
                 twilio::media::IceServer server;
                 if (serverObj.Has("urls") && serverObj.Get("urls").IsArray()) {
