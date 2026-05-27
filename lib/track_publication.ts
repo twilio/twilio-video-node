@@ -26,12 +26,32 @@ export class TrackPublication {
 
 export type LocalTrack = LocalVideoTrack | LocalAudioTrack | LocalDataTrack;
 
+interface Unpublisher {
+  unpublishTrack(track: LocalTrack): boolean;
+}
+
 export class LocalTrackPublication extends TrackPublication {
   track: LocalTrack | null;
+  /** @internal */ _participant: Unpublisher | null;
 
-  constructor(raw: RawTrackPublication, track: LocalTrack | null = null) {
+  constructor(
+    raw: RawTrackPublication,
+    track: LocalTrack | null = null,
+    participant: Unpublisher | null = null,
+  ) {
     super(raw);
     this.track = track;
+    this._participant = participant;
+  }
+
+  unpublish(): boolean {
+    if (!this._participant || !this.track) return false;
+    const ok = this._participant.unpublishTrack(this.track);
+    if (ok) {
+      this.track = null;
+      this._participant = null;
+    }
+    return ok;
   }
 }
 

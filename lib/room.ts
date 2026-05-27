@@ -5,18 +5,18 @@ import type {
   NativeRoom,
   NativeRemoteParticipant,
   RoomState,
-  TwilioError,
   RemoteVideoTrack,
   RemoteAudioTrack,
   RemoteDataTrack,
   StatsReport,
 } from './types.js';
+import { TwilioError, liftTwilioError } from './errors.js';
 
 export type RoomEvents = {
   connected: () => void;
   disconnected: (error?: TwilioError) => void;
   connectFailure: (error: TwilioError) => void;
-  reconnecting: (error: TwilioError) => void;
+  reconnecting: (error?: TwilioError) => void;
   reconnected: () => void;
   participantConnected: (participant: RemoteParticipant) => void;
   participantDisconnected: (participant: RemoteParticipant) => void;
@@ -50,6 +50,11 @@ const PARTICIPANT_EVENTS = new Set([
   'dominantSpeakerChanged',
 ]);
 
+const ROOM_ERROR_EVENTS = new Set(['connectFailure']);
+
+// Native may dispatch these with no error payload.
+const ROOM_OPTIONAL_ERROR_EVENTS = new Set(['disconnected', 'reconnecting']);
+
 const BUBBLED_TRACK_EVENTS = [
   'trackSubscribed',
   'trackUnsubscribed',
@@ -79,6 +84,10 @@ export class Room extends TypedEventEmitter<RoomEvents> {
           wrapped.dispose();
           this._remoteParticipantCache.delete(wrapped.sid);
         }
+      } else if (ROOM_ERROR_EVENTS.has(event)) {
+        this.emit(event, liftTwilioError(data));
+      } else if (ROOM_OPTIONAL_ERROR_EVENTS.has(event)) {
+        this.emit(event, data ? liftTwilioError(data) : undefined);
       } else {
         this.emit(event, data);
       }

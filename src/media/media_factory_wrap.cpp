@@ -27,6 +27,10 @@ Napi::Object MediaFactoryWrap::NewInstance(Napi::Env env, std::shared_ptr<twilio
     return obj;
 }
 
+bool MediaFactoryWrap::IsInstance(Napi::Object obj) {
+    return obj.InstanceOf(constructor_.Value());
+}
+
 MediaFactoryWrap::MediaFactoryWrap(const Napi::CallbackInfo& info)
     : Napi::ObjectWrap<MediaFactoryWrap>(info) {
     Napi::Env env = info.Env();

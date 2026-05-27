@@ -6,6 +6,14 @@ import {
   createLocalVideoTrack,
   createLocalAudioTrack,
   createLocalDataTrack,
+  createLocalTracks,
+  TwilioError,
+  AccessTokenInvalidError,
+  RoomNotFoundError,
+  SignalingConnectionError,
+  MediaConnectionError,
+  ParticipantMaxTracksExceededError,
+  twilioErrorFromCode,
 } from '../dist/index.mjs';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
@@ -193,5 +201,121 @@ describe('Data Track', () => {
     expect(track.name).toBe('send-test');
     expect(() => track.send('hello')).not.toThrow();
     expect(() => track.send(Buffer.from([0xde, 0xad]))).not.toThrow();
+  });
+});
+
+describe('createLocalTracks', () => {
+  it('returns audio + video by default', async () => {
+    const tracks = await createLocalTracks();
+    expect(tracks).toHaveLength(2);
+    const kinds = tracks.map(t => t.kind).sort();
+    expect(kinds).toEqual(['audio', 'video']);
+  });
+
+  it('returns only audio when video is false', async () => {
+    const tracks = await createLocalTracks({ audio: true, video: false });
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].kind).toBe('audio');
+  });
+
+  it('returns only video when audio is false', async () => {
+    const tracks = await createLocalTracks({ audio: false, video: true });
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].kind).toBe('video');
+  });
+
+  it('returns empty array when both are false', async () => {
+    const tracks = await createLocalTracks({ audio: false, video: false });
+    expect(tracks).toHaveLength(0);
+  });
+
+  it('passes per-track options through', async () => {
+    const tracks = await createLocalTracks({
+      audio: { name: 'mic-1' },
+      video: { name: 'cam-1' },
+    });
+    expect(tracks.find(t => t.kind === 'audio')!.name).toBe('mic-1');
+    expect(tracks.find(t => t.kind === 'video')!.name).toBe('cam-1');
+  });
+});
+
+describe('connect() networkQuality validation', () => {
+  it('rejects verbosity > 1', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('fake-token', { networkQuality: { local: 3 } }),
+    ).rejects.toThrow(/networkQuality\.local/);
+  });
+
+  it('rejects negative verbosity', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('fake-token', { networkQuality: { remote: -1 } }),
+    ).rejects.toThrow(/networkQuality\.remote/);
+  });
+});
+
+describe('TwilioError hierarchy', () => {
+  it('TwilioError is an Error subclass with code', () => {
+    const err = new TwilioError(99999, 'oops');
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe(99999);
+    expect(err.message).toBe('oops');
+    expect(err.name).toBe('TwilioError');
+  });
+
+  it('AccessTokenInvalidError carries code 20101', () => {
+    const err = new AccessTokenInvalidError();
+    expect(err).toBeInstanceOf(TwilioError);
+    expect(err.code).toBe(20101);
+    expect(err.name).toBe('AccessTokenInvalidError');
+  });
+
+  it('SignalingConnectionError carries code 53000', () => {
+    expect(new SignalingConnectionError().code).toBe(53000);
+  });
+
+  it('RoomNotFoundError carries code 53106', () => {
+    expect(new RoomNotFoundError().code).toBe(53106);
+  });
+
+  it('MediaConnectionError carries code 53405', () => {
+    expect(new MediaConnectionError().code).toBe(53405);
+  });
+
+  it('ParticipantMaxTracksExceededError carries code 53203', () => {
+    expect(new ParticipantMaxTracksExceededError().code).toBe(53203);
+  });
+
+  it('twilioErrorFromCode picks the matching subclass', () => {
+    const err = twilioErrorFromCode(20101, 'bad token');
+    expect(err).toBeInstanceOf(AccessTokenInvalidError);
+    expect(err.message).toBe('bad token');
+  });
+
+  it('twilioErrorFromCode falls back to TwilioError for unknown codes', () => {
+    const err = twilioErrorFromCode(99999, 'something');
+    expect(err).toBeInstanceOf(TwilioError);
+    expect(err.constructor.name).toBe('TwilioError');
+    expect(err.code).toBe(99999);
+  });
+
+  it('twilioErrorFromCode maps non-integer codes to TwilioError with code 0', () => {
+    const err = twilioErrorFromCode(NaN as unknown as number, 'bad');
+    expect(err).toBeInstanceOf(TwilioError);
+    expect(err.code).toBe(0);
+    expect(err.message).toBe('bad');
+  });
+
+  it('TwilioError subclass keeps default message when given empty string', () => {
+    const err = new RoomNotFoundError('');
+    expect(err.message).toBe('Room not found');
+  });
+});
+
+describe('createLocalTracks rejection', () => {
+  it('rejects when an option is invalid (does not throw synchronously)', async () => {
+    // Empty-string name fails validation in createLocalAudioTrack — must surface as a rejection
+    await expect(createLocalTracks({ audio: { name: '' }, video: false })).rejects.toThrow(/name/i);
   });
 });
