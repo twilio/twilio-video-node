@@ -69,9 +69,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         ? info[1].As<Napi::Object>()
         : Napi::Object::New(env);
 
-    // rtc-cpp throws std::exception for unsupported option combinations
-    // (e.g. videoEncodingMode=auto with preferredVideoCodecs). Convert to a
-    // JS TypeError so the addon (built without C++ exceptions) does not abort.
+    // Convert std::exception thrown by rtc-cpp into a JS TypeError.
     try {
     if (opts.Has("name"))
         builder.setRoomName(opts.Get("name").As<Napi::String>().Utf8Value());

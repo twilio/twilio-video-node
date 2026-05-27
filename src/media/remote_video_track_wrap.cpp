@@ -138,8 +138,8 @@ Napi::Value RemoteVideoTrackWrap::SetContentPreferences(const Napi::CallbackInfo
         }
         double w = rd.Get("width").As<Napi::Number>().DoubleValue();
         double h = rd.Get("height").As<Napi::Number>().DoubleValue();
-        // JS safe-integer ceiling — matches what Number can represent exactly.
-        constexpr double kMaxSafe = 9007199254740992.0;
+        // Matches Number.MAX_SAFE_INTEGER (2^53 - 1).
+        constexpr double kMaxSafe = 9007199254740991.0;
         auto isPositiveInt = [&](double v) {
             return std::isfinite(v) && v > 0 && v == std::floor(v) && v <= kMaxSafe;
         };
