@@ -26,30 +26,26 @@ export class TrackPublication {
 
 export type LocalTrack = LocalVideoTrack | LocalAudioTrack | LocalDataTrack;
 
-interface Unpublisher {
-  unpublishTrack(track: LocalTrack): boolean;
-}
-
 export class LocalTrackPublication extends TrackPublication {
   track: LocalTrack | null;
-  /** @internal */ _participant: Unpublisher | null;
+  #participant: { unpublishTrack(track: LocalTrack): boolean } | null;
 
   constructor(
     raw: RawTrackPublication,
     track: LocalTrack | null = null,
-    participant: Unpublisher | null = null,
+    participant: { unpublishTrack(track: LocalTrack): boolean } | null = null,
   ) {
     super(raw);
     this.track = track;
-    this._participant = participant;
+    this.#participant = participant;
   }
 
   unpublish(): boolean {
-    if (!this._participant || !this.track) return false;
-    const ok = this._participant.unpublishTrack(this.track);
+    if (!this.#participant || !this.track) return false;
+    const ok = this.#participant.unpublishTrack(this.track);
     if (ok) {
       this.track = null;
-      this._participant = null;
+      this.#participant = null;
     }
     return ok;
   }

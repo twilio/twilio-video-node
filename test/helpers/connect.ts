@@ -6,7 +6,7 @@ const CONNECTION_TIMEOUT = 15_000;
 
 type ConnectTrackOptions = Pick<
   ConnectOptions,
-  'videoTracks' | 'audioTracks' | 'dataTracks' | 'enableDominantSpeaker' | 'enableNetworkQuality'
+  'videoTracks' | 'audioTracks' | 'dataTracks' | 'enableDominantSpeaker' | 'networkQuality'
 >;
 
 async function connectToRoom(
@@ -22,7 +22,7 @@ async function connectToRoom(
     audioTracks: opts.audioTracks || [],
     dataTracks: opts.dataTracks || [],
     ...('enableDominantSpeaker' in opts && { enableDominantSpeaker: opts.enableDominantSpeaker }),
-    ...('enableNetworkQuality' in opts && { enableNetworkQuality: opts.enableNetworkQuality }),
+    ...('networkQuality' in opts && { networkQuality: opts.networkQuality }),
   });
 
   const timeoutPromise = new Promise<never>((_, reject) =>

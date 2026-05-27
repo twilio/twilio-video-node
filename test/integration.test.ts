@@ -467,7 +467,7 @@ describe('networkQualityLevel', () => {
   it('networkQualityLevelChanged fires and matches property', async () => {
     const roomName = uniqueRoom();
     const { connA, connB } = await connectPair(roomName, {
-      enableNetworkQuality: true,
+      networkQuality: true,
     });
 
     try {

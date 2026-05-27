@@ -162,12 +162,11 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
     return Promise.reject(new TypeError('token must be a non-empty string'));
   }
   const { networkQuality, ...rest } = options;
-  // Strip native-only keys that callers should not be able to set directly;
-  // we set them ourselves below based on `networkQuality`.
-  const sanitized = rest as Record<string, unknown>;
-  delete sanitized.enableNetworkQuality;
-  delete sanitized.networkQualityConfiguration;
-  const internalOpts: Record<string, unknown> = { ...sanitized };
+  const internalOpts: Record<string, unknown> = { ...rest };
+  // Defense in depth: untyped JS callers could still pass these native-only
+  // keys. Strip them so the values we derive from `networkQuality` win.
+  delete internalOpts.enableNetworkQuality;
+  delete internalOpts.networkQualityConfiguration;
 
   if (networkQuality === true) {
     internalOpts.enableNetworkQuality = true;

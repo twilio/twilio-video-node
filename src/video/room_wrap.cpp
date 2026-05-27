@@ -8,6 +8,7 @@
 #include "../common/error.h"
 
 #include <cmath>
+#include <cstdint>
 #include <string>
 
 #include <twilio/media/codec.h>
@@ -209,12 +210,13 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
                 }
             }
             if (vObj.Has("maxSubscriptionBitrate") && vObj.Get("maxSubscriptionBitrate").IsNumber()) {
-                int64_t v = vObj.Get("maxSubscriptionBitrate").As<Napi::Number>().Int64Value();
-                if (v < 0) {
-                    Napi::RangeError::New(env, "bandwidthProfile.video.maxSubscriptionBitrate must be >= 0").ThrowAsJavaScriptException();
+                double d = vObj.Get("maxSubscriptionBitrate").As<Napi::Number>().DoubleValue();
+                constexpr double kMaxSafe = 9007199254740991.0;
+                if (!std::isfinite(d) || d != std::floor(d) || d < 0 || d > kMaxSafe) {
+                    Napi::RangeError::New(env, "bandwidthProfile.video.maxSubscriptionBitrate must be a non-negative integer <= Number.MAX_SAFE_INTEGER").ThrowAsJavaScriptException();
                     return env.Undefined();
                 }
-                vBuilder.setMaxSubscriptionBitrate(static_cast<uint64_t>(v));
+                vBuilder.setMaxSubscriptionBitrate(static_cast<uint64_t>(d));
             }
             if (vObj.Has("trackSwitchOffMode") && vObj.Get("trackSwitchOffMode").IsString()) {
                 std::string m = vObj.Get("trackSwitchOffMode").As<Napi::String>().Utf8Value();
@@ -252,10 +254,19 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     if (opts.Has("encodingParameters") && opts.Get("encodingParameters").IsObject()) {
         auto epObj = opts.Get("encodingParameters").As<Napi::Object>();
         twilio::media::EncodingParameters ep;
-        if (epObj.Has("maxAudioBitrate") && epObj.Get("maxAudioBitrate").IsNumber())
-            ep.max_audio_bitrate_ = epObj.Get("maxAudioBitrate").As<Napi::Number>().Uint32Value();
-        if (epObj.Has("maxVideoBitrate") && epObj.Get("maxVideoBitrate").IsNumber())
-            ep.max_video_bitrate_ = epObj.Get("maxVideoBitrate").As<Napi::Number>().Uint32Value();
+        constexpr double kMaxSafe = 9007199254740991.0;
+        auto readBitrate = [&](const char* field, unsigned long& out) -> bool {
+            if (!epObj.Has(field) || !epObj.Get(field).IsNumber()) return true;
+            double d = epObj.Get(field).As<Napi::Number>().DoubleValue();
+            if (!std::isfinite(d) || d != std::floor(d) || d < 0 || d > kMaxSafe) {
+                Napi::RangeError::New(env, std::string("encodingParameters.") + field + " must be a non-negative integer <= Number.MAX_SAFE_INTEGER").ThrowAsJavaScriptException();
+                return false;
+            }
+            out = static_cast<unsigned long>(d);
+            return true;
+        };
+        if (!readBitrate("maxAudioBitrate", ep.max_audio_bitrate_)) return env.Undefined();
+        if (!readBitrate("maxVideoBitrate", ep.max_video_bitrate_)) return env.Undefined();
         builder.setEncodingParameters(ep);
     }
 

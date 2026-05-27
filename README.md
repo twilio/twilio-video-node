@@ -258,7 +258,7 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
   enableInsights?: boolean;
   enableAutomaticSubscription?: boolean;
   enableDominantSpeaker?: boolean;
-  enableNetworkQuality?: boolean;
+  networkQuality?: boolean | { local?: 1; remote?: 0 | 1 };
   region?: string;                      // e.g. 'us1', 'au1'
   iceOptions?: IceOptions;
   encodingParameters?: EncodingParameters;
