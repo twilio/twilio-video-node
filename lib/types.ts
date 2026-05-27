@@ -113,18 +113,11 @@ export interface BandwidthProfileOptions {
   video?: VideoBandwidthProfileOptions;
 }
 
-/**
- * rtc-cpp only defines verbosity levels 0 (kNone) and 1 (kMinimal). Values
- * outside this range are rejected with a `RangeError` at `connect()` time.
- */
+/** Network-quality reporting verbosity. `0` disables, `1` enables minimal reporting. */
 export type NetworkQualityVerbosity = 0 | 1;
 
 export interface NetworkQualityConfiguration {
-  /**
-   * rtc-cpp rejects `kNone` for the local participant — only `1` (kMinimal)
-   * is valid. Use `networkQuality: false` on `ConnectOptions` to disable
-   * reporting entirely.
-   */
+  /** Local participant verbosity. Only `1` is valid; to disable reporting, pass `networkQuality: false`. */
   local?: 1;
   remote?: NetworkQualityVerbosity;
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
 import { connectToRoom } from './helpers/connect.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
@@ -12,6 +12,7 @@ import type {
   LocalVideoTrackPublication,
   RemoteTrack,
   StatsReport,
+  VideoContentPreferences,
 } from '../dist/index.mjs';
 import {
   connect,
@@ -862,6 +863,47 @@ describe('Room.getStats()', () => {
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
+  });
+});
+
+describe('RemoteVideoTrack.setContentPreferences', () => {
+  let pair: Awaited<ReturnType<typeof connectPair>>;
+  let remoteTrack: RemoteVideoTrack;
+
+  beforeAll(async () => {
+    pair = await connectPair(uniqueRoom());
+    const subscribed = waitForEvent<RemoteVideoTrack>(
+      pair.remoteA,
+      'trackSubscribed',
+      TIMEOUT.subscribe,
+    );
+    pair.connA.room.localParticipant.publishTrack(createLocalVideoTrack('content-prefs-cam'));
+    remoteTrack = await subscribed;
+  }, TIMEOUT.subscribe + 5_000);
+
+  afterAll(() => Promise.all([pair.connA.cleanup(), pair.connB.cleanup()]));
+
+  const cases: { name: string; input: VideoContentPreferences; error: RegExp }[] = [
+    {
+      name: 'missing height',
+      // @ts-expect-error height is intentionally missing
+      input: { renderDimensions: { width: 320 } },
+      error: /numeric width and height/,
+    },
+    {
+      name: 'non-positive width',
+      input: { renderDimensions: { width: 0, height: 240 } },
+      error: /positive integers/,
+    },
+    {
+      name: 'non-integer width',
+      input: { renderDimensions: { width: 320.5, height: 240 } },
+      error: /positive integers/,
+    },
+  ];
+
+  it.each(cases)('rejects $name', ({ input, error }) => {
+    expect(() => remoteTrack.setContentPreferences(input)).toThrow(error);
   });
 });
 

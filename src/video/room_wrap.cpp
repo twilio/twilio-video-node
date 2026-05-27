@@ -99,40 +99,18 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     if (opts.Has("region"))
         builder.setRegion(opts.Get("region").As<Napi::String>().Utf8Value());
 
-    // Network quality verbosity. The TS layer normalizes values to 0 or 1 and
-    // already rejects local=0 (rtc-cpp's setLocalVerbosityLevel(kNone) throws);
-    // re-validate here as defense in depth for untyped JS callers.
     if (opts.Has("networkQualityConfiguration") && opts.Get("networkQualityConfiguration").IsObject()) {
         auto nqObj = opts.Get("networkQualityConfiguration").As<Napi::Object>();
-        twilio::video::NetworkQualityConfiguration::Builder nqBuilder;
-        auto readVerbosity = [&](const char* field, double& out) -> bool {
-            double d = nqObj.Get(field).As<Napi::Number>().DoubleValue();
-            if (!std::isfinite(d) || d != std::floor(d) || d < 0 || d > 1) {
-                Napi::RangeError::New(env, std::string("networkQualityConfiguration.") + field + " must be 0 or 1").ThrowAsJavaScriptException();
-                return false;
-            }
-            out = d;
-            return true;
-        };
-        auto toVerbosity = [](double v) {
-            return v == 0
+        auto toVerbosity = [&](const char* field) {
+            return nqObj.Get(field).As<Napi::Number>().DoubleValue() == 0
                 ? twilio::video::NetworkQualityVerbosity::kNone
                 : twilio::video::NetworkQualityVerbosity::kMinimal;
         };
-        if (nqObj.Has("local") && nqObj.Get("local").IsNumber()) {
-            double v;
-            if (!readVerbosity("local", v)) return env.Undefined();
-            if (v == 0) {
-                Napi::RangeError::New(env, "networkQualityConfiguration.local must be 1 (rtc-cpp rejects kNone for the local participant)").ThrowAsJavaScriptException();
-                return env.Undefined();
-            }
-            nqBuilder.setLocalVerbosityLevel(toVerbosity(v));
-        }
-        if (nqObj.Has("remote") && nqObj.Get("remote").IsNumber()) {
-            double v;
-            if (!readVerbosity("remote", v)) return env.Undefined();
-            nqBuilder.setRemoteVerbosityLevel(toVerbosity(v));
-        }
+        twilio::video::NetworkQualityConfiguration::Builder nqBuilder;
+        if (nqObj.Has("local"))
+            nqBuilder.setLocalVerbosityLevel(toVerbosity("local"));
+        if (nqObj.Has("remote"))
+            nqBuilder.setRemoteVerbosityLevel(toVerbosity("remote"));
         builder.setNetworkQualityConfiguration(nqBuilder.build());
     }
 

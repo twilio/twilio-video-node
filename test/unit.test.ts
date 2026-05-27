@@ -7,6 +7,8 @@ import {
   createLocalAudioTrack,
   createLocalDataTrack,
   createLocalTracks,
+  LocalParticipant,
+  LocalTrackPublication,
   TwilioError,
   AccessTokenInvalidError,
   RoomNotFoundError,
@@ -317,5 +319,55 @@ describe('createLocalTracks rejection', () => {
   it('rejects when an option is invalid (does not throw synchronously)', async () => {
     // Empty-string name fails validation in createLocalAudioTrack — must surface as a rejection
     await expect(createLocalTracks({ audio: { name: '' }, video: false })).rejects.toThrow(/name/i);
+  });
+});
+
+describe('LocalParticipant trackEnabled/trackDisabled', () => {
+  type ParticipantArg = ConstructorParameters<typeof LocalParticipant>[0];
+
+  function buildParticipant(name: string, kind: 'audio' | 'video'): LocalParticipant {
+    const publications = [{ trackSid: `MT-${name}`, trackName: name, kind }];
+    const participant = {
+      videoTracks: kind === 'video' ? publications : [],
+      audioTracks: kind === 'audio' ? publications : [],
+      dataTracks: [],
+      setEventCallback: () => {},
+    } as unknown as ParticipantArg;
+    return new LocalParticipant(participant);
+  }
+
+  it('emits trackEnabled with the publication bound to the toggled audio track', () => {
+    const track = createLocalAudioTrack('enable-evt');
+    track.enabled = false;
+    const participant = buildParticipant('enable-evt', 'audio');
+    participant._seedPublishedTracks([track]);
+
+    const events: LocalTrackPublication[] = [];
+    participant.on('trackEnabled', p => events.push(p));
+    participant.on('trackDisabled', p => events.push(p));
+
+    track.enabled = true;
+
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe('audio');
+    expect(events[0].trackSid).toBe('MT-enable-evt');
+    expect(events[0].track).toBe(track);
+  });
+
+  it('emits trackDisabled with the publication bound to the toggled video track', () => {
+    const track = createLocalVideoTrack('disable-evt');
+    const participant = buildParticipant('disable-evt', 'video');
+    participant._seedPublishedTracks([track]);
+
+    const events: LocalTrackPublication[] = [];
+    participant.on('trackEnabled', p => events.push(p));
+    participant.on('trackDisabled', p => events.push(p));
+
+    track.enabled = false;
+
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe('video');
+    expect(events[0].trackSid).toBe('MT-disable-evt');
+    expect(events[0].track).toBe(track);
   });
 });
