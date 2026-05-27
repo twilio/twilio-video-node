@@ -7,6 +7,9 @@
 #include "../media/local_data_track_wrap.h"
 #include "../common/error.h"
 
+#include <cmath>
+#include <string>
+
 #include <twilio/media/codec.h>
 #include <twilio/media/ice_options.h>
 #include <twilio/video/bandwidth_profile.h>
@@ -103,21 +106,34 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     if (opts.Has("networkQualityConfiguration") && opts.Get("networkQualityConfiguration").IsObject()) {
         auto nqObj = opts.Get("networkQualityConfiguration").As<Napi::Object>();
         twilio::video::NetworkQualityConfiguration::Builder nqBuilder;
-        auto toVerbosity = [](uint32_t v) {
+        auto readVerbosity = [&](const char* field, double& out) -> bool {
+            double d = nqObj.Get(field).As<Napi::Number>().DoubleValue();
+            if (!std::isfinite(d) || d != std::floor(d) || d < 0 || d > 1) {
+                Napi::RangeError::New(env, std::string("networkQualityConfiguration.") + field + " must be 0 or 1").ThrowAsJavaScriptException();
+                return false;
+            }
+            out = d;
+            return true;
+        };
+        auto toVerbosity = [](double v) {
             return v == 0
                 ? twilio::video::NetworkQualityVerbosity::kNone
                 : twilio::video::NetworkQualityVerbosity::kMinimal;
         };
         if (nqObj.Has("local") && nqObj.Get("local").IsNumber()) {
-            uint32_t v = nqObj.Get("local").As<Napi::Number>().Uint32Value();
+            double v;
+            if (!readVerbosity("local", v)) return env.Undefined();
             if (v == 0) {
                 Napi::RangeError::New(env, "networkQualityConfiguration.local must be 1 (rtc-cpp rejects kNone for the local participant)").ThrowAsJavaScriptException();
                 return env.Undefined();
             }
             nqBuilder.setLocalVerbosityLevel(toVerbosity(v));
         }
-        if (nqObj.Has("remote") && nqObj.Get("remote").IsNumber())
-            nqBuilder.setRemoteVerbosityLevel(toVerbosity(nqObj.Get("remote").As<Napi::Number>().Uint32Value()));
+        if (nqObj.Has("remote") && nqObj.Get("remote").IsNumber()) {
+            double v;
+            if (!readVerbosity("remote", v)) return env.Undefined();
+            nqBuilder.setRemoteVerbosityLevel(toVerbosity(v));
+        }
         builder.setNetworkQualityConfiguration(nqBuilder.build());
     }
 

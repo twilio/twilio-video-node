@@ -297,11 +297,13 @@ export interface CreateLocalTracksOptions {
 }
 
 export function createLocalTracks(
-  options: CreateLocalTracksOptions = { audio: true, video: true },
+  options: CreateLocalTracksOptions = {},
 ): Promise<(LocalAudioTrack | LocalVideoTrack)[]> {
   return new Promise((resolve, reject) => {
     try {
-      const { audio, video } = options;
+      // Missing keys default to `true`; only an explicit `false` opts out.
+      const audio = options.audio ?? true;
+      const video = options.video ?? true;
       const tracks: (LocalAudioTrack | LocalVideoTrack)[] = [];
       if (audio) {
         tracks.push(createLocalAudioTrack(audio === true ? undefined : audio));

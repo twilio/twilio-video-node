@@ -138,8 +138,10 @@ Napi::Value RemoteVideoTrackWrap::SetContentPreferences(const Napi::CallbackInfo
         }
         double w = rd.Get("width").As<Napi::Number>().DoubleValue();
         double h = rd.Get("height").As<Napi::Number>().DoubleValue();
-        auto isPositiveInt = [](double v) {
-            return std::isfinite(v) && v > 0 && v == std::floor(v) && v <= static_cast<double>(UINT32_MAX);
+        // JS safe-integer ceiling — matches what Number can represent exactly.
+        constexpr double kMaxSafe = 9007199254740992.0;
+        auto isPositiveInt = [&](double v) {
+            return std::isfinite(v) && v > 0 && v == std::floor(v) && v <= kMaxSafe;
         };
         if (!isPositiveInt(w) || !isPositiveInt(h)) {
             Napi::RangeError::New(env, "renderDimensions width and height must be positive integers")
@@ -147,8 +149,8 @@ Napi::Value RemoteVideoTrackWrap::SetContentPreferences(const Napi::CallbackInfo
             return env.Undefined();
         }
         twilio::video::VideoDimensions dims;
-        dims.width = static_cast<uint32_t>(w);
-        dims.height = static_cast<uint32_t>(h);
+        dims.width = static_cast<uint64_t>(w);
+        dims.height = static_cast<uint64_t>(h);
 
         twilio::media::VideoContentPreferences cp;
         cp.render_dimensions = dims;
