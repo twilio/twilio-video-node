@@ -867,7 +867,7 @@ describe('Room.getStats()', () => {
 });
 
 describe('RemoteVideoTrack.setContentPreferences', () => {
-  let pair: Awaited<ReturnType<typeof connectPair>>;
+  let pair: Awaited<ReturnType<typeof connectPair>> | undefined;
   let remoteTrack: RemoteVideoTrack;
 
   beforeAll(async () => {
@@ -881,9 +881,18 @@ describe('RemoteVideoTrack.setContentPreferences', () => {
     remoteTrack = await subscribed;
   }, TIMEOUT.subscribe + 5_000);
 
-  afterAll(() => Promise.all([pair.connA.cleanup(), pair.connB.cleanup()]));
+  afterAll(() => {
+    if (!pair) return;
+    return Promise.all([pair.connA.cleanup(), pair.connB.cleanup()]);
+  });
 
   const cases: { name: string; input: VideoContentPreferences; error: RegExp }[] = [
+    {
+      name: 'non-object renderDimensions',
+      // @ts-expect-error renderDimensions is intentionally invalid
+      input: { renderDimensions: 123 },
+      error: /renderDimensions must be an object/,
+    },
     {
       name: 'missing height',
       // @ts-expect-error height is intentionally missing
@@ -902,7 +911,7 @@ describe('RemoteVideoTrack.setContentPreferences', () => {
     },
   ];
 
-  it.each(cases)('rejects $name', ({ input, error }) => {
+  it.each(cases)('throws $name', ({ input, error }) => {
     expect(() => remoteTrack.setContentPreferences(input)).toThrow(error);
   });
 });

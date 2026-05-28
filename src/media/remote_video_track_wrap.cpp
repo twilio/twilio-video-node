@@ -129,8 +129,14 @@ Napi::Value RemoteVideoTrackWrap::SetContentPreferences(const Napi::CallbackInfo
     // VideoFrameSink installed by OnFrame).
     hints.sink_id = twilio::media::kSinkIdWhenNoSinkAttachedToTrack;
 
-    if (prefs.Has("renderDimensions") && prefs.Get("renderDimensions").IsObject()) {
-        auto rd = prefs.Get("renderDimensions").As<Napi::Object>();
+    if (prefs.Has("renderDimensions")) {
+        auto rdValue = prefs.Get("renderDimensions");
+        if (!rdValue.IsObject()) {
+            Napi::TypeError::New(env, "renderDimensions must be an object")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        auto rd = rdValue.As<Napi::Object>();
         if (!rd.Has("width") || !rd.Has("height") ||
             !rd.Get("width").IsNumber() || !rd.Get("height").IsNumber()) {
             Napi::TypeError::New(env, "renderDimensions requires numeric width and height")
