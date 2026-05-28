@@ -65,29 +65,35 @@ room.disconnect();
 
 ### Top-level Functions
 
-| Function                       | Description                                                                                                               |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `connect(token, options?)`     | Connect to a room. Returns `Promise<Room>`.                                                                               |
-| `createLocalVideoTrack(name?)` | Create a pushable local video track.                                                                                      |
-| `createLocalAudioTrack(name?)` | Create a pushable local audio track.                                                                                      |
-| `createLocalDataTrack(name?)`  | Create a local data track.                                                                                                |
-| `setLogLevel(level)`           | Set native log level (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`). |
-| `getVersion()`                 | Returns the native SDK version string.                                                                                    |
+| Function                              | Description                                                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `connect(token, options?)`            | Connect to a room. Returns `Promise<Room>`.                                                                               |
+| `createLocalVideoTrack(name?)`        | Create a pushable local video track.                                                                                      |
+| `createLocalAudioTrack(name?)`        | Create a pushable local audio track.                                                                                      |
+| `createLocalDataTrack(name?)`         | Create a local data track.                                                                                                |
+| `createLocalTracks(options?)`         | Create audio + video local tracks. Returns `Promise<(LocalAudioTrack \| LocalVideoTrack)[]>`.                             |
+| `twilioErrorFromCode(code, message?)` | Build a `TwilioError` (or matching subclass) from a numeric error code.                                                   |
+| `setLogLevel(level)`                  | Set native log level (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`). |
+| `getVersion()`                        | Returns the native SDK version string.                                                                                    |
 
 ### Key Classes
 
-| Export              | Description                                                                                                  |
-| ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `Room`              | A connected video room. Emits events, exposes participants.                                                  |
-| `LocalParticipant`  | The local participant. Publish/unpublish tracks.                                                             |
-| `RemoteParticipant` | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`.                                           |
-| `LocalVideoTrack`   | Pushable video track (`write(frame)`).                                                                       |
-| `LocalAudioTrack`   | Pushable audio track (`write(frame)`).                                                                       |
-| `LocalDataTrack`    | Send arbitrary data (`send`). Construct via `new LocalDataTrack(options?)` or `createLocalDataTrack(name?)`. |
-| `RemoteVideoTrack`  | Receive video frames (`onFrame`).                                                                            |
-| `RemoteAudioTrack`  | Receive audio frames (`onFrame`).                                                                            |
-| `RemoteDataTrack`   | Receive data messages (`onMessage`).                                                                         |
-| `ErrorCode`         | Enum of Twilio Video error codes.                                                                            |
+| Export                   | Description                                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Room`                   | A connected video room. Emits events, exposes participants.                                                                                                            |
+| `LocalParticipant`       | The local participant. Publish/unpublish tracks.                                                                                                                       |
+| `RemoteParticipant`      | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`.                                                                                                     |
+| `LocalVideoTrack`        | Pushable video track (`write(frame)`).                                                                                                                                 |
+| `LocalAudioTrack`        | Pushable audio track (`write(frame)`).                                                                                                                                 |
+| `LocalDataTrack`         | Send arbitrary data (`send`). Construct via `new LocalDataTrack(options?)` or `createLocalDataTrack(name?)`.                                                           |
+| `RemoteVideoTrack`       | Receive video frames (`onFrame`).                                                                                                                                      |
+| `RemoteAudioTrack`       | Receive audio frames (`onFrame`).                                                                                                                                      |
+| `RemoteDataTrack`        | Receive data messages (`onMessage`).                                                                                                                                   |
+| `TrackPublication`       | Base class for published tracks (`trackSid`, `trackName`, `kind`, `isTrackEnabled`).                                                                                   |
+| `LocalTrackPublication`  | Local publication. Exposes `track` and `unpublish()`. Subclassed per kind (`LocalVideoTrackPublication`, …).                                                           |
+| `RemoteTrackPublication` | Remote publication. Exposes `track` and `isSubscribed`. Subclassed per kind (`RemoteVideoTrackPublication`, …).                                                        |
+| `TwilioError`            | Base error class. Subclasses: `AccessTokenInvalidError`, `RoomNotFoundError`, `SignalingConnectionError`, `MediaConnectionError`, `ParticipantMaxTracksExceededError`. |
+| `ErrorCode`              | Enum of Twilio Video error codes.                                                                                                                                      |
 
 ## Room Events
 
@@ -120,11 +126,36 @@ room.disconnect();
 
 ### LocalParticipant Events
 
-| Event                        | Handler Signature                         |
-| ---------------------------- | ----------------------------------------- |
-| `trackPublished`             | `(publication: TrackPublication) => void` |
-| `trackPublicationFailed`     | `(error: TwilioError) => void`            |
-| `networkQualityLevelChanged` | `(level: number) => void`                 |
+| Event                        | Handler Signature                              |
+| ---------------------------- | ---------------------------------------------- |
+| `trackPublished`             | `(publication: LocalTrackPublication) => void` |
+| `trackPublicationFailed`     | `(error: TwilioError) => void`                 |
+| `trackEnabled`               | `(publication: LocalTrackPublication) => void` |
+| `trackDisabled`              | `(publication: LocalTrackPublication) => void` |
+| `networkQualityLevelChanged` | `(level: number) => void`                      |
+
+### TrackPublication
+
+`LocalTrackPublication` exposes `track` (the local track instance) and an `unpublish()` method:
+
+```js
+const pub = room.localParticipant.tracks.get(trackSid); // LocalTrackPublication
+pub.unpublish(); // unpublishes the underlying track
+```
+
+`RemoteTrackPublication` exposes `track` (the subscribed remote track, if any) and `isSubscribed`.
+
+### Room.getStats()
+
+Returns a snapshot of WebRTC stats per peer connection. Rejects if the room is disconnected.
+
+```js
+const reports = await room.getStats();
+// reports[i]: {
+//   peerConnectionId, localAudioTrackStats, localVideoTrackStats,
+//   remoteAudioTrackStats, remoteVideoTrackStats
+// }
+```
 
 ## Track Types
 
@@ -192,6 +223,16 @@ track.onFrame(frame => {
   // }
 });
 track.removeFrameCallback();
+
+// Hint the desired render dimensions to the SFU. Width/height must be positive
+// integers. Only takes effect when the room was connected with a
+// bandwidthProfile that has `contentPreferencesMode: 'manual'`.
+track.setContentPreferences({ renderDimensions: { width: 320, height: 240 } });
+
+// `isSwitchedOff` is `true` when the SFU has stopped delivering this track
+// (e.g. due to bandwidth-profile constraints). Pair with the
+// `videoTrackSwitchedOff` / `videoTrackSwitchedOn` events on RemoteParticipant.
+track.isSwitchedOff;
 ```
 
 ### RemoteAudioTrack
@@ -259,9 +300,37 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
   enableAutomaticSubscription?: boolean;
   enableDominantSpeaker?: boolean;
   networkQuality?: boolean | { local?: 1; remote?: 0 | 1 };
+  preferredAudioCodecs?: ('opus' | 'PCMA' | 'PCMU' | 'G722')[];
+  preferredVideoCodecs?: ('H264' | 'VP8' | 'VP9')[];
+  videoEncodingMode?: 'auto';
+  bandwidthProfile?: BandwidthProfileOptions;
+  receiveTranscriptions?: boolean;
   region?: string;                      // e.g. 'us1', 'au1'
   iceOptions?: IceOptions;
   encodingParameters?: EncodingParameters;
+}
+```
+
+### BandwidthProfileOptions
+
+```ts
+{
+  video?: {
+    mode?: 'collaboration' | 'grid' | 'presentation';
+    maxSubscriptionBitrate?: number;    // bits per second
+    trackSwitchOffMode?: 'detected' | 'predicted' | 'disabled';
+    clientTrackSwitchOffControl?: 'auto' | 'manual';
+    contentPreferencesMode?: 'auto' | 'manual';
+  };
+}
+```
+
+### EncodingParameters
+
+```ts
+{
+  maxAudioBitrate?: number;             // bits per second
+  maxVideoBitrate?: number;             // bits per second
 }
 ```
 
@@ -270,7 +339,7 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
 ```ts
 {
   transportPolicy?: 'all' | 'relay';  // 'relay' forces TURN
-  iceServers?: IceServer[];
+  iceServers?: IceServer[];           // { urls: string[]; username?: string; credential?: string }
 }
 ```
 
