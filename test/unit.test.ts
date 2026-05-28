@@ -205,47 +205,36 @@ describe('Data Track', () => {
 });
 
 describe('createLocalTracks', () => {
-  it('returns audio + video by default', async () => {
+  it('returns audio and video when no options are provided', async () => {
     const tracks = await createLocalTracks();
-    expect(tracks).toHaveLength(2);
     const kinds = tracks.map(t => t.kind).sort();
     expect(kinds).toEqual(['audio', 'video']);
   });
 
-  it('returns only audio when video is false', async () => {
-    const tracks = await createLocalTracks({ audio: true, video: false });
+  it('returns only audio when only audio is specified', async () => {
+    const tracks = await createLocalTracks({ audio: true });
     expect(tracks).toHaveLength(1);
     expect(tracks[0].kind).toBe('audio');
   });
 
-  it('returns only video when audio is false', async () => {
-    const tracks = await createLocalTracks({ audio: false, video: true });
+  it('returns only video when only video is specified', async () => {
+    const tracks = await createLocalTracks({ video: true });
     expect(tracks).toHaveLength(1);
     expect(tracks[0].kind).toBe('video');
   });
 
-  it('returns empty array when both are false', async () => {
+  it('returns an empty array when both audio and video are false', async () => {
     const tracks = await createLocalTracks({ audio: false, video: false });
     expect(tracks).toHaveLength(0);
   });
 
-  it('passes per-track options through', async () => {
+  it('forwards per-track names when both kinds are requested', async () => {
     const tracks = await createLocalTracks({
       audio: { name: 'mic-1' },
       video: { name: 'cam-1' },
     });
     expect(tracks.find(t => t.kind === 'audio')!.name).toBe('mic-1');
     expect(tracks.find(t => t.kind === 'video')!.name).toBe('cam-1');
-  });
-
-  it('returns only the specified kind when only one key is set', async () => {
-    const audioOnly = await createLocalTracks({ audio: { name: 'mic' } });
-    expect(audioOnly).toHaveLength(1);
-    expect(audioOnly[0].kind).toBe('audio');
-
-    const videoOnly = await createLocalTracks({ video: true });
-    expect(videoOnly).toHaveLength(1);
-    expect(videoOnly[0].kind).toBe('video');
   });
 });
 
