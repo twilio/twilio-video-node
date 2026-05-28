@@ -237,6 +237,16 @@ describe('createLocalTracks', () => {
     expect(tracks.find(t => t.kind === 'audio')!.name).toBe('mic-1');
     expect(tracks.find(t => t.kind === 'video')!.name).toBe('cam-1');
   });
+
+  it('returns only the specified kind when only one key is set', async () => {
+    const audioOnly = await createLocalTracks({ audio: { name: 'mic' } });
+    expect(audioOnly).toHaveLength(1);
+    expect(audioOnly[0].kind).toBe('audio');
+
+    const videoOnly = await createLocalTracks({ video: true });
+    expect(videoOnly).toHaveLength(1);
+    expect(videoOnly[0].kind).toBe('video');
+  });
 });
 
 describe('connect() networkQuality validation', () => {

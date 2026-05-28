@@ -65,16 +65,16 @@ room.disconnect();
 
 ### Top-level Functions
 
-| Function                              | Description                                                                                                               |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `connect(token, options?)`            | Connect to a room. Returns `Promise<Room>`.                                                                               |
-| `createLocalVideoTrack(name?)`        | Create a pushable local video track.                                                                                      |
-| `createLocalAudioTrack(name?)`        | Create a pushable local audio track.                                                                                      |
-| `createLocalDataTrack(name?)`         | Create a local data track.                                                                                                |
-| `createLocalTracks(options?)`         | Create audio + video local tracks. Returns `Promise<(LocalAudioTrack \| LocalVideoTrack)[]>`.                             |
-| `twilioErrorFromCode(code, message?)` | Build a `TwilioError` (or matching subclass) from a numeric error code.                                                   |
-| `setLogLevel(level)`                  | Set native log level (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`). |
-| `getVersion()`                        | Returns the native SDK version string.                                                                                    |
+| Function                              | Description                                                                                                                                                                                                                                                                                  |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connect(token, options?)`            | Connect to a room. Returns `Promise<Room>`.                                                                                                                                                                                                                                                  |
+| `createLocalVideoTrack(name?)`        | Create a pushable local video track.                                                                                                                                                                                                                                                         |
+| `createLocalAudioTrack(name?)`        | Create a pushable local audio track.                                                                                                                                                                                                                                                         |
+| `createLocalDataTrack(name?)`         | Create a local data track.                                                                                                                                                                                                                                                                   |
+| `createLocalTracks(options?)`         | Create local audio and/or video tracks. With no options, returns both. If either `audio` or `video` is specified, the other defaults to `false`. Each key accepts `true`/`false` or a per-track options object (e.g. `{ name }`). Returns `Promise<(LocalAudioTrack \| LocalVideoTrack)[]>`. |
+| `twilioErrorFromCode(code, message?)` | Build a `TwilioError` (or matching subclass) from a numeric error code.                                                                                                                                                                                                                      |
+| `setLogLevel(level)`                  | Set native log level (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`).                                                                                                                                                                    |
+| `getVersion()`                        | Returns the native SDK version string.                                                                                                                                                                                                                                                       |
 
 ### Key Classes
 
