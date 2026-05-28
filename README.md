@@ -130,8 +130,6 @@ room.disconnect();
 | ---------------------------- | ---------------------------------------------- |
 | `trackPublished`             | `(publication: LocalTrackPublication) => void` |
 | `trackPublicationFailed`     | `(error: TwilioError) => void`                 |
-| `trackEnabled`               | `(publication: LocalTrackPublication) => void` |
-| `trackDisabled`              | `(publication: LocalTrackPublication) => void` |
 | `networkQualityLevelChanged` | `(level: number) => void`                      |
 
 ### TrackPublication

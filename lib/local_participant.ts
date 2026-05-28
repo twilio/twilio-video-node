@@ -5,7 +5,6 @@ import type {
   LocalAudioTrack,
   LocalDataTrack,
   ParticipantState,
-  TrackKind,
   TrackPublication as RawTrackPublication,
 } from './types.js';
 import { TwilioError, liftTwilioError } from './errors.js';
@@ -18,32 +17,9 @@ import {
   type LocalTrack,
 } from './track_publication.js';
 
-interface EnabledHook {
-  // Whether the captured descriptor was already an own property on `track`.
-  // Drives whether uninstall calls defineProperty (own) or delete (prototype).
-  ownDescriptor: boolean;
-  descriptor: PropertyDescriptor;
-}
-
-function findEnabledDescriptor(
-  obj: object,
-): { descriptor: PropertyDescriptor; own: boolean } | undefined {
-  let cur: object | null = obj;
-  let own = true;
-  while (cur) {
-    const desc = Object.getOwnPropertyDescriptor(cur, 'enabled');
-    if (desc) return { descriptor: desc, own };
-    cur = Object.getPrototypeOf(cur);
-    own = false;
-  }
-  return undefined;
-}
-
 export type LocalParticipantEvents = {
   trackPublished: (publication: LocalTrackPublication) => void;
   trackPublicationFailed: (error: TwilioError) => void;
-  trackEnabled: (publication: LocalTrackPublication) => void;
-  trackDisabled: (publication: LocalTrackPublication) => void;
   networkQualityLevelChanged: (level: number) => void;
 };
 
@@ -51,7 +27,6 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   /** @internal */
   readonly _native: NativeLocalParticipant;
   private _publishedTracks = new Map<string, LocalTrack>();
-  private _enabledHooks = new WeakMap<LocalTrack, EnabledHook>();
 
   constructor(nativeParticipant: NativeLocalParticipant) {
     super();
@@ -134,7 +109,6 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     const result = this._native.publishTrack(track);
     if (result) {
       this._publishedTracks.set(track.name, track as LocalTrack);
-      this._installEnabledHook(track as LocalTrack);
     }
     return result;
   }
@@ -143,7 +117,6 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     const result = this._native.unpublishTrack(track);
     if (result) {
       this._publishedTracks.delete(track.name);
-      this._uninstallEnabledHook(track as LocalTrack);
     }
     return result;
   }
@@ -158,7 +131,6 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   _seedPublishedTracks(tracks: ReadonlyArray<LocalTrack>): void {
     for (const track of tracks) {
       this._publishedTracks.set(track.name, track);
-      this._installEnabledHook(track);
     }
   }
 
@@ -174,60 +146,6 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
       default:
         return undefined;
     }
-  }
-
-  private _installEnabledHook(track: LocalTrack): void {
-    if (track.kind === 'data') return;
-    if (this._enabledHooks.has(track)) return;
-
-    const found = findEnabledDescriptor(track as unknown as object);
-    if (!found) return;
-    const { descriptor, own } = found;
-    const get = descriptor.get;
-    const set = descriptor.set;
-    if (!get || !set) return;
-    const originalGet = get.bind(track);
-    const originalSet = set.bind(track);
-
-    Object.defineProperty(track, 'enabled', {
-      configurable: true,
-      enumerable: descriptor.enumerable,
-      get: originalGet,
-      set: (value: boolean) => {
-        const prev = originalGet();
-        originalSet(value);
-        const next = originalGet();
-        if (prev === next) return;
-        const raw = this._findRawByTrackName(track.name, track.kind);
-        if (!raw) return;
-        const pub = this._wrapNativePublication(raw);
-        if (pub) this.emit(next ? 'trackEnabled' : 'trackDisabled', pub);
-      },
-    });
-
-    this._enabledHooks.set(track, { ownDescriptor: own, descriptor });
-  }
-
-  private _uninstallEnabledHook(track: LocalTrack): void {
-    const hook = this._enabledHooks.get(track);
-    if (!hook) return;
-    if (hook.ownDescriptor) {
-      Object.defineProperty(track, 'enabled', hook.descriptor);
-    } else {
-      delete (track as unknown as { enabled?: unknown }).enabled;
-    }
-    this._enabledHooks.delete(track);
-  }
-
-  private _findRawByTrackName(name: string, kind: TrackKind): RawTrackPublication | undefined {
-    const list =
-      kind === 'video'
-        ? this._native.videoTracks
-        : kind === 'audio'
-          ? this._native.audioTracks
-          : this._native.dataTracks;
-    for (const raw of list) if (raw.trackName === name) return raw;
-    return undefined;
   }
 
   private _findRawByTrackSid(sid: string): RawTrackPublication | undefined {
@@ -250,9 +168,6 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   }
 
   dispose(): void {
-    for (const track of this._publishedTracks.values()) {
-      this._uninstallEnabledHook(track);
-    }
     this._publishedTracks.clear();
     this.removeAllListeners();
   }
