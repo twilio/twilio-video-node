@@ -125,8 +125,7 @@ Napi::Value RemoteVideoTrackWrap::SetContentPreferences(const Napi::CallbackInfo
     auto prefs = info[0].As<Napi::Object>();
 
     twilio::media::SinkHints hints;
-    // Hints are addressed to the default Twilio-managed sink (not the
-    // VideoFrameSink installed by OnFrame).
+    // Address the default sink rather than our OnFrame sink — content preferences apply to the track, not to a specific subscriber.
     hints.sink_id = twilio::media::kSinkIdWhenNoSinkAttachedToTrack;
 
     if (prefs.Has("renderDimensions")) {

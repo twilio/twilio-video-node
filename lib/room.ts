@@ -52,7 +52,7 @@ const PARTICIPANT_EVENTS = new Set([
 
 const ROOM_ERROR_EVENTS = new Set(['connectFailure']);
 
-// Native may dispatch these with no error payload.
+// These events may be emitted without an associated error.
 const ROOM_OPTIONAL_ERROR_EVENTS = new Set(['disconnected', 'reconnecting']);
 
 const BUBBLED_TRACK_EVENTS = [

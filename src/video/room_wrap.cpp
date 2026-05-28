@@ -70,7 +70,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         ? info[1].As<Napi::Object>()
         : Napi::Object::New(env);
 
-    // Convert std::exception thrown by rtc-cpp into a JS TypeError.
+    // Translate the C++ exception into a JS TypeError so callers see a typed error.
     try {
     if (opts.Has("name"))
         builder.setRoomName(opts.Get("name").As<Napi::String>().Utf8Value());
@@ -159,7 +159,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         builder.setPreferredVideoCodecs(videoCodecs);
     }
 
-    // Video encoding mode. Today rtc-cpp only defines kAuto.
+    // Video encoding mode. Only "auto" is currently supported.
     if (opts.Has("videoEncodingMode") && opts.Get("videoEncodingMode").IsString()) {
         std::string m = opts.Get("videoEncodingMode").As<Napi::String>().Utf8Value();
         if (m == "auto") {
@@ -170,7 +170,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         }
     }
 
-    // Bandwidth profile (video sub-options)
+    // Forward bandwidthProfile.video sub-options (mode, switch-off, content-preferences, max bitrate).
     if (opts.Has("bandwidthProfile") && opts.Get("bandwidthProfile").IsObject()) {
         auto bpObj = opts.Get("bandwidthProfile").As<Napi::Object>();
         if (bpObj.Has("video") && bpObj.Get("video").IsObject()) {

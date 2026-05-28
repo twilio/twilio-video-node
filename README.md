@@ -1,6 +1,6 @@
 # twilio-video-sdk
 
-Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access. Built on a native C++ addon (rtc-cpp/WebRTC), it lets you push and receive decoded video and audio frames from Node.js on realtime.
+Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access. Built on a native C++ addon over WebRTC, it lets you push and receive decoded video and audio frames from Node.js on realtime.
 
 ## Installation
 

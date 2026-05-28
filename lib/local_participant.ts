@@ -36,8 +36,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
       if (event === 'trackPublicationFailed') {
         this.emit(event, liftTwilioError(data));
       } else if (event === 'trackPublished') {
-        // Native payload is `{trackSid, trackName}` only; resolve the full
-        // publication (with `kind`/`isTrackEnabled`) by trackSid.
+        // Resolve the published track by trackSid so listeners receive a complete LocalTrackPublication, not the partial event payload.
         const sid = (data as { trackSid?: string } | undefined)?.trackSid;
         if (!sid) return;
         const raw = this._findRawByTrackSid(sid);

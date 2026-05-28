@@ -163,8 +163,8 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
   }
   const { networkQuality, ...rest } = options;
   const internalOpts: Record<string, unknown> = { ...rest };
-  // Defense in depth: untyped JS callers could still pass these native-only
-  // keys. Strip them so the values we derive from `networkQuality` win.
+  // networkQuality is the public contract; clear the native-only fields before re-deriving them,
+  // so a caller passing them directly cannot override us.
   delete internalOpts.enableNetworkQuality;
   delete internalOpts.networkQualityConfiguration;
 
@@ -250,12 +250,12 @@ function normalizeNetworkQualityConfig(config: NetworkQualityConfiguration): {
   const remote = config.remote ?? 1;
   if (local !== 1) {
     throw new RangeError(
-      `networkQuality.local must be 1 (rtc-cpp rejects kNone for the local participant; use \`networkQuality: false\` to disable reporting); got ${local}`,
+      `networkQuality.local must be 1; to disable network-quality reporting, pass \`networkQuality: false\`. Got ${local}`,
     );
   }
   if (!Number.isInteger(remote) || remote < 0 || remote > 1) {
     throw new RangeError(
-      `networkQuality.remote must be 0 or 1 (rtc-cpp only supports kNone=0 and kMinimal=1); got ${remote}`,
+      `networkQuality.remote must be 0 (disabled) or 1 (enabled); got ${remote}`,
     );
   }
   return { local, remote };
