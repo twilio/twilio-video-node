@@ -102,7 +102,7 @@ room.disconnect();
 | `connected`               | `() => void`                                       |
 | `disconnected`            | `(error?: TwilioError) => void`                    |
 | `connectFailure`          | `(error: TwilioError) => void`                     |
-| `reconnecting`            | `(error: TwilioError) => void`                     |
+| `reconnecting`            | `(error?: TwilioError) => void`                    |
 | `reconnected`             | `() => void`                                       |
 | `participantConnected`    | `(participant: RemoteParticipant) => void`         |
 | `participantDisconnected` | `(participant: RemoteParticipant) => void`         |

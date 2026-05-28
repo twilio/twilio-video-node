@@ -70,7 +70,6 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         ? info[1].As<Napi::Object>()
         : Napi::Object::New(env);
 
-    // Translate the C++ exception into a JS TypeError so callers see a typed error.
     try {
     if (opts.Has("name"))
         builder.setRoomName(opts.Get("name").As<Napi::String>().Utf8Value());
@@ -370,7 +369,9 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
     } catch (const std::exception& e) {
-        Napi::TypeError::New(env, e.what()).ThrowAsJavaScriptException();
+        // Use Error, not TypeError: bad arguments are already rejected with TypeError
+        // inline above, so anything reaching here is a runtime failure, not bad input.
+        Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
         return env.Undefined();
     }
 

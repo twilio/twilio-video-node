@@ -20,17 +20,17 @@ public:
 
     void onAudioTrackPublished(twilio::video::LocalParticipant*,
                                std::shared_ptr<twilio::media::LocalAudioTrackPublication> pub) override {
-        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName(), "audio");
     }
 
     void onVideoTrackPublished(twilio::video::LocalParticipant*,
                                std::shared_ptr<twilio::media::LocalVideoTrackPublication> pub) override {
-        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName(), "video");
     }
 
     void onDataTrackPublished(twilio::video::LocalParticipant*,
                               std::shared_ptr<twilio::media::LocalDataTrackPublication> pub) override {
-        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName(), "data");
     }
 
     void onAudioTrackPublicationFailed(twilio::video::LocalParticipant*,
@@ -73,11 +73,12 @@ private:
         });
     }
 
-    void dispatchTrackEvent(const std::string& eventName, std::string sid, std::string name) {
-        dispatchEvent(eventName, [sid = std::move(sid), name = std::move(name)](Napi::Env env) {
+    void dispatchTrackEvent(const std::string& eventName, std::string sid, std::string name, std::string kind) {
+        dispatchEvent(eventName, [sid = std::move(sid), name = std::move(name), kind = std::move(kind)](Napi::Env env) {
             auto obj = Napi::Object::New(env);
             obj.Set("trackSid", Napi::String::New(env, sid));
             obj.Set("trackName", Napi::String::New(env, name));
+            obj.Set("kind", Napi::String::New(env, kind));
             return obj;
         });
     }

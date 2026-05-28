@@ -36,12 +36,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
       if (event === 'trackPublicationFailed') {
         this.emit(event, liftTwilioError(data));
       } else if (event === 'trackPublished') {
-        // Resolve the published track by trackSid so listeners receive a complete LocalTrackPublication, not the partial event payload.
-        const sid = (data as { trackSid?: string } | undefined)?.trackSid;
-        if (!sid) return;
-        const raw = this._findRawByTrackSid(sid);
-        if (!raw) return;
-        const pub = this._wrapNativePublication(raw);
+        const pub = this._resolvePublishedTrack(data as RawTrackPublication | undefined);
         if (pub) this.emit(event, pub);
       } else {
         this.emit(event, data);
@@ -69,11 +64,13 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     return this._native.signalingRegion;
   }
 
+  private _unpublishFn = (track: LocalTrack): boolean => this.unpublishTrack(track);
+
   get videoTracks(): Map<string, LocalVideoTrackPublication> {
     const map = new Map<string, LocalVideoTrackPublication>();
     for (const raw of this._native.videoTracks) {
       const track = this._publishedTracks.get(raw.trackName) as LocalVideoTrack | undefined;
-      map.set(raw.trackSid, new LocalVideoTrackPublication(raw, track ?? null, this));
+      map.set(raw.trackSid, new LocalVideoTrackPublication(raw, track ?? null, this._unpublishFn));
     }
     return map;
   }
@@ -82,7 +79,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     const map = new Map<string, LocalAudioTrackPublication>();
     for (const raw of this._native.audioTracks) {
       const track = this._publishedTracks.get(raw.trackName) as LocalAudioTrack | undefined;
-      map.set(raw.trackSid, new LocalAudioTrackPublication(raw, track ?? null, this));
+      map.set(raw.trackSid, new LocalAudioTrackPublication(raw, track ?? null, this._unpublishFn));
     }
     return map;
   }
@@ -91,7 +88,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     const map = new Map<string, LocalDataTrackPublication>();
     for (const raw of this._native.dataTracks) {
       const track = this._publishedTracks.get(raw.trackName) as LocalDataTrack | undefined;
-      map.set(raw.trackSid, new LocalDataTrackPublication(raw, track ?? null, this));
+      map.set(raw.trackSid, new LocalDataTrackPublication(raw, track ?? null, this._unpublishFn));
     }
     return map;
   }
@@ -105,6 +102,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   }
 
   publishTrack(track: LocalVideoTrack | LocalAudioTrack | LocalDataTrack): boolean {
+    this._assertUniqueName(track as LocalTrack);
     const result = this._native.publishTrack(track);
     if (result) {
       this._publishedTracks.set(track.name, track as LocalTrack);
@@ -129,29 +127,55 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
    */
   _seedPublishedTracks(tracks: ReadonlyArray<LocalTrack>): void {
     for (const track of tracks) {
+      this._assertUniqueName(track);
       this._publishedTracks.set(track.name, track);
     }
   }
 
-  private _wrapNativePublication(raw: RawTrackPublication): LocalTrackPublication | undefined {
-    const track = this._publishedTracks.get(raw.trackName);
-    switch (raw.kind) {
-      case 'video':
-        return new LocalVideoTrackPublication(raw, (track as LocalVideoTrack) ?? null, this);
-      case 'audio':
-        return new LocalAudioTrackPublication(raw, (track as LocalAudioTrack) ?? null, this);
-      case 'data':
-        return new LocalDataTrackPublication(raw, (track as LocalDataTrack) ?? null, this);
-      default:
-        return undefined;
+  /**
+   * Guards the name-keying of `_publishedTracks`.
+   * @throws {Error} If a different track instance is already published under `track.name`.
+   */
+  private _assertUniqueName(track: LocalTrack): void {
+    const existing = this._publishedTracks.get(track.name);
+    if (existing && existing !== track) {
+      throw new Error(
+        `A different track named "${track.name}" is already published. Track names must be unique.`,
+      );
     }
   }
 
-  private _findRawByTrackSid(sid: string): RawTrackPublication | undefined {
-    for (const raw of this._native.videoTracks) if (raw.trackSid === sid) return raw;
-    for (const raw of this._native.audioTracks) if (raw.trackSid === sid) return raw;
-    for (const raw of this._native.dataTracks) if (raw.trackSid === sid) return raw;
-    return undefined;
+  /**
+   * Builds the publication for `trackPublished`, resolving the track instance by
+   * name when known and falling back to the payload so a publish is never dropped.
+   */
+  private _resolvePublishedTrack(
+    raw: RawTrackPublication | undefined,
+  ): LocalTrackPublication | undefined {
+    if (!raw?.trackSid) return undefined;
+    const track = this._publishedTracks.get(raw.trackName);
+    switch (raw.kind) {
+      case 'video':
+        return new LocalVideoTrackPublication(
+          raw,
+          (track as LocalVideoTrack) ?? null,
+          this._unpublishFn,
+        );
+      case 'audio':
+        return new LocalAudioTrackPublication(
+          raw,
+          (track as LocalAudioTrack) ?? null,
+          this._unpublishFn,
+        );
+      case 'data':
+        return new LocalDataTrackPublication(
+          raw,
+          (track as LocalDataTrack) ?? null,
+          this._unpublishFn,
+        );
+      default:
+        return undefined;
+    }
   }
 
   publishTracks(tracks: (LocalVideoTrack | LocalAudioTrack | LocalDataTrack)[]): boolean[] {

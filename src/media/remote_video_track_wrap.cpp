@@ -166,7 +166,9 @@ Napi::Value RemoteVideoTrackWrap::SetContentPreferences(const Napi::CallbackInfo
     try {
         track_->addSinkHints(hints);
     } catch (const std::exception& e) {
-        Napi::TypeError::New(env, e.what()).ThrowAsJavaScriptException();
+        // Use Error, not TypeError: bad arguments are already rejected with TypeError/RangeError
+        // above, so anything reaching here is a runtime failure, not bad input.
+        Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
         return env.Undefined();
     }
     return env.Undefined();

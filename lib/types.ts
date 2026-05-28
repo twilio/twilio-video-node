@@ -113,7 +113,10 @@ export interface BandwidthProfileOptions {
   video?: VideoBandwidthProfileOptions;
 }
 
-/** Network-quality reporting verbosity. `0` disables, `1` enables minimal reporting. */
+/**
+ * Network-quality reporting verbosity. `0` disables, `1` enables minimal
+ * reporting.
+ */
 export type NetworkQualityVerbosity = 0 | 1;
 
 export interface NetworkQualityConfiguration {
@@ -132,8 +135,8 @@ export interface ConnectOptions {
   enableDominantSpeaker?: boolean;
   /**
    * Enable network-quality reporting. Pass `true` for default verbosity
-   * (local=1, remote=1) or an object to set verbosities individually. Setting
-   * `false` (or omitting) disables reporting.
+   * (`local=1`, `remote=0`) or an object to set verbosities individually.
+   * Setting `false` (or omitting) disables reporting.
    */
   networkQuality?: boolean | NetworkQualityConfiguration;
   preferredAudioCodecs?: AudioCodec[];

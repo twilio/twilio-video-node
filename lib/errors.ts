@@ -41,7 +41,8 @@ export class ParticipantMaxTracksExceededError extends TwilioError {
   constructor(message?: string) {
     super(
       ParticipantMaxTracksExceededError.code,
-      message || 'Participant has exceeded the maximum number of tracks',
+      message ||
+        'The maximum number of published tracks allowed in the Room at the same time has been reached',
     );
     this.name = 'ParticipantMaxTracksExceededError';
   }
@@ -51,7 +52,7 @@ export class MediaConnectionError extends TwilioError {
   static readonly code = 53405;
 
   constructor(message?: string) {
-    super(MediaConnectionError.code, message || 'Media connection error');
+    super(MediaConnectionError.code, message || 'Media connection failed or Media activity ceased');
     this.name = 'MediaConnectionError';
   }
 }
@@ -65,9 +66,10 @@ const SUBCLASSES_BY_CODE: Record<number, new (message?: string) => TwilioError> 
 };
 
 /**
- * Lift a `{ code, message }` payload coming from the native layer into the
- * matching `TwilioError` subclass, or a plain `TwilioError` when no specific
- * subclass is registered for the code.
+ * Build a `TwilioError` (or matching subclass) from a numeric error code.
+ * For a registered code the subclass's canonical message is used and any
+ * supplied `message` is ignored. For an unregistered code the supplied
+ * `message` is preserved.
  */
 export function twilioErrorFromCode(code: number, message?: string): TwilioError {
   if (!Number.isInteger(code)) {
@@ -75,15 +77,16 @@ export function twilioErrorFromCode(code: number, message?: string): TwilioError
   }
   const Subclass = SUBCLASSES_BY_CODE[code];
   if (Subclass) {
-    return new Subclass(message);
+    return new Subclass();
   }
   return new TwilioError(code, message);
 }
 
 /**
  * Convert a value coming over the native event boundary into a `TwilioError`.
- * Already-lifted errors pass through; `{ code, message }` payloads route to
- * the matching subclass; anything else becomes a generic `TwilioError(0)`.
+ * Already-lifted errors and `Error` instances pass their message through;
+ * `{ code, message }` payloads route to the matching subclass; any other
+ * payload preserves its `message` (or string value) rather than discarding it.
  */
 export function liftTwilioError(raw: unknown): TwilioError {
   if (raw instanceof TwilioError) return raw;
@@ -91,5 +94,14 @@ export function liftTwilioError(raw: unknown): TwilioError {
     const { code, message } = raw as { code: number; message?: string };
     return twilioErrorFromCode(code, message);
   }
-  return new TwilioError(0, typeof raw === 'string' ? raw : 'Unknown error');
+  if (typeof raw === 'string') return new TwilioError(0, raw);
+  if (raw instanceof Error) return new TwilioError(0, raw.message);
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    typeof (raw as { message?: unknown }).message === 'string'
+  ) {
+    return new TwilioError(0, (raw as { message: string }).message);
+  }
+  return new TwilioError(0, 'Unknown error');
 }

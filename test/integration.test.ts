@@ -9,7 +9,6 @@ import type {
   RemoteParticipant,
   VideoFrame,
   AudioFrame,
-  LocalVideoTrackPublication,
   RemoteTrack,
   StatsReport,
   VideoContentPreferences,
@@ -19,6 +18,7 @@ import {
   createLocalVideoTrack,
   createLocalAudioTrack,
   createLocalDataTrack,
+  LocalVideoTrackPublication,
 } from '../dist/index.mjs';
 import type { EventEmitter } from 'node:events';
 
@@ -354,13 +354,13 @@ describe('participantDisconnected', () => {
 });
 
 describe('LocalParticipant observer events', () => {
-  it('trackPublished fires after publishTrack with correct trackName', async () => {
+  it('trackPublished emits a LocalTrackPublication carrying the live track and unpublish()', async () => {
     const roomName = uniqueRoom();
     const videoTrack = createLocalVideoTrack('observer-cam');
 
     const { connA, connB } = await connectPair(roomName);
 
-    const publishedPromise = waitForEvent<{ trackName: string; trackSid: string }>(
+    const publishedPromise = waitForEvent<LocalVideoTrackPublication>(
       connA.room.localParticipant,
       'trackPublished',
       TIMEOUT.subscribe,
@@ -370,8 +370,12 @@ describe('LocalParticipant observer events', () => {
     const publication = await publishedPromise;
 
     try {
+      // Assert the EVENT ARGUMENT itself (not a Map lookup) satisfies the contract.
+      expect(publication).toBeInstanceOf(LocalVideoTrackPublication);
       expect(publication.trackName).toBe('observer-cam');
       expect(publication.trackSid).toBeTruthy();
+      expect(publication.track).toBe(videoTrack);
+      expect(typeof publication.unpublish).toBe('function');
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }

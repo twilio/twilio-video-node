@@ -28,26 +28,30 @@ export type LocalTrack = LocalVideoTrack | LocalAudioTrack | LocalDataTrack;
 
 export class LocalTrackPublication extends TrackPublication {
   track: LocalTrack | null;
-  #participant: { unpublishTrack(track: LocalTrack): boolean } | null;
+  #unpublish: ((track: LocalTrack) => boolean) | null;
 
   constructor(
     raw: RawTrackPublication,
     track: LocalTrack | null = null,
-    participant: { unpublishTrack(track: LocalTrack): boolean } | null = null,
+    unpublish: ((track: LocalTrack) => boolean) | null = null,
   ) {
     super(raw);
     this.track = track;
-    this.#participant = participant;
+    this.#unpublish = unpublish;
   }
 
-  unpublish(): boolean {
-    if (!this.#participant || !this.track) return false;
-    const ok = this.#participant.unpublishTrack(this.track);
-    if (ok) {
-      this.track = null;
-      this.#participant = null;
+  /**
+   * Unpublish the underlying track from the room. Idempotent: a second call is
+   * a no-op. The publication's {@link track} remains readable after unpublishing.
+   *
+   * @returns This publication.
+   */
+  unpublish(): this {
+    if (this.#unpublish && this.track) {
+      this.#unpublish(this.track);
+      this.#unpublish = null;
     }
-    return ok;
+    return this;
   }
 }
 

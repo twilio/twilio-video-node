@@ -94,6 +94,7 @@ export {
   MediaConnectionError,
   ParticipantMaxTracksExceededError,
   twilioErrorFromCode,
+  liftTwilioError,
 } from './errors.js';
 
 // --- Addon loading ---
@@ -170,7 +171,7 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
 
   if (networkQuality === true) {
     internalOpts.enableNetworkQuality = true;
-    internalOpts.networkQualityConfiguration = { local: 1, remote: 1 };
+    internalOpts.networkQualityConfiguration = { local: 1, remote: 0 };
   } else if (networkQuality && typeof networkQuality === 'object') {
     let normalized: { local: number; remote: number };
     try {
@@ -247,7 +248,7 @@ function normalizeNetworkQualityConfig(config: NetworkQualityConfiguration): {
   remote: number;
 } {
   const local = config.local ?? 1;
-  const remote = config.remote ?? 1;
+  const remote = config.remote ?? 0;
   if (local !== 1) {
     throw new RangeError(
       `networkQuality.local must be 1; to disable network-quality reporting, pass \`networkQuality: false\`. Got ${local}`,

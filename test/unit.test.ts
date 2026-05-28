@@ -14,6 +14,8 @@ import {
   MediaConnectionError,
   ParticipantMaxTracksExceededError,
   twilioErrorFromCode,
+  liftTwilioError,
+  LocalVideoTrackPublication,
 } from '../dist/index.mjs';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
@@ -278,18 +280,25 @@ describe('TwilioError hierarchy', () => {
     expect(new RoomNotFoundError().code).toBe(53106);
   });
 
-  it('MediaConnectionError carries code 53405', () => {
-    expect(new MediaConnectionError().code).toBe(53405);
+  it('MediaConnectionError carries code 53405 and canonical message', () => {
+    const err = new MediaConnectionError();
+    expect(err.code).toBe(53405);
+    expect(err.message).toBe('Media connection failed or Media activity ceased');
   });
 
-  it('ParticipantMaxTracksExceededError carries code 53203', () => {
-    expect(new ParticipantMaxTracksExceededError().code).toBe(53203);
+  it('ParticipantMaxTracksExceededError carries code 53203 and canonical message', () => {
+    const err = new ParticipantMaxTracksExceededError();
+    expect(err.code).toBe(53203);
+    expect(err.message).toBe(
+      'The maximum number of published tracks allowed in the Room at the same time has been reached',
+    );
   });
 
-  it('twilioErrorFromCode picks the matching subclass', () => {
+  it('twilioErrorFromCode picks the matching subclass and uses its canonical message', () => {
+    // Parity with twilio-video.js: a known code ignores the caller message.
     const err = twilioErrorFromCode(20101, 'bad token');
     expect(err).toBeInstanceOf(AccessTokenInvalidError);
-    expect(err.message).toBe('bad token');
+    expect(err.message).toBe('Invalid Access Token');
   });
 
   it('twilioErrorFromCode falls back to TwilioError for unknown codes', () => {
@@ -316,5 +325,68 @@ describe('createLocalTracks rejection', () => {
   it('rejects when an option is invalid (does not throw synchronously)', async () => {
     // Empty-string name fails validation in createLocalAudioTrack — must surface as a rejection
     await expect(createLocalTracks({ audio: { name: '' }, video: false })).rejects.toThrow(/name/i);
+  });
+});
+
+describe('liftTwilioError', () => {
+  it('passes an existing TwilioError through unchanged', () => {
+    const original = new RoomNotFoundError();
+    expect(liftTwilioError(original)).toBe(original);
+  });
+
+  it('lifts a { code, message } payload into the matching subclass', () => {
+    const err = liftTwilioError({ code: 53106, message: 'gone' });
+    expect(err).toBeInstanceOf(RoomNotFoundError);
+    expect(err.code).toBe(53106);
+  });
+
+  it('preserves a string payload as the message', () => {
+    const err = liftTwilioError('boom');
+    expect(err).toBeInstanceOf(TwilioError);
+    expect(err.code).toBe(0);
+    expect(err.message).toBe('boom');
+  });
+
+  it('preserves the message of an arbitrary object payload instead of discarding it', () => {
+    const err = liftTwilioError({ message: 'native detail' });
+    expect(err.code).toBe(0);
+    expect(err.message).toBe('native detail');
+  });
+});
+
+describe('LocalTrackPublication.unpublish()', () => {
+  // Minimal raw publication shape the constructor reads.
+  const raw = { trackSid: 'MT123', trackName: 'cam', kind: 'video', isTrackEnabled: true } as const;
+
+  it('invokes the injected unpublish callback with the track and returns the publication', () => {
+    const track = { name: 'cam', kind: 'video' } as never;
+    let calledWith: unknown = null;
+    const pub = new LocalVideoTrackPublication(raw, track, (t: unknown) => {
+      calledWith = t;
+      return true;
+    });
+    const result = pub.unpublish();
+    expect(calledWith).toBe(track);
+    expect(result).toBe(pub);
+    expect(pub.track).toBe(track); // track stays readable, matching twilio-video.js
+  });
+
+  it('is idempotent: a second call does not invoke the callback again', () => {
+    const track = { name: 'cam', kind: 'video' } as never;
+    let calls = 0;
+    const pub = new LocalVideoTrackPublication(raw, track, () => {
+      calls += 1;
+      return true;
+    });
+    pub.unpublish();
+    pub.unpublish();
+    expect(calls).toBe(1);
+  });
+
+  it('is a no-op when constructed without an unpublish callback', () => {
+    const track = { name: 'cam', kind: 'video' } as never;
+    const pub = new LocalVideoTrackPublication(raw, track);
+    expect(() => pub.unpublish()).not.toThrow();
+    expect(pub.unpublish()).toBe(pub);
   });
 });
