@@ -44,6 +44,11 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'trackPublicationFailed') {
+        // The native publish only failed asynchronously; drop the entry inserted
+        // by publishTrack so the name is free to re-publish. Safe to key by name:
+        // _assertUniqueName guarantees one instance per name.
+        const trackName = (data as { trackName?: string } | undefined)?.trackName;
+        if (trackName) this._publishedTracks.delete(trackName);
         this.emit(event, liftTwilioError(data));
       } else if (event === 'trackPublished') {
         const pub = this._resolvePublishedTrack(data as RawTrackPublication | undefined);
