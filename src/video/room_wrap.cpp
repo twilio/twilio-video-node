@@ -100,16 +100,36 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
 
     if (opts.Has("networkQualityConfiguration") && opts.Get("networkQualityConfiguration").IsObject()) {
         auto nqObj = opts.Get("networkQualityConfiguration").As<Napi::Object>();
-        auto toVerbosity = [&](const char* field) {
-            return nqObj.Get(field).As<Napi::Number>().DoubleValue() == 0
-                ? twilio::video::NetworkQualityVerbosity::kNone
-                : twilio::video::NetworkQualityVerbosity::kMinimal;
+        // rtc-cpp exposes only kNone(0)/kMinimal(1). The TS layer already validates this,
+        // but a direct (JS) caller can reach here, so reject anything other than 0/1.
+        auto readVerbosity = [&](const char* field, twilio::video::NetworkQualityVerbosity& out) -> bool {
+            Napi::Value value = nqObj.Get(field);
+            if (!value.IsNumber()) {
+                Napi::TypeError::New(env, std::string("networkQualityConfiguration.") + field + " must be a number").ThrowAsJavaScriptException();
+                return false;
+            }
+            double d = value.As<Napi::Number>().DoubleValue();
+            if (d == 0) {
+                out = twilio::video::NetworkQualityVerbosity::kNone;
+            } else if (d == 1) {
+                out = twilio::video::NetworkQualityVerbosity::kMinimal;
+            } else {
+                Napi::RangeError::New(env, std::string("networkQualityConfiguration.") + field + " must be 0 or 1").ThrowAsJavaScriptException();
+                return false;
+            }
+            return true;
         };
         twilio::video::NetworkQualityConfiguration::Builder nqBuilder;
-        if (nqObj.Has("local"))
-            nqBuilder.setLocalVerbosityLevel(toVerbosity("local"));
-        if (nqObj.Has("remote"))
-            nqBuilder.setRemoteVerbosityLevel(toVerbosity("remote"));
+        if (nqObj.Has("local")) {
+            twilio::video::NetworkQualityVerbosity local;
+            if (!readVerbosity("local", local)) return env.Undefined();
+            nqBuilder.setLocalVerbosityLevel(local);
+        }
+        if (nqObj.Has("remote")) {
+            twilio::video::NetworkQualityVerbosity remote;
+            if (!readVerbosity("remote", remote)) return env.Undefined();
+            nqBuilder.setRemoteVerbosityLevel(remote);
+        }
         builder.setNetworkQualityConfiguration(nqBuilder.build());
     }
 
@@ -233,8 +253,13 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         twilio::media::EncodingParameters ep;
         constexpr double kMaxSafe = 9007199254740991.0;
         auto readBitrate = [&](const char* field, unsigned long& out) -> bool {
-            if (!epObj.Has(field) || !epObj.Get(field).IsNumber()) return true;
-            double d = epObj.Get(field).As<Napi::Number>().DoubleValue();
+            if (!epObj.Has(field)) return true;
+            Napi::Value value = epObj.Get(field);
+            if (!value.IsNumber()) {
+                Napi::TypeError::New(env, std::string("encodingParameters.") + field + " must be a number").ThrowAsJavaScriptException();
+                return false;
+            }
+            double d = value.As<Napi::Number>().DoubleValue();
             if (!std::isfinite(d) || d != std::floor(d) || d < 0 || d > kMaxSafe) {
                 Napi::RangeError::New(env, std::string("encodingParameters.") + field + " must be a non-negative integer <= Number.MAX_SAFE_INTEGER").ThrowAsJavaScriptException();
                 return false;

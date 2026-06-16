@@ -256,6 +256,15 @@ describe('connect() networkQuality validation', () => {
   });
 });
 
+describe('connect() encodingParameters validation', () => {
+  it('rejects a non-number bitrate', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('fake-token', { encodingParameters: { maxAudioBitrate: 'fast' } }),
+    ).rejects.toThrow(/encodingParameters\.maxAudioBitrate/);
+  });
+});
+
 describe('TwilioError hierarchy', () => {
   it('TwilioError is an Error subclass with code', () => {
     const err = new TwilioError(99999, 'oops');
