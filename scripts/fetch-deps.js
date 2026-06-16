@@ -32,7 +32,7 @@ function log(msg) {
 
 const RETRIES = 5;
 const version = process.env.RTC_CPP_VERSION || '7.2.2';
-const repo = process.env.MAVEN_REPO || 'internal-releases';
+const repo = process.env.MAVEN_REPO || 'releases';
 const repoUrl = `https://twilio.jfrog.io/artifactory/${repo}`;
 const artifact = `com.twilio.sdk:twilio-video:${version}:tar.bz2:${platform}`;
 const tmpFile = path.join(ROOT, '.tmp-twilio-video.tar.bz2');
@@ -62,6 +62,9 @@ function mvnGet() {
       return;
     } catch (err) {
       if (attempt === RETRIES) {
+        console.error(
+          `[fetch-deps] Tip: you can bypass Maven by setting RTC_CPP_ARCHIVE=/path/to/twilio-video-${platform}.tar.bz2`,
+        );
         throw new Error(`Maven fetch failed after ${RETRIES} attempts`, { cause: err });
       }
     }

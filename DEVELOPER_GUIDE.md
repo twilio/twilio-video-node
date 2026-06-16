@@ -2,64 +2,110 @@
 
 > This guide is for Twilio employees working on the SDK. If you're an external developer, the best way to contribute is by building with the SDK, reporting issues, and sharing feedback. See [README.md](README.md) for API docs and usage.
 
+## Apple Silicon (M1/M2/M3)
+
+The native binary is **x64-only**. On Apple Silicon you must run all build commands under Rosetta. Install Rosetta first if you haven't already:
+
+```sh
+softwareupdate --install-rosetta
+```
+
+Then prefix every command in this guide with:
+
+```sh
+arch -x86_64 bash -c 'source ~/.nvm/nvm.sh && nvm use 24 && <command>'
+```
+
+For example:
+
+```sh
+arch -x86_64 bash -c 'source ~/.nvm/nvm.sh && nvm use 24 && npm run fetch-deps'
+```
+
 ## 1. Prerequisites
 
-| Tool          | Version                                |
-| ------------- | -------------------------------------- |
-| Node.js       | >= 24.0.0                              |
-| CMake         | >= 3.15                                |
-| C++ toolchain | C++17 (clang++ on macOS, g++ on Linux) |
+| Tool          | Version                                | Install (macOS)          |
+| ------------- | -------------------------------------- | ------------------------ |
+| Node.js       | >= 24.0.0                              | `nvm install 24`         |
+| CMake         | >= 3.15                                | `brew install cmake`     |
+| Maven         | >= 3.8                                 | `brew install maven`     |
+| C++ toolchain | C++17 (clang++ on macOS, g++ on Linux) | Xcode Command Line Tools |
 
 ## 2. Get rtc-cpp
 
 The native addon links against rtc-cpp (Twilio's C++ Video library).
 
-### Download from Artifactory (default)
+### Download from Artifactory
 
-By default, `fetch-deps` uses Maven to download the twilio-video artifact from Artifactory. You must have Maven installed and a `~/.m2/settings.xml` configured with your Artifactory credentials.
+Configure Maven with your Artifactory credentials by creating `~/.m2/settings.xml`:
 
-Then run:
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>artifactory</id>
+      <username>your.name@twilio.com</username>
+      <password>YOUR_ARTIFACTORY_TOKEN</password>
+    </server>
+  </servers>
+  <profiles>
+    <profile>
+      <id>artifactory</id>
+      <repositories>
+        <repository>
+          <id>artifactory</id>
+          <url>https://twilio.jfrog.io/artifactory/releases</url>
+        </repository>
+      </repositories>
+    </profile>
+  </profiles>
+</settings>
+```
+
+Get your Artifactory token from [twilio.jfrog.io](https://twilio.jfrog.io) under your user profile.
+
+Then fetch the deps:
 
 ```sh
 npm run fetch-deps
 ```
 
-Downloads into `deps/twilio-video/`. Optional vars: `RTC_CPP_VERSION` (default: `7.2.2`), `RTC_CPP_BUILD_TYPE` (default: `release`), `MAVEN_REPO` (default: `internal-releases`).
+Optional vars: `RTC_CPP_VERSION` (default: `7.2.2`), `RTC_CPP_BUILD_TYPE` (default: `release`), `MAVEN_REPO` (default: `releases`).
 
-### Use a local package archive
+#### Maven auth troubleshooting
 
-```sh
-npm run fetch-deps -- --twilio-video-pkg /path/to/twilio-video.tar.bz2
-```
-
-Alternatively, set the `RTC_CPP_ARCHIVE` environment variable:
+If Maven authentication fails, you can bypass it by downloading the artifact manually and passing it via `RTC_CPP_ARCHIVE`:
 
 ```sh
-RTC_CPP_ARCHIVE=/path/to/twilio-video.tar.bz2 npm run fetch-deps
+curl -L -H "Authorization: Bearer $ARTIFACTORY_TOKEN" \
+  "https://twilio.jfrog.io/artifactory/releases/com/twilio/sdk/twilio-video/7.2.2/twilio-video-7.2.2-darwin.tar.bz2" \
+  -o /tmp/twilio-video-darwin.tar.bz2
+
+RTC_CPP_ARCHIVE=/tmp/twilio-video-darwin.tar.bz2 npm run fetch-deps
 ```
+
+### Local source checkout
+
+If `../rtc-cpp` exists with a matching build directory (`build-{platform}-{arch}-{build_type}/`), it takes priority over Artifactory artifacts.
 
 ## 3. Build
 
 ```sh
-npm install
+TWILIO_VIDEO_NODE_SKIP_DOWNLOAD=1 npm install
 npm run build
+npm run build:ts
 ```
 
-To build against a local rtc-cpp source checkout:
-
-```sh
-npm run build -- --twilio-video-src /path/to/rtc-cpp
-```
+> **Note:** `TWILIO_VIDEO_NODE_SKIP_DOWNLOAD=1` skips the prebuilt binary download in the `install` script. This is required when building from source — the prebuilt download requires `gh` auth to the internal GitHub release.
 
 | Script                  | Description                         |
 | ----------------------- | ----------------------------------- |
-| `npm run build`         | Native addon via cmake-js           |
+| `npm run build`         | Native addon (debug) via cmake-js   |
 | `npm run build:debug`   | Native addon (debug) via cmake-js   |
 | `npm run build:release` | Native addon (release) via cmake-js |
 | `npm run build:ts`      | TypeScript (tsdown -> dist/)        |
 | `npm run rebuild`       | Clean + full native build           |
 | `npm run clean`         | Remove native build artifacts       |
-| `npm run package`       | Build + strip + copy to prebuilds/  |
 
 ## 4. Credentials
 
@@ -90,3 +136,7 @@ Native addon not built. Run `npm run build`. If using Artifactory, ensure `npm r
 ### `TWILIO_ACCOUNT_SID, TWILIO_API_KEY, and TWILIO_API_SECRET are required`
 
 Environment variables not set. See [section 4](#4-credentials).
+
+### Maven auth fails with 401
+
+Check that your `~/.m2/settings.xml` is configured correctly and your Artifactory token is valid. See the [Maven auth troubleshooting](#maven-auth-troubleshooting) section for the `RTC_CPP_ARCHIVE` bypass.

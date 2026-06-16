@@ -292,7 +292,10 @@ See the [`examples/`](examples/) directory:
 | [`data_channel.js`](examples/data_channel.js)     | Two participants exchange string and binary messages via data tracks. |
 
 ```bash
-TWILIO_ACCESS_TOKEN=xxx node examples/virtual_camera.js [room-name]
+export TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+export TWILIO_API_KEY="SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+export TWILIO_API_SECRET="your_api_secret"
+node examples/virtual_camera.js [room-name]
 ```
 
 ## License
