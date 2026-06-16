@@ -27,10 +27,20 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   /** @internal */
   readonly _native: NativeLocalParticipant;
   private _publishedTracks = new Map<string, LocalTrack>();
+  private _unpublishFn = (track: LocalTrack): boolean => this.unpublishTrack(track);
 
-  constructor(nativeParticipant: NativeLocalParticipant) {
+  constructor(
+    nativeParticipant: NativeLocalParticipant,
+    seededTracks: ReadonlyArray<LocalTrack> = [],
+  ) {
     super();
     this._native = nativeParticipant;
+    // Seed before setEventCallback wires up so a synchronously-delivered
+    // native event resolves against a fully-populated publication map.
+    for (const track of seededTracks) {
+      this._assertUniqueName(track);
+      this._publishedTracks.set(track.name, track);
+    }
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'trackPublicationFailed') {
@@ -63,8 +73,6 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   get signalingRegion(): string {
     return this._native.signalingRegion;
   }
-
-  private _unpublishFn = (track: LocalTrack): boolean => this.unpublishTrack(track);
 
   get videoTracks(): Map<string, LocalVideoTrackPublication> {
     const map = new Map<string, LocalVideoTrackPublication>();
@@ -116,20 +124,6 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
       this._publishedTracks.delete(track.name);
     }
     return result;
-  }
-
-  /**
-   * Seed `_publishedTracks` with tracks that were published natively via
-   * `ConnectOptions.{video,audio,data}Tracks`. Without this, those tracks
-   * never appear on `LocalTrackPublication.track` and `pub.unpublish()` would
-   * be a silent no-op.
-   * @internal
-   */
-  _seedPublishedTracks(tracks: ReadonlyArray<LocalTrack>): void {
-    for (const track of tracks) {
-      this._assertUniqueName(track);
-      this._publishedTracks.set(track.name, track);
-    }
   }
 
   /**

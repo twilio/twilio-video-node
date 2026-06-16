@@ -1,6 +1,7 @@
 import { LocalParticipant } from './local_participant.js';
 import { RemoteParticipant } from './remote_participant.js';
 import { TypedEventEmitter } from './typed_emitter.js';
+import type { LocalTrack } from './track_publication.js';
 import type {
   NativeRoom,
   NativeRemoteParticipant,
@@ -71,10 +72,12 @@ export class Room extends TypedEventEmitter<RoomEvents> {
   readonly _native: NativeRoom;
   private _localParticipant: LocalParticipant | null = null;
   private _remoteParticipantCache = new Map<string, RemoteParticipant>();
+  private _seededTracks: ReadonlyArray<LocalTrack>;
 
-  constructor(nativeRoom: NativeRoom) {
+  constructor(nativeRoom: NativeRoom, seededTracks: ReadonlyArray<LocalTrack> = []) {
     super();
     this._native = nativeRoom;
+    this._seededTracks = seededTracks;
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (PARTICIPANT_EVENTS.has(event)) {
@@ -122,7 +125,10 @@ export class Room extends TypedEventEmitter<RoomEvents> {
 
   get localParticipant(): LocalParticipant {
     if (!this._localParticipant) {
-      this._localParticipant = new LocalParticipant(this._native.localParticipant);
+      this._localParticipant = new LocalParticipant(
+        this._native.localParticipant,
+        this._seededTracks,
+      );
     }
     return this._localParticipant;
   }

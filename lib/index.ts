@@ -198,16 +198,12 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
 
   return new Promise((resolve, reject) => {
     const nativeRoom = addon.connect(token, internalOpts);
-    const room = new Room(nativeRoom);
-
-    const seeded = [
+    const seededTracks = [
       ...(options.videoTracks ?? []),
       ...(options.audioTracks ?? []),
       ...(options.dataTracks ?? []),
     ];
-    if (seeded.length > 0) {
-      room.localParticipant._seedPublishedTracks(seeded);
-    }
+    const room = new Room(nativeRoom, seededTracks);
 
     const onConnected = () => {
       room.removeListener('connectFailure', onFailure);
