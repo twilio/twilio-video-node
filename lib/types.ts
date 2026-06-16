@@ -56,6 +56,11 @@ export interface CreateLocalAudioTrackOptions {
   name?: string;
 }
 
+export interface CreateLocalTracksOptions {
+  audio?: boolean | CreateLocalAudioTrackOptions;
+  video?: boolean | CreateLocalVideoTrackOptions;
+}
+
 // `TwilioError` itself is exported from `./errors.js` as a class. Internal
 // modules that only need its shape import it from there as a type.
 

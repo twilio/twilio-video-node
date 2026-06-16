@@ -9,6 +9,7 @@ import type {
   ConnectOptions,
   CreateLocalVideoTrackOptions,
   CreateLocalAudioTrackOptions,
+  CreateLocalTracksOptions,
   LocalVideoTrack,
   LocalAudioTrack,
   LocalDataTrack,
@@ -49,6 +50,7 @@ export type {
   AudioFrame,
   CreateLocalVideoTrackOptions,
   CreateLocalAudioTrackOptions,
+  CreateLocalTracksOptions,
   TrackKind,
   LocalVideoTrack,
   LocalAudioTrack,
@@ -350,11 +352,6 @@ export function createLocalDataTrack(options: LocalDataTrackOptions | string = {
   return getDefaultMediaFactory().createDataTrack(opts);
 }
 
-export interface CreateLocalTracksOptions {
-  audio?: boolean | CreateLocalAudioTrackOptions;
-  video?: boolean | CreateLocalVideoTrackOptions;
-}
-
 /**
  * Create {@link LocalAudioTrack}s and {@link LocalVideoTrack}s. By default,
  * returns both a {@link LocalAudioTrack} and a {@link LocalVideoTrack}. If
@@ -362,8 +359,8 @@ export interface CreateLocalTracksOptions {
  * Each key accepts a boolean or a per-track options object.
  *
  * @param options - Track selection and per-track configuration.
- * @returns A promise that resolves with the created local tracks.
- * @throws {TypeError} If a per-track option fails validation.
+ * @returns A promise that resolves with the created local tracks, or rejects
+ *   with a `TypeError` if a per-track option fails validation.
  *
  * @example
  * // Create both audio and video tracks.

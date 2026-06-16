@@ -875,7 +875,8 @@ describe('RemoteVideoTrack.setContentPreferences', () => {
   let remoteTrack: RemoteVideoTrack;
 
   beforeAll(async () => {
-    pair = await connectPair(uniqueRoom());
+    // setContentPreferences throws unless the room was connected with a bandwidthProfile.
+    pair = await connectPair(uniqueRoom(), { bandwidthProfile: { video: {} } });
     const subscribed = waitForEvent<RemoteVideoTrack>(
       pair.remoteA,
       'trackSubscribed',
@@ -917,6 +918,12 @@ describe('RemoteVideoTrack.setContentPreferences', () => {
 
   it.each(cases)('throws $name', ({ input, error }) => {
     expect(() => remoteTrack.setContentPreferences(input)).toThrow(error);
+  });
+
+  it('accepts valid renderDimensions', () => {
+    expect(() =>
+      remoteTrack.setContentPreferences({ renderDimensions: { width: 320, height: 240 } }),
+    ).not.toThrow();
   });
 });
 
