@@ -18,6 +18,12 @@ namespace twilio_video_node {
 // So pushSamples data must be routed here → RecordedDataIsAvailable → WebRTC encoder → RTP.
 class NodeAudioDevice : public webrtc::AudioDeviceModule {
 public:
+    // Fixed capture format: WebRTC's encoder path here is wired for 48kHz mono
+    // 16-bit PCM. Callers feeding PushRecordingData must match this format.
+    static constexpr int kSampleRate = 48000;
+    static constexpr int kChannels = 1;
+    static constexpr int kBitsPerSample = 16;
+
     static rtc::scoped_refptr<NodeAudioDevice> Create(
         webrtc::TaskQueueFactory* task_queue_factory);
 
@@ -106,8 +112,6 @@ private:
     bool playing_ RTC_GUARDED_BY(mutex_) = false;
     bool recording_ RTC_GUARDED_BY(mutex_) = false;
 
-    static constexpr int kSampleRate = 48000;
-    static constexpr int kChannels = 1;
     static constexpr int kSamplesPer10Ms = kSampleRate / 100;  // 480
     static constexpr int kBytesPerSample = sizeof(int16_t);
     // Recording buffer: filled by PushRecordingData, drained 480 samples per 10ms tick.

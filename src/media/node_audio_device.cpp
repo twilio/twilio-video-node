@@ -24,8 +24,10 @@ void NodeAudioDevice::PushRecordingData(const int16_t* data, size_t num_frames) 
 
     rec_buffer_.insert(rec_buffer_.end(), data, data + num_frames);
 
-    // Cap at ~45s to prevent unbounded memory growth
-    static constexpr size_t kMaxBufferSamples = kSampleRate * 45;
+    // Cap the recording backlog so a producer that pushes faster than the 10ms
+    // drain can't grow rec_buffer_ without bound.
+    static constexpr int kMaxBufferSeconds = 45;
+    static constexpr size_t kMaxBufferSamples = kSampleRate * kMaxBufferSeconds;
     if (rec_buffer_.size() > kMaxBufferSamples) {
         size_t excess = rec_buffer_.size() - kMaxBufferSamples;
         rec_buffer_.erase(rec_buffer_.begin(), rec_buffer_.begin() + excess);
