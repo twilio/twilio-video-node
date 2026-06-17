@@ -759,11 +759,15 @@ void StatsObserverRegistry::remove(
 }
 
 void StatsObserverRegistry::cancelAll() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    for (auto& obs : observers_) {
+    // Cancel outside the lock so dispatch work doesn't block onStats()'s remove().
+    std::set<std::shared_ptr<OneShotStatsObserver>> pending;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending.swap(observers_);
+    }
+    for (auto& obs : pending) {
         obs->cancel();
     }
-    observers_.clear();
 }
 
 OneShotStatsObserver::OneShotStatsObserver(
@@ -807,8 +811,8 @@ void OneShotStatsObserver::onStats(
 }
 
 void OneShotStatsObserver::cancel() {
-    // Called only from StatsObserverRegistry::cancelAll under its mutex, so this
-    // must not touch the registry itself (it would deadlock / re-enter).
+    // Called only from StatsObserverRegistry::cancelAll during teardown; the
+    // fired_ guard makes it mutually exclusive with onStats().
     if (fired_.exchange(true)) return;
 
     auto cb = std::move(callback_);
