@@ -44,6 +44,18 @@ describe('Log Level', () => {
   it('setLogLevel rejects invalid level', () => {
     expect(() => setLogLevel('invalid' as any)).toThrow(/Invalid log level/);
   });
+
+  it('setLogLevel accepts numeric levels 0 through 7', () => {
+    for (let n = 0; n <= 7; n++) {
+      expect(() => setLogLevel(n)).not.toThrow();
+    }
+  });
+
+  it('setLogLevel rejects out-of-range numeric levels', () => {
+    expect(() => setLogLevel(8)).toThrow(/Invalid log level/);
+    expect(() => setLogLevel(-1)).toThrow(/Invalid log level/);
+    expect(() => setLogLevel(1.5)).toThrow(/Invalid log level/);
+  });
 });
 
 describe('connect() validation', () => {
@@ -105,6 +117,22 @@ describe('Video Track', () => {
       timestampNs: process.hrtime.bigint(),
     });
     expect(result).toBe(false);
+  });
+
+  it('write rejects odd width or height', () => {
+    const track = createLocalVideoTrack('odd-dims-test');
+    const frame = generateI420Frame(320, 240);
+    const base = {
+      y: frame.y,
+      u: frame.u,
+      v: frame.v,
+      yStride: 320,
+      uStride: 160,
+      vStride: 160,
+      timestampNs: process.hrtime.bigint(),
+    };
+    expect(() => track.write({ ...base, width: 321, height: 240 })).toThrow(/must be even/);
+    expect(() => track.write({ ...base, width: 320, height: 241 })).toThrow(/must be even/);
   });
 });
 
