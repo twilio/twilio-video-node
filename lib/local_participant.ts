@@ -6,6 +6,8 @@ import type {
   LocalDataTrack,
   ParticipantState,
   TrackPublication as RawTrackPublication,
+  Participant,
+  Track,
 } from './types.js';
 import { TwilioError, liftTwilioError } from './errors.js';
 import { TypedEventEmitter } from './typed_emitter.js';
@@ -17,12 +19,18 @@ import {
   type LocalTrack,
 } from './track_publication.js';
 
+/** Listener signatures for every event a {@link LocalParticipant} can emit. */
 export type LocalParticipantEvents = {
   trackPublished: (publication: LocalTrackPublication) => void;
   trackPublicationFailed: (error: TwilioError) => void;
   networkQualityLevelChanged: (level: number) => void;
 };
 
+/**
+ * The local client's participant in a {@link Room}, reachable via
+ * {@link Room.localParticipant}. Use it to publish and unpublish local tracks.
+ * Track names must be unique across this participant's published tracks.
+ */
 export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> {
   /** @internal */
   readonly _native: NativeLocalParticipant;
@@ -59,28 +67,38 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     });
   }
 
-  get identity(): string {
+  /** This participant's identity, taken from the `identity` grant in the access token. */
+  get identity(): Participant.Identity {
     return this._native.identity;
   }
 
-  get sid(): string {
+  /** This participant's SID (`PA...`), assigned by Twilio on connect. */
+  get sid(): Participant.SID {
     return this._native.sid;
   }
 
+  /** Current connection state of the local participant within the Room. */
   get state(): ParticipantState {
     return this._native.state as ParticipantState;
   }
 
+  /**
+   * Network quality score from `0` (worst) to `5` (best), or `null` when
+   * network-quality reporting was not enabled at {@link connect}. Updated by
+   * the `networkQualityLevelChanged` event.
+   */
   get networkQualityLevel(): number | null {
     return this._native.networkQualityLevel;
   }
 
+  /** The geographic region (e.g. `us1`) of the signaling server this participant is connected to. */
   get signalingRegion(): string {
     return this._native.signalingRegion;
   }
 
-  get videoTracks(): Map<string, LocalVideoTrackPublication> {
-    const map = new Map<string, LocalVideoTrackPublication>();
+  /** Published video tracks, keyed by Track SID (`MT...`). A fresh map is built on each access. */
+  get videoTracks(): Map<Track.SID, LocalVideoTrackPublication> {
+    const map = new Map<Track.SID, LocalVideoTrackPublication>();
     for (const raw of this._native.videoTracks) {
       const track = this._publishedTracks.get(raw.trackName) as LocalVideoTrack | undefined;
       map.set(raw.trackSid, new LocalVideoTrackPublication(raw, track ?? null, this._unpublishFn));
@@ -88,8 +106,9 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     return map;
   }
 
-  get audioTracks(): Map<string, LocalAudioTrackPublication> {
-    const map = new Map<string, LocalAudioTrackPublication>();
+  /** Published audio tracks, keyed by Track SID (`MT...`). A fresh map is built on each access. */
+  get audioTracks(): Map<Track.SID, LocalAudioTrackPublication> {
+    const map = new Map<Track.SID, LocalAudioTrackPublication>();
     for (const raw of this._native.audioTracks) {
       const track = this._publishedTracks.get(raw.trackName) as LocalAudioTrack | undefined;
       map.set(raw.trackSid, new LocalAudioTrackPublication(raw, track ?? null, this._unpublishFn));
@@ -97,8 +116,9 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     return map;
   }
 
-  get dataTracks(): Map<string, LocalDataTrackPublication> {
-    const map = new Map<string, LocalDataTrackPublication>();
+  /** Published data tracks, keyed by Track SID (`MT...`). A fresh map is built on each access. */
+  get dataTracks(): Map<Track.SID, LocalDataTrackPublication> {
+    const map = new Map<Track.SID, LocalDataTrackPublication>();
     for (const raw of this._native.dataTracks) {
       const track = this._publishedTracks.get(raw.trackName) as LocalDataTrack | undefined;
       map.set(raw.trackSid, new LocalDataTrackPublication(raw, track ?? null, this._unpublishFn));
@@ -106,14 +126,23 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     return map;
   }
 
-  get tracks(): Map<string, LocalTrackPublication> {
-    const map = new Map<string, LocalTrackPublication>();
+  /** All published tracks (video, audio, and data) merged into one map, keyed by Track SID (`MT...`). */
+  get tracks(): Map<Track.SID, LocalTrackPublication> {
+    const map = new Map<Track.SID, LocalTrackPublication>();
     for (const [sid, pub] of this.videoTracks) map.set(sid, pub);
     for (const [sid, pub] of this.audioTracks) map.set(sid, pub);
     for (const [sid, pub] of this.dataTracks) map.set(sid, pub);
     return map;
   }
 
+  /**
+   * Publish a local track to the Room. Returns synchronously; the actual
+   * publication is confirmed later by the `trackPublished` event or, on
+   * failure, `trackPublicationFailed`.
+   *
+   * @returns `true` if the native publish was accepted, `false` otherwise.
+   * @throws {Error} If a different track instance is already published under the same name.
+   */
   publishTrack(track: LocalVideoTrack | LocalAudioTrack | LocalDataTrack): boolean {
     this._assertUniqueName(track as LocalTrack);
     const result = this._native.publishTrack(track);
@@ -123,6 +152,12 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     return result;
   }
 
+  /**
+   * Stop publishing a local track. The track object itself is not stopped and
+   * may be re-published.
+   *
+   * @returns `true` if the track was published and is now unpublished, `false` otherwise.
+   */
   unpublishTrack(track: LocalVideoTrack | LocalAudioTrack | LocalDataTrack): boolean {
     const result = this._native.unpublishTrack(track);
     if (result) {
@@ -177,18 +212,36 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     }
   }
 
+  /**
+   * Publish several tracks in order, returning one result per track. Stops and
+   * rethrows if any track's name collides (see {@link LocalParticipant.publishTrack}),
+   * so tracks before the failing one may already be published.
+   *
+   * @returns The per-track results, index-aligned with `tracks`.
+   * @throws {Error} If a different track instance is already published under the same name.
+   */
   publishTracks(tracks: (LocalVideoTrack | LocalAudioTrack | LocalDataTrack)[]): boolean[] {
     return tracks.map(t => this.publishTrack(t));
   }
 
+  /**
+   * Unpublish several tracks, returning one result per track.
+   *
+   * @returns The per-track results, index-aligned with `tracks`.
+   */
   unpublishTracks(tracks: (LocalVideoTrack | LocalAudioTrack | LocalDataTrack)[]): boolean[] {
     return tracks.map(t => this.unpublishTrack(t));
   }
 
+  /**
+   * Set the maximum send bitrates for published audio and video. Applies to all
+   * current and future published tracks; omitted fields keep their current limit.
+   */
   setEncodingParameters(params?: EncodingParameters): void {
     this._native.setEncodingParameters(params);
   }
 
+  /** Release this participant's cached publications and event listeners. Called by {@link Room.dispose}. */
   dispose(): void {
     this._publishedTracks.clear();
     this.removeAllListeners();
