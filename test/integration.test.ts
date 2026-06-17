@@ -905,6 +905,29 @@ describe('Room.getStats()', () => {
   });
 });
 
+// macOS-only: verifies main-queue callbacks are delivered (getStats resolves).
+describe('macOS main-queue pump (CFRunLoop)', () => {
+  it.skipIf(process.platform !== 'darwin')(
+    'delivers main-queue callbacks (getStats resolves)',
+    async () => {
+      const roomName = uniqueRoom();
+      const { connA, connB } = await connectPair(roomName);
+
+      try {
+        const reports = await Promise.race([
+          connA.room.getStats(),
+          sleep(5_000).then(() => {
+            throw new Error('getStats did not resolve — main-queue pump stalled');
+          }),
+        ]);
+        expect(Array.isArray(reports)).toBe(true);
+      } finally {
+        await Promise.all([connA.cleanup(), connB.cleanup()]);
+      }
+    },
+  );
+});
+
 describe('RemoteVideoTrack.setContentPreferences', () => {
   let pair: Awaited<ReturnType<typeof connectPair>> | undefined;
   let remoteTrack: RemoteVideoTrack;
