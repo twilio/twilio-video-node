@@ -67,6 +67,18 @@ describe('connect() validation', () => {
     // @ts-expect-error testing runtime validation
     await expect(connect(123)).rejects.toThrow(/token/i);
   });
+
+  it('rejects a non-string name option', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { name: 123 })).rejects.toThrow(/name must be a string/);
+  });
+
+  it('rejects a non-boolean feature toggle', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { enableDominantSpeaker: 'yes' })).rejects.toThrow(
+      /enableDominantSpeaker must be a boolean/,
+    );
+  });
 });
 
 describe('createLocalVideoTrack validation', () => {

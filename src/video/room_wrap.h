@@ -17,6 +17,8 @@ namespace twilio_video_node {
 
 class RoomWrap;
 
+class OneShotStatsObserver;
+
 // Holds the set of in-flight one-shot stats observers behind its own mutex.
 // Lives behind a shared_ptr so an observer can erase itself on completion (from
 // a WebRTC thread) even if the owning RoomWrap is being torn down concurrently
@@ -24,14 +26,14 @@ class RoomWrap;
 // side still holds a reference.
 class StatsObserverRegistry {
 public:
-    void add(const std::shared_ptr<twilio::media::StatsObserver>& obs);
-    void remove(const std::shared_ptr<twilio::media::StatsObserver>& obs);
+    void add(const std::shared_ptr<OneShotStatsObserver>& obs);
+    void remove(const std::shared_ptr<OneShotStatsObserver>& obs);
     // cancel() every pending observer and drop them. Used on Dispose/teardown.
     void cancelAll();
 
 private:
     std::mutex mutex_;
-    std::set<std::shared_ptr<twilio::media::StatsObserver>> observers_;
+    std::set<std::shared_ptr<OneShotStatsObserver>> observers_;
 };
 
 class OneShotStatsObserver

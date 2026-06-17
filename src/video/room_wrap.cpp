@@ -47,17 +47,39 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
     exports.Set("connect", Napi::Function::New(env, RoomWrap::Connect));
 }
 
-// Reads connect options into the builder. The TS layer pre-populates and
-// validates options, so scalar fields are read directly; the complex fields
-// (networkQualityConfiguration, codecs, bitrates, tracks) are range/type
-// checked here to reject malformed input from direct callers. On a rejected
-// field this throws a JS TypeError/RangeError and returns false; the caller
-// must bail (returning env.Undefined()) without inspecting the builder. This
-// keeps Connect's try/catch focused on runtime failures from build()/connect().
+// Reads and validates connect options into the builder. On invalid input it
+// throws a JS TypeError/RangeError and returns false; the caller must bail
+// (returning env.Undefined()) without inspecting the builder further. All
+// type/range rejection happens here so Connect's try/catch only has to handle
+// runtime failures from build()/connect().
 static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
                                 twilio::video::ConnectOptions::Builder& builder) {
-    if (opts.Has("name"))
-        builder.setRoomName(opts.Get("name").As<Napi::String>().Utf8Value());
+    // Rejects a present-but-wrong-typed scalar option with a TypeError. Absent
+    // options are left to builder defaults.
+    auto readString = [&](const char* field, std::string& out) -> bool {
+        if (!opts.Has(field)) return true;
+        Napi::Value value = opts.Get(field);
+        if (!value.IsString()) {
+            Napi::TypeError::New(env, std::string(field) + " must be a string").ThrowAsJavaScriptException();
+            return false;
+        }
+        out = value.As<Napi::String>().Utf8Value();
+        return true;
+    };
+    auto readBool = [&](const char* field, bool& out) -> bool {
+        if (!opts.Has(field)) return true;
+        Napi::Value value = opts.Get(field);
+        if (!value.IsBoolean()) {
+            Napi::TypeError::New(env, std::string(field) + " must be a boolean").ThrowAsJavaScriptException();
+            return false;
+        }
+        out = value.As<Napi::Boolean>().Value();
+        return true;
+    };
+
+    std::string name;
+    if (!readString("name", name)) return false;
+    if (opts.Has("name")) builder.setRoomName(name);
 
     // MediaFactory (always provided by TS layer)
     if (opts.Has("mediaFactory") && opts.Get("mediaFactory").IsObject()) {
@@ -70,18 +92,21 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
         if (factoryWrap) builder.setMediaFactory(factoryWrap->getFactory());
     }
 
-    if (opts.Has("enableInsights"))
-        builder.enableInsights(opts.Get("enableInsights").As<Napi::Boolean>().Value());
-    if (opts.Has("enableAutomaticSubscription"))
-        builder.enableAutomaticSubscription(opts.Get("enableAutomaticSubscription").As<Napi::Boolean>().Value());
-    if (opts.Has("enableDominantSpeaker"))
-        builder.enableDominantSpeaker(opts.Get("enableDominantSpeaker").As<Napi::Boolean>().Value());
-    if (opts.Has("enableNetworkQuality"))
-        builder.enableNetworkQuality(opts.Get("enableNetworkQuality").As<Napi::Boolean>().Value());
-    if (opts.Has("receiveTranscriptions"))
-        builder.receiveTranscriptions(opts.Get("receiveTranscriptions").As<Napi::Boolean>().Value());
-    if (opts.Has("region"))
-        builder.setRegion(opts.Get("region").As<Napi::String>().Utf8Value());
+    bool flag;
+    if (!readBool("enableInsights", flag)) return false;
+    if (opts.Has("enableInsights")) builder.enableInsights(flag);
+    if (!readBool("enableAutomaticSubscription", flag)) return false;
+    if (opts.Has("enableAutomaticSubscription")) builder.enableAutomaticSubscription(flag);
+    if (!readBool("enableDominantSpeaker", flag)) return false;
+    if (opts.Has("enableDominantSpeaker")) builder.enableDominantSpeaker(flag);
+    if (!readBool("enableNetworkQuality", flag)) return false;
+    if (opts.Has("enableNetworkQuality")) builder.enableNetworkQuality(flag);
+    if (!readBool("receiveTranscriptions", flag)) return false;
+    if (opts.Has("receiveTranscriptions")) builder.receiveTranscriptions(flag);
+
+    std::string region;
+    if (!readString("region", region)) return false;
+    if (opts.Has("region")) builder.setRegion(region);
 
     if (opts.Has("networkQualityConfiguration") && opts.Get("networkQualityConfiguration").IsObject()) {
         auto nqObj = opts.Get("networkQualityConfiguration").As<Napi::Object>();
@@ -717,13 +742,13 @@ static Napi::Value convertStatsReportsToJS(Napi::Env env,
 }
 
 void StatsObserverRegistry::add(
-    const std::shared_ptr<twilio::media::StatsObserver>& obs) {
+    const std::shared_ptr<OneShotStatsObserver>& obs) {
     std::lock_guard<std::mutex> lock(mutex_);
     observers_.insert(obs);
 }
 
 void StatsObserverRegistry::remove(
-    const std::shared_ptr<twilio::media::StatsObserver>& obs) {
+    const std::shared_ptr<OneShotStatsObserver>& obs) {
     std::lock_guard<std::mutex> lock(mutex_);
     observers_.erase(obs);
 }
@@ -731,7 +756,7 @@ void StatsObserverRegistry::remove(
 void StatsObserverRegistry::cancelAll() {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& obs : observers_) {
-        static_cast<OneShotStatsObserver*>(obs.get())->cancel();
+        obs->cancel();
     }
     observers_.clear();
 }

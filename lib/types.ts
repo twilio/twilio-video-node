@@ -28,7 +28,8 @@ export interface I420Plane {
 /**
  * An I420 video frame to push into a {@link LocalVideoTrack} via its `write`
  * method. The `y`/`u`/`v` buffers hold the planes; each plane buffer must be at
- * least `stride * height` bytes.
+ * least `stride * height` bytes. `width` and `height` must be positive and even
+ * (I420 chroma is 2x-subsampled); odd dimensions are rejected with a `RangeError`.
  */
 export interface VideoFrameInput {
   width: number;
