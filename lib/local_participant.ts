@@ -173,7 +173,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
           this._unpublishFn,
         );
       default:
-        return undefined;
+        throw new Error(`Unexpected track kind: ${raw.kind}`);
     }
   }
 
