@@ -56,10 +56,13 @@ export interface CreateLocalAudioTrackOptions {
   name?: string;
 }
 
-export interface TwilioError {
-  code: number;
-  message: string;
+export interface CreateLocalTracksOptions {
+  audio?: boolean | CreateLocalAudioTrackOptions;
+  video?: boolean | CreateLocalVideoTrackOptions;
 }
+
+// `TwilioError` itself is exported from `./errors.js` as a class. Internal
+// modules that only need its shape import it from there as a type.
 
 export interface VideoTrackOptions {
   name?: string;
@@ -93,6 +96,40 @@ export interface EncodingParameters {
   maxVideoBitrate?: number;
 }
 
+export type AudioCodec = 'opus' | 'PCMA' | 'PCMU' | 'G722';
+export type VideoCodec = 'H264' | 'VP8' | 'VP9';
+
+export type VideoEncodingMode = 'auto';
+
+export type BandwidthProfileMode = 'collaboration' | 'grid' | 'presentation';
+export type TrackSwitchOffMode = 'detected' | 'predicted' | 'disabled';
+export type ClientTrackSwitchOffControl = 'auto' | 'manual';
+export type VideoContentPreferencesMode = 'auto' | 'manual';
+
+export interface VideoBandwidthProfileOptions {
+  mode?: BandwidthProfileMode;
+  maxSubscriptionBitrate?: number;
+  trackSwitchOffMode?: TrackSwitchOffMode;
+  clientTrackSwitchOffControl?: ClientTrackSwitchOffControl;
+  contentPreferencesMode?: VideoContentPreferencesMode;
+}
+
+export interface BandwidthProfileOptions {
+  video?: VideoBandwidthProfileOptions;
+}
+
+/**
+ * Network-quality reporting verbosity. `0` disables, `1` enables minimal
+ * reporting.
+ */
+export type NetworkQualityVerbosity = 0 | 1;
+
+export interface NetworkQualityConfiguration {
+  /** Local participant verbosity. Only `1` is valid; to disable reporting, pass `networkQuality: false`. */
+  local?: 1;
+  remote?: NetworkQualityVerbosity;
+}
+
 export interface ConnectOptions {
   name?: string;
   videoTracks?: LocalVideoTrack[];
@@ -101,7 +138,17 @@ export interface ConnectOptions {
   enableInsights?: boolean;
   enableAutomaticSubscription?: boolean;
   enableDominantSpeaker?: boolean;
-  enableNetworkQuality?: boolean;
+  /**
+   * Enable network-quality reporting. Pass `true` for default verbosity
+   * (`local=1`, `remote=0`) or an object to set verbosities individually.
+   * Setting `false` (or omitting) disables reporting.
+   */
+  networkQuality?: boolean | NetworkQualityConfiguration;
+  preferredAudioCodecs?: AudioCodec[];
+  preferredVideoCodecs?: VideoCodec[];
+  videoEncodingMode?: VideoEncodingMode;
+  bandwidthProfile?: BandwidthProfileOptions;
+  receiveTranscriptions?: boolean;
   region?: string;
   iceOptions?: IceOptions;
   encodingParameters?: EncodingParameters;
@@ -164,6 +211,15 @@ export interface LocalDataTrack {
   send(data: string | Buffer): void;
 }
 
+export interface VideoRenderDimensions {
+  width: number;
+  height: number;
+}
+
+export interface VideoContentPreferences {
+  renderDimensions?: VideoRenderDimensions;
+}
+
 export interface RemoteVideoTrack {
   readonly name: string;
   readonly kind: 'video';
@@ -172,6 +228,7 @@ export interface RemoteVideoTrack {
   readonly isSwitchedOff: boolean;
   onFrame(callback: (frame: VideoFrame) => void): void;
   removeFrameCallback(): void;
+  setContentPreferences(preferences: VideoContentPreferences): void;
 }
 
 export interface RemoteAudioTrack {

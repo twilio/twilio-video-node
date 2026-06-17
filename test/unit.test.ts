@@ -6,7 +6,23 @@ import {
   createLocalVideoTrack,
   createLocalAudioTrack,
   createLocalDataTrack,
+  createLocalTracks,
+  TwilioError,
+  AccessTokenInvalidError,
+  RoomNotFoundError,
+  SignalingConnectionError,
+  MediaConnectionError,
+  ParticipantMaxTracksExceededError,
+  twilioErrorFromCode,
+  LocalVideoTrackPublication,
 } from '../dist/index.mjs';
+
+// Internal imports for testing non-exported utilities and error classes
+import {
+  liftTwilioError,
+  TwilioError as TwilioErrorSrc,
+  RoomNotFoundError as RoomNotFoundErrorSrc,
+} from '../lib/errors.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
 describe('Version', () => {
@@ -193,5 +209,199 @@ describe('Data Track', () => {
     expect(track.name).toBe('send-test');
     expect(() => track.send('hello')).not.toThrow();
     expect(() => track.send(Buffer.from([0xde, 0xad]))).not.toThrow();
+  });
+});
+
+describe('createLocalTracks', () => {
+  it('returns audio and video when no options are provided', async () => {
+    const tracks = await createLocalTracks();
+    const kinds = tracks.map(t => t.kind).sort();
+    expect(kinds).toEqual(['audio', 'video']);
+  });
+
+  it('returns only audio when only audio is specified', async () => {
+    const tracks = await createLocalTracks({ audio: true });
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].kind).toBe('audio');
+  });
+
+  it('returns only video when only video is specified', async () => {
+    const tracks = await createLocalTracks({ video: true });
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].kind).toBe('video');
+  });
+
+  it('returns an empty array when both audio and video are false', async () => {
+    const tracks = await createLocalTracks({ audio: false, video: false });
+    expect(tracks).toHaveLength(0);
+  });
+
+  it('forwards per-track names when both kinds are requested', async () => {
+    const tracks = await createLocalTracks({
+      audio: { name: 'mic-1' },
+      video: { name: 'cam-1' },
+    });
+    expect(tracks.find(t => t.kind === 'audio')!.name).toBe('mic-1');
+    expect(tracks.find(t => t.kind === 'video')!.name).toBe('cam-1');
+  });
+});
+
+describe('connect() networkQuality validation', () => {
+  it('rejects verbosity > 1', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('fake-token', { networkQuality: { local: 3 } }),
+    ).rejects.toThrow(/networkQuality\.local/);
+  });
+
+  it('rejects negative verbosity', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('fake-token', { networkQuality: { remote: -1 } }),
+    ).rejects.toThrow(/networkQuality\.remote/);
+  });
+});
+
+describe('connect() encodingParameters validation', () => {
+  it('rejects a non-number bitrate', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('fake-token', { encodingParameters: { maxAudioBitrate: 'fast' } }),
+    ).rejects.toThrow(/encodingParameters\.maxAudioBitrate/);
+  });
+});
+
+describe('TwilioError hierarchy', () => {
+  it('TwilioError is an Error subclass with code', () => {
+    const err = new TwilioError(99999, 'oops');
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe(99999);
+    expect(err.message).toBe('oops');
+    expect(err.name).toBe('TwilioError');
+  });
+
+  it('AccessTokenInvalidError carries code 20101', () => {
+    const err = new AccessTokenInvalidError();
+    expect(err).toBeInstanceOf(TwilioError);
+    expect(err.code).toBe(20101);
+    expect(err.name).toBe('AccessTokenInvalidError');
+  });
+
+  it('SignalingConnectionError carries code 53000', () => {
+    expect(new SignalingConnectionError().code).toBe(53000);
+  });
+
+  it('RoomNotFoundError carries code 53106', () => {
+    expect(new RoomNotFoundError().code).toBe(53106);
+  });
+
+  it('MediaConnectionError carries code 53405 and canonical message', () => {
+    const err = new MediaConnectionError();
+    expect(err.code).toBe(53405);
+    expect(err.message).toBe('Media connection failed or Media activity ceased');
+  });
+
+  it('ParticipantMaxTracksExceededError carries code 53203 and canonical message', () => {
+    const err = new ParticipantMaxTracksExceededError();
+    expect(err.code).toBe(53203);
+    expect(err.message).toBe(
+      'The maximum number of published tracks allowed in the Room at the same time has been reached',
+    );
+  });
+
+  it('twilioErrorFromCode picks the matching subclass and uses its canonical message', () => {
+    // Parity with twilio-video.js: a known code ignores the caller message.
+    const err = twilioErrorFromCode(20101, 'bad token');
+    expect(err).toBeInstanceOf(AccessTokenInvalidError);
+    expect(err.message).toBe('Invalid Access Token');
+  });
+
+  it('twilioErrorFromCode falls back to TwilioError for unknown codes', () => {
+    const err = twilioErrorFromCode(99999, 'something');
+    expect(err).toBeInstanceOf(TwilioError);
+    expect(err.constructor.name).toBe('TwilioError');
+    expect(err.code).toBe(99999);
+  });
+
+  it('twilioErrorFromCode maps non-integer codes to TwilioError with code 0', () => {
+    const err = twilioErrorFromCode(NaN as unknown as number, 'bad');
+    expect(err).toBeInstanceOf(TwilioError);
+    expect(err.code).toBe(0);
+    expect(err.message).toBe('bad');
+  });
+
+  it('TwilioError subclass keeps default message when given empty string', () => {
+    const err = new RoomNotFoundError('');
+    expect(err.message).toBe('Room not found');
+  });
+});
+
+describe('createLocalTracks rejection', () => {
+  it('rejects when an option is invalid (does not throw synchronously)', async () => {
+    // Empty-string name fails validation in createLocalAudioTrack — must surface as a rejection
+    await expect(createLocalTracks({ audio: { name: '' }, video: false })).rejects.toThrow(/name/i);
+  });
+});
+
+describe('liftTwilioError', () => {
+  it('passes an existing TwilioError through unchanged', () => {
+    const original = new RoomNotFoundErrorSrc();
+    expect(liftTwilioError(original)).toBe(original);
+  });
+
+  it('lifts a { code, message } payload into the matching subclass', () => {
+    const err = liftTwilioError({ code: 53106, message: 'gone' });
+    expect(err).toBeInstanceOf(RoomNotFoundErrorSrc);
+    expect(err.code).toBe(53106);
+  });
+
+  it('preserves a string payload as the message', () => {
+    const err = liftTwilioError('boom');
+    expect(err).toBeInstanceOf(TwilioErrorSrc);
+    expect(err.code).toBe(0);
+    expect(err.message).toBe('boom');
+  });
+
+  it('preserves the message of an arbitrary object payload instead of discarding it', () => {
+    const err = liftTwilioError({ message: 'native detail' });
+    expect(err.code).toBe(0);
+    expect(err.message).toBe('native detail');
+  });
+});
+
+describe('LocalTrackPublication.unpublish()', () => {
+  // Minimal raw publication shape the constructor reads.
+  const raw = { trackSid: 'MT123', trackName: 'cam', kind: 'video', isTrackEnabled: true } as const;
+
+  it('invokes the injected unpublish callback with the track and returns the publication', () => {
+    const track = { name: 'cam', kind: 'video' } as never;
+    let calledWith: unknown = null;
+    const pub = new LocalVideoTrackPublication(raw, track, (t: unknown) => {
+      calledWith = t;
+      return true;
+    });
+    const result = pub.unpublish();
+    expect(calledWith).toBe(track);
+    expect(result).toBe(pub);
+    expect(pub.track).toBe(track); // track stays readable, matching twilio-video.js
+  });
+
+  it('is idempotent: a second call does not invoke the callback again', () => {
+    const track = { name: 'cam', kind: 'video' } as never;
+    let calls = 0;
+    const pub = new LocalVideoTrackPublication(raw, track, () => {
+      calls += 1;
+      return true;
+    });
+    pub.unpublish();
+    pub.unpublish();
+    expect(calls).toBe(1);
+  });
+
+  it('is a no-op when constructed without an unpublish callback', () => {
+    const track = { name: 'cam', kind: 'video' } as never;
+    const pub = new LocalVideoTrackPublication(raw, track);
+    expect(() => pub.unpublish()).not.toThrow();
+    expect(pub.unpublish()).toBe(pub);
   });
 });

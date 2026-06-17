@@ -20,35 +20,35 @@ public:
 
     void onAudioTrackPublished(twilio::video::LocalParticipant*,
                                std::shared_ptr<twilio::media::LocalAudioTrackPublication> pub) override {
-        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName(), "audio");
     }
 
     void onVideoTrackPublished(twilio::video::LocalParticipant*,
                                std::shared_ptr<twilio::media::LocalVideoTrackPublication> pub) override {
-        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName(), "video");
     }
 
     void onDataTrackPublished(twilio::video::LocalParticipant*,
                               std::shared_ptr<twilio::media::LocalDataTrackPublication> pub) override {
-        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName(), "data");
     }
 
     void onAudioTrackPublicationFailed(twilio::video::LocalParticipant*,
-                                       std::shared_ptr<twilio::media::LocalAudioTrack>,
+                                       std::shared_ptr<twilio::media::LocalAudioTrack> track,
                                        const twilio::video::Error error) override {
-        dispatchErrorEvent("trackPublicationFailed", error.getCode(), error.getMessage());
+        dispatchPublicationFailed(track->getName(), error.getCode(), error.getMessage());
     }
 
     void onVideoTrackPublicationFailed(twilio::video::LocalParticipant*,
-                                       std::shared_ptr<twilio::media::LocalVideoTrack>,
+                                       std::shared_ptr<twilio::media::LocalVideoTrack> track,
                                        const twilio::video::Error error) override {
-        dispatchErrorEvent("trackPublicationFailed", error.getCode(), error.getMessage());
+        dispatchPublicationFailed(track->getName(), error.getCode(), error.getMessage());
     }
 
     void onDataTrackPublicationFailed(twilio::video::LocalParticipant*,
-                                      std::shared_ptr<twilio::media::LocalDataTrack>,
+                                      std::shared_ptr<twilio::media::LocalDataTrack> track,
                                       const twilio::video::Error error) override {
-        dispatchErrorEvent("trackPublicationFailed", error.getCode(), error.getMessage());
+        dispatchPublicationFailed(track->getName(), error.getCode(), error.getMessage());
     }
 
     void onNetworkQualityLevelChanged(twilio::video::LocalParticipant*,
@@ -73,18 +73,25 @@ private:
         });
     }
 
-    void dispatchTrackEvent(const std::string& eventName, std::string sid, std::string name) {
-        dispatchEvent(eventName, [sid = std::move(sid), name = std::move(name)](Napi::Env env) {
+    void dispatchTrackEvent(const std::string& eventName, std::string sid, std::string name, std::string kind) {
+        dispatchEvent(eventName, [sid = std::move(sid), name = std::move(name), kind = std::move(kind)](Napi::Env env) {
             auto obj = Napi::Object::New(env);
             obj.Set("trackSid", Napi::String::New(env, sid));
             obj.Set("trackName", Napi::String::New(env, name));
+            obj.Set("kind", Napi::String::New(env, kind));
             return obj;
         });
     }
 
-    void dispatchErrorEvent(const std::string& eventName, uint32_t code, std::string message) {
-        dispatchEvent(eventName, [code, message = std::move(message)](Napi::Env env) {
-            return createTwilioErrorObject(env, code, message);
+    // Carries the failed track's name alongside the error so the JS layer can drop
+    // its publication bookkeeping for that track. trackName is extra; the JS error
+    // lifter reads code/message and ignores it.
+    void dispatchPublicationFailed(std::string trackName, uint32_t code, std::string message) {
+        dispatchEvent("trackPublicationFailed",
+                      [trackName = std::move(trackName), code, message = std::move(message)](Napi::Env env) {
+            auto obj = createTwilioErrorObject(env, code, message);
+            obj.Set("trackName", Napi::String::New(env, trackName));
+            return obj;
         });
     }
 

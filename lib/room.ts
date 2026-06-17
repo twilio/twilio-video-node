@@ -1,22 +1,23 @@
 import { LocalParticipant } from './local_participant.js';
 import { RemoteParticipant } from './remote_participant.js';
 import { TypedEventEmitter } from './typed_emitter.js';
+import type { LocalTrack } from './track_publication.js';
 import type {
   NativeRoom,
   NativeRemoteParticipant,
   RoomState,
-  TwilioError,
   RemoteVideoTrack,
   RemoteAudioTrack,
   RemoteDataTrack,
   StatsReport,
 } from './types.js';
+import { TwilioError, liftTwilioError } from './errors.js';
 
 export type RoomEvents = {
   connected: () => void;
   disconnected: (error?: TwilioError) => void;
   connectFailure: (error: TwilioError) => void;
-  reconnecting: (error: TwilioError) => void;
+  reconnecting: (error?: TwilioError) => void;
   reconnected: () => void;
   participantConnected: (participant: RemoteParticipant) => void;
   participantDisconnected: (participant: RemoteParticipant) => void;
@@ -50,6 +51,11 @@ const PARTICIPANT_EVENTS = new Set([
   'dominantSpeakerChanged',
 ]);
 
+const ROOM_ERROR_EVENTS = new Set(['connectFailure']);
+
+// These events may be emitted without an associated error.
+const ROOM_OPTIONAL_ERROR_EVENTS = new Set(['disconnected', 'reconnecting']);
+
 const BUBBLED_TRACK_EVENTS = [
   'trackSubscribed',
   'trackUnsubscribed',
@@ -66,10 +72,12 @@ export class Room extends TypedEventEmitter<RoomEvents> {
   readonly _native: NativeRoom;
   private _localParticipant: LocalParticipant | null = null;
   private _remoteParticipantCache = new Map<string, RemoteParticipant>();
+  private _seededTracks: ReadonlyArray<LocalTrack>;
 
-  constructor(nativeRoom: NativeRoom) {
+  constructor(nativeRoom: NativeRoom, seededTracks: ReadonlyArray<LocalTrack> = []) {
     super();
     this._native = nativeRoom;
+    this._seededTracks = seededTracks;
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (PARTICIPANT_EVENTS.has(event)) {
@@ -79,6 +87,10 @@ export class Room extends TypedEventEmitter<RoomEvents> {
           wrapped.dispose();
           this._remoteParticipantCache.delete(wrapped.sid);
         }
+      } else if (ROOM_ERROR_EVENTS.has(event)) {
+        this.emit(event, liftTwilioError(data));
+      } else if (ROOM_OPTIONAL_ERROR_EVENTS.has(event)) {
+        this.emit(event, data ? liftTwilioError(data) : undefined);
       } else {
         this.emit(event, data);
       }
@@ -113,7 +125,10 @@ export class Room extends TypedEventEmitter<RoomEvents> {
 
   get localParticipant(): LocalParticipant {
     if (!this._localParticipant) {
-      this._localParticipant = new LocalParticipant(this._native.localParticipant);
+      this._localParticipant = new LocalParticipant(
+        this._native.localParticipant,
+        this._seededTracks,
+      );
     }
     return this._localParticipant;
   }

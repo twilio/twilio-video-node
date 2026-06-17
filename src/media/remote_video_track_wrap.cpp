@@ -1,5 +1,7 @@
 #include "remote_video_track_wrap.h"
 #include <webrtc/api/video/video_sink_interface.h>
+#include <cmath>
+#include <cstdint>
 
 namespace twilio_video_node {
 
@@ -14,6 +16,7 @@ void RemoteVideoTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("isSwitchedOff", &RemoteVideoTrackWrap::IsSwitchedOff, nullptr),
         InstanceMethod("onFrame", &RemoteVideoTrackWrap::OnFrame),
         InstanceMethod("removeFrameCallback", &RemoteVideoTrackWrap::RemoveFrameCallback),
+        InstanceMethod("setContentPreferences", &RemoteVideoTrackWrap::SetContentPreferences),
     });
 
     constructor_ = Napi::Persistent(func);
@@ -109,6 +112,66 @@ Napi::Value RemoteVideoTrackWrap::RemoveFrameCallback(const Napi::CallbackInfo& 
         frameSink_.reset();
     }
     return info.Env().Undefined();
+}
+
+Napi::Value RemoteVideoTrackWrap::SetContentPreferences(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (!track_) return env.Undefined();
+
+    if (info.Length() < 1 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "Expected preferences object").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    auto prefs = info[0].As<Napi::Object>();
+
+    twilio::media::SinkHints hints;
+    // Address the default sink rather than our OnFrame sink — content preferences apply to the track, not to a specific subscriber.
+    hints.sink_id = twilio::media::kSinkIdWhenNoSinkAttachedToTrack;
+
+    if (prefs.Has("renderDimensions")) {
+        auto rdValue = prefs.Get("renderDimensions");
+        if (!rdValue.IsObject()) {
+            Napi::TypeError::New(env, "renderDimensions must be an object")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        auto rd = rdValue.As<Napi::Object>();
+        if (!rd.Has("width") || !rd.Has("height") ||
+            !rd.Get("width").IsNumber() || !rd.Get("height").IsNumber()) {
+            Napi::TypeError::New(env, "renderDimensions requires numeric width and height")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        double w = rd.Get("width").As<Napi::Number>().DoubleValue();
+        double h = rd.Get("height").As<Napi::Number>().DoubleValue();
+        // Matches Number.MAX_SAFE_INTEGER (2^53 - 1).
+        constexpr double kMaxSafe = 9007199254740991.0;
+        auto isPositiveInt = [&](double v) {
+            return std::isfinite(v) && v > 0 && v == std::floor(v) && v <= kMaxSafe;
+        };
+        if (!isPositiveInt(w) || !isPositiveInt(h)) {
+            Napi::RangeError::New(env, "renderDimensions width and height must be positive integers")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        twilio::video::VideoDimensions dims;
+        dims.width = static_cast<uint64_t>(w);
+        dims.height = static_cast<uint64_t>(h);
+
+        twilio::media::VideoContentPreferences cp;
+        cp.render_dimensions = dims;
+        hints.content_preferences = cp;
+    }
+
+    try {
+        track_->addSinkHints(hints);
+    } catch (const std::exception& e) {
+        // Use Error, not TypeError: bad arguments are already rejected with TypeError/RangeError
+        // above, so anything reaching here is a runtime failure, not bad input.
+        Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    return env.Undefined();
 }
 
 }

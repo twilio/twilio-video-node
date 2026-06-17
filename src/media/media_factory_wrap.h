@@ -11,6 +11,7 @@ class MediaFactoryWrap : public Napi::ObjectWrap<MediaFactoryWrap> {
 public:
     static void Init(Napi::Env env, Napi::Object exports);
     static Napi::Object NewInstance(Napi::Env env, std::shared_ptr<twilio::media::MediaFactory> factory);
+    static bool IsInstance(Napi::Object obj);
 
     MediaFactoryWrap(const Napi::CallbackInfo& info);
     ~MediaFactoryWrap();

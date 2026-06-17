@@ -9,12 +9,14 @@ import type {
   ConnectOptions,
   CreateLocalVideoTrackOptions,
   CreateLocalAudioTrackOptions,
+  CreateLocalTracksOptions,
   LocalVideoTrack,
   LocalAudioTrack,
   LocalDataTrack,
   LocalDataTrackOptions,
   LogLevel,
   PlatformInfo,
+  NetworkQualityConfiguration,
 } from './types.js';
 
 export { Room } from './room.js';
@@ -48,7 +50,7 @@ export type {
   AudioFrame,
   CreateLocalVideoTrackOptions,
   CreateLocalAudioTrackOptions,
-  TwilioError,
+  CreateLocalTracksOptions,
   TrackKind,
   LocalVideoTrack,
   LocalAudioTrack,
@@ -71,7 +73,30 @@ export type {
   RemoteAudioTrackStats,
   RemoteVideoTrackStats,
   StatsVideoDimensions,
+  AudioCodec,
+  VideoCodec,
+  VideoEncodingMode,
+  BandwidthProfileMode,
+  TrackSwitchOffMode,
+  ClientTrackSwitchOffControl,
+  VideoContentPreferencesMode,
+  VideoBandwidthProfileOptions,
+  BandwidthProfileOptions,
+  NetworkQualityVerbosity,
+  NetworkQualityConfiguration,
+  VideoRenderDimensions,
+  VideoContentPreferences,
 } from './types.js';
+
+export {
+  TwilioError,
+  AccessTokenInvalidError,
+  RoomNotFoundError,
+  SignalingConnectionError,
+  MediaConnectionError,
+  ParticipantMaxTracksExceededError,
+  twilioErrorFromCode,
+} from './errors.js';
 
 // --- Addon loading ---
 
@@ -138,7 +163,28 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
   if (!token || typeof token !== 'string') {
     return Promise.reject(new TypeError('token must be a non-empty string'));
   }
-  const internalOpts: Record<string, unknown> = { ...options };
+  const { networkQuality, ...rest } = options;
+  const internalOpts: Record<string, unknown> = { ...rest };
+  // networkQuality is the public contract; clear the native-only fields before re-deriving them,
+  // so a caller passing them directly cannot override us.
+  delete internalOpts.enableNetworkQuality;
+  delete internalOpts.networkQualityConfiguration;
+
+  if (networkQuality === true) {
+    internalOpts.enableNetworkQuality = true;
+    internalOpts.networkQualityConfiguration = { local: 1, remote: 0 };
+  } else if (networkQuality && typeof networkQuality === 'object') {
+    let normalized: { local: number; remote: number };
+    try {
+      normalized = normalizeNetworkQualityConfig(networkQuality);
+    } catch (err) {
+      return Promise.reject(err as Error);
+    }
+    internalOpts.enableNetworkQuality = true;
+    internalOpts.networkQualityConfiguration = normalized;
+  } else {
+    internalOpts.enableNetworkQuality = false;
+  }
 
   // Pre-populate platformInfo so C++ just reads it
   const platformInfo: PlatformInfo = {
@@ -153,7 +199,12 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
 
   return new Promise((resolve, reject) => {
     const nativeRoom = addon.connect(token, internalOpts);
-    const room = new Room(nativeRoom);
+    const seededTracks = [
+      ...(options.videoTracks ?? []),
+      ...(options.audioTracks ?? []),
+      ...(options.dataTracks ?? []),
+    ];
+    const room = new Room(nativeRoom, seededTracks);
 
     const onConnected = () => {
       room.removeListener('connectFailure', onFailure);
@@ -189,6 +240,44 @@ function resolveName(options: unknown, methodName: string): string | undefined {
   return name;
 }
 
+function normalizeNetworkQualityConfig(config: NetworkQualityConfiguration): {
+  local: number;
+  remote: number;
+} {
+  const local = config.local ?? 1;
+  const remote = config.remote ?? 0;
+  if (local !== 1) {
+    throw new RangeError(
+      `networkQuality.local must be 1; to disable network-quality reporting, pass \`networkQuality: false\`. Got ${local}`,
+    );
+  }
+  if (!Number.isInteger(remote) || remote < 0 || remote > 1) {
+    throw new RangeError(
+      `networkQuality.remote must be 0 (disabled) or 1 (enabled); got ${remote}`,
+    );
+  }
+  return { local, remote };
+}
+
+/**
+ * Create a {@link LocalVideoTrack}. The track is a sink for caller-supplied
+ * frames, delivered via {@link LocalVideoTrack.write}. Frames pushed before
+ * the room emits `connected` are silently dropped.
+ *
+ * @param options - A track name, or a {@link CreateLocalVideoTrackOptions} object.
+ * @returns The created {@link LocalVideoTrack}.
+ * @throws {TypeError} If `options.name` is provided and is not a non-empty string.
+ *
+ * @example
+ * // Create a track and connect with it.
+ * const videoTrack = createLocalVideoTrack('camera');
+ * const room = await connect(token, { videoTracks: [videoTrack] });
+ *
+ * @example
+ * // Add video to an already-connected room.
+ * const videoTrack = createLocalVideoTrack({ name: 'camera' });
+ * room.localParticipant.publishTrack(videoTrack);
+ */
 export function createLocalVideoTrack(
   options?: string | CreateLocalVideoTrackOptions,
 ): LocalVideoTrack {
@@ -196,6 +285,25 @@ export function createLocalVideoTrack(
   return getDefaultMediaFactory().createVideoTrack(name ? { name } : {});
 }
 
+/**
+ * Create a {@link LocalAudioTrack}. The track is a sink for caller-supplied
+ * PCM samples, delivered via {@link LocalAudioTrack.write}. Audio input is
+ * fixed at **48 kHz mono S16LE**.
+ *
+ * @param options - A track name, or a {@link CreateLocalAudioTrackOptions} object.
+ * @returns The created {@link LocalAudioTrack}.
+ * @throws {TypeError} If `options.name` is provided and is not a non-empty string.
+ *
+ * @example
+ * // Create a track and connect with it.
+ * const audioTrack = createLocalAudioTrack('microphone');
+ * const room = await connect(token, { audioTracks: [audioTrack] });
+ *
+ * @example
+ * // Add audio to an already-connected room.
+ * const audioTrack = createLocalAudioTrack({ name: 'microphone' });
+ * room.localParticipant.publishTrack(audioTrack);
+ */
 export function createLocalAudioTrack(
   options?: string | CreateLocalAudioTrackOptions,
 ): LocalAudioTrack {
@@ -203,6 +311,26 @@ export function createLocalAudioTrack(
   return getDefaultMediaFactory().createAudioTrack(name ? { name } : {});
 }
 
+/**
+ * Create a {@link LocalDataTrack} for sending arbitrary string or binary
+ * messages. The track defaults to reliable, ordered delivery; pass
+ * `maxRetransmits` or `maxPacketLifeTime` to make it unreliable.
+ *
+ * @param options - A track name, or a {@link LocalDataTrackOptions} object.
+ * @returns The created {@link LocalDataTrack}.
+ * @throws {TypeError} If `options` is not a string or object, or if `name` is not a non-empty string.
+ * @throws {Error} If both `maxRetransmits` and `maxPacketLifeTime` are set, or if either is negative.
+ *
+ * @example
+ * // Reliable, ordered messaging.
+ * const dataTrack = createLocalDataTrack('chat');
+ * room.localParticipant.publishTrack(dataTrack);
+ * dataTrack.send('hello');
+ *
+ * @example
+ * // Unreliable, time-bounded delivery.
+ * const dataTrack = createLocalDataTrack({ name: 'telemetry', maxPacketLifeTime: 1000 });
+ */
 export function createLocalDataTrack(options: LocalDataTrackOptions | string = {}): LocalDataTrack {
   if (typeof options !== 'string' && (typeof options !== 'object' || options === null)) {
     throw new TypeError('createLocalDataTrack expects a string or options object');
@@ -221,6 +349,49 @@ export function createLocalDataTrack(options: LocalDataTrackOptions | string = {
     throw new Error('maxRetransmits and maxPacketLifeTime must be non-negative');
   }
   return getDefaultMediaFactory().createDataTrack(opts);
+}
+
+/**
+ * Create {@link LocalAudioTrack}s and {@link LocalVideoTrack}s. By default,
+ * returns both a {@link LocalAudioTrack} and a {@link LocalVideoTrack}. If
+ * either `audio` or `video` is provided, the unspecified kind is omitted.
+ * Each key accepts a boolean or a per-track options object.
+ *
+ * @param options - Track selection and per-track configuration.
+ * @returns A promise that resolves with the created local tracks, or rejects
+ *   with a `TypeError` if a per-track option fails validation.
+ *
+ * @example
+ * // Create both audio and video tracks.
+ * const tracks = await createLocalTracks();
+ *
+ * @example
+ * // Create only an audio track and connect with it.
+ * const tracks = await createLocalTracks({ audio: true });
+ * const room = await connect(token, { audioTracks: tracks });
+ *
+ * @example
+ * // Create both with custom names.
+ * const tracks = await createLocalTracks({
+ *   audio: { name: 'microphone' },
+ *   video: { name: 'camera' },
+ * });
+ */
+export async function createLocalTracks(
+  options: CreateLocalTracksOptions = {},
+): Promise<(LocalAudioTrack | LocalVideoTrack)[]> {
+  // Specifying either key opts the other out; both default ON only when neither is set.
+  const defaultEnabled = !('audio' in options) && !('video' in options);
+  const audio = options.audio ?? defaultEnabled;
+  const video = options.video ?? defaultEnabled;
+  const tracks: (LocalAudioTrack | LocalVideoTrack)[] = [];
+  if (audio) {
+    tracks.push(createLocalAudioTrack(typeof audio === 'object' ? audio : undefined));
+  }
+  if (video) {
+    tracks.push(createLocalVideoTrack(typeof video === 'object' ? video : undefined));
+  }
+  return tracks;
 }
 
 export const ErrorCode = Object.freeze({

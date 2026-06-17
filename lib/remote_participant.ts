@@ -4,9 +4,9 @@ import type {
   RemoteVideoTrack,
   RemoteAudioTrack,
   RemoteDataTrack,
-  TwilioError,
   RemoteTrackPublication as RawRemoteTrackPublication,
 } from './types.js';
+import { TwilioError, liftTwilioError } from './errors.js';
 import { TypedEventEmitter } from './typed_emitter.js';
 import {
   RemoteVideoTrackPublication,
@@ -37,7 +37,11 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
     this._native = nativeParticipant;
 
     this._native.setEventCallback((event: string, data?: unknown) => {
-      this.emit(event, data);
+      if (event === 'trackSubscriptionFailed') {
+        this.emit(event, liftTwilioError(data));
+      } else {
+        this.emit(event, data);
+      }
     });
   }
 

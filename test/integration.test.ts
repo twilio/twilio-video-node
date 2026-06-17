@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
 import { connectToRoom } from './helpers/connect.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
@@ -9,15 +9,16 @@ import type {
   RemoteParticipant,
   VideoFrame,
   AudioFrame,
-  LocalVideoTrackPublication,
   RemoteTrack,
   StatsReport,
+  VideoContentPreferences,
 } from '../dist/index.mjs';
 import {
   connect,
   createLocalVideoTrack,
   createLocalAudioTrack,
   createLocalDataTrack,
+  LocalVideoTrackPublication,
 } from '../dist/index.mjs';
 import type { EventEmitter } from 'node:events';
 
@@ -353,13 +354,13 @@ describe('participantDisconnected', () => {
 });
 
 describe('LocalParticipant observer events', () => {
-  it('trackPublished fires after publishTrack with correct trackName', async () => {
+  it('trackPublished emits a LocalTrackPublication carrying the live track and unpublish()', async () => {
     const roomName = uniqueRoom();
     const videoTrack = createLocalVideoTrack('observer-cam');
 
     const { connA, connB } = await connectPair(roomName);
 
-    const publishedPromise = waitForEvent<{ trackName: string; trackSid: string }>(
+    const publishedPromise = waitForEvent<LocalVideoTrackPublication>(
       connA.room.localParticipant,
       'trackPublished',
       TIMEOUT.subscribe,
@@ -369,8 +370,12 @@ describe('LocalParticipant observer events', () => {
     const publication = await publishedPromise;
 
     try {
+      // Assert the EVENT ARGUMENT itself (not a Map lookup) satisfies the contract.
+      expect(publication).toBeInstanceOf(LocalVideoTrackPublication);
       expect(publication.trackName).toBe('observer-cam');
       expect(publication.trackSid).toBeTruthy();
+      expect(publication.track).toBe(videoTrack);
+      expect(typeof publication.unpublish).toBe('function');
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
@@ -467,7 +472,7 @@ describe('networkQualityLevel', () => {
   it('networkQualityLevelChanged fires and matches property', async () => {
     const roomName = uniqueRoom();
     const { connA, connB } = await connectPair(roomName, {
-      enableNetworkQuality: true,
+      networkQuality: true,
     });
 
     try {
@@ -862,6 +867,63 @@ describe('Room.getStats()', () => {
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
+  });
+});
+
+describe('RemoteVideoTrack.setContentPreferences', () => {
+  let pair: Awaited<ReturnType<typeof connectPair>> | undefined;
+  let remoteTrack: RemoteVideoTrack;
+
+  beforeAll(async () => {
+    // setContentPreferences throws unless the room was connected with a bandwidthProfile.
+    pair = await connectPair(uniqueRoom(), { bandwidthProfile: { video: {} } });
+    const subscribed = waitForEvent<RemoteVideoTrack>(
+      pair.remoteA,
+      'trackSubscribed',
+      TIMEOUT.subscribe,
+    );
+    pair.connA.room.localParticipant.publishTrack(createLocalVideoTrack('content-prefs-cam'));
+    remoteTrack = await subscribed;
+  }, TIMEOUT.subscribe + 5_000);
+
+  afterAll(() => {
+    if (!pair) return;
+    return Promise.all([pair.connA.cleanup(), pair.connB.cleanup()]);
+  });
+
+  const cases: { name: string; input: VideoContentPreferences; error: RegExp }[] = [
+    {
+      name: 'non-object renderDimensions',
+      // @ts-expect-error renderDimensions is intentionally invalid
+      input: { renderDimensions: 123 },
+      error: /renderDimensions must be an object/,
+    },
+    {
+      name: 'missing height',
+      // @ts-expect-error height is intentionally missing
+      input: { renderDimensions: { width: 320 } },
+      error: /numeric width and height/,
+    },
+    {
+      name: 'non-positive width',
+      input: { renderDimensions: { width: 0, height: 240 } },
+      error: /positive integers/,
+    },
+    {
+      name: 'non-integer width',
+      input: { renderDimensions: { width: 320.5, height: 240 } },
+      error: /positive integers/,
+    },
+  ];
+
+  it.each(cases)('throws $name', ({ input, error }) => {
+    expect(() => remoteTrack.setContentPreferences(input)).toThrow(error);
+  });
+
+  it('accepts valid renderDimensions', () => {
+    expect(() =>
+      remoteTrack.setContentPreferences({ renderDimensions: { width: 320, height: 240 } }),
+    ).not.toThrow();
   });
 });
 
