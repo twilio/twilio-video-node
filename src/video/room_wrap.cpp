@@ -433,14 +433,7 @@ RoomWrap::RoomWrap(const Napi::CallbackInfo& info)
 }
 
 RoomWrap::~RoomWrap() {
-    {
-        std::lock_guard<std::mutex> lock(statsObserversMutex_);
-        for (auto& obs : pendingStatsObservers_) {
-            auto* oneShot = static_cast<OneShotStatsObserver*>(obs.get());
-            oneShot->cancel();
-        }
-        pendingStatsObservers_.clear();
-    }
+    statsObservers_->cancelAll();
 
     // Close observer before disconnect to prevent callbacks during teardown
     if (observer_) {
@@ -583,14 +576,7 @@ Napi::Value RoomWrap::Disconnect(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
-    {
-        std::lock_guard<std::mutex> lock(statsObserversMutex_);
-        for (auto& obs : pendingStatsObservers_) {
-            auto* oneShot = static_cast<OneShotStatsObserver*>(obs.get());
-            oneShot->cancel();
-        }
-        pendingStatsObservers_.clear();
-    }
+    statsObservers_->cancelAll();
 
     // Close observer before disconnect to prevent callbacks during teardown
     if (observer_) {
@@ -728,11 +714,33 @@ static Napi::Value convertStatsReportsToJS(Napi::Env env,
     return jsArray;
 }
 
+void StatsObserverRegistry::add(
+    const std::shared_ptr<twilio::media::StatsObserver>& obs) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    observers_.insert(obs);
+}
+
+void StatsObserverRegistry::remove(
+    const std::shared_ptr<twilio::media::StatsObserver>& obs) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    observers_.erase(obs);
+}
+
+void StatsObserverRegistry::cancelAll() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto& obs : observers_) {
+        static_cast<OneShotStatsObserver*>(obs.get())->cancel();
+    }
+    observers_.clear();
+}
+
 OneShotStatsObserver::OneShotStatsObserver(
     std::shared_ptr<AsyncContext> ctx,
-    std::shared_ptr<Napi::FunctionReference> cb)
+    std::shared_ptr<Napi::FunctionReference> cb,
+    std::weak_ptr<StatsObserverRegistry> registry)
     : asyncContext_(std::move(ctx)),
-      callback_(std::move(cb)) {}
+      callback_(std::move(cb)),
+      registry_(std::move(registry)) {}
 
 OneShotStatsObserver::~OneShotStatsObserver() {
     // cancel() or onStats() must have moved callback_ away before destruction.
@@ -748,17 +756,27 @@ void OneShotStatsObserver::onStats(
     auto cb = std::move(callback_);
     auto ctx = asyncContext_;
 
-    if (!ctx || ctx->isClosed()) return;
+    if (ctx && !ctx->isClosed()) {
+        ctx->dispatch([reports = std::move(reports), cb](Napi::Env env) {
+            if (!cb || cb->IsEmpty()) return;
+            Napi::HandleScope scope(env);
+            auto jsReports = convertStatsReportsToJS(env, reports);
+            cb->Call({env.Null(), jsReports});
+        });
+    }
 
-    ctx->dispatch([reports = std::move(reports), cb](Napi::Env env) {
-        if (!cb || cb->IsEmpty()) return;
-        Napi::HandleScope scope(env);
-        auto jsReports = convertStatsReportsToJS(env, reports);
-        cb->Call({env.Null(), jsReports});
-    });
+    // Drop ourselves from the pending set last: rtc-cpp invokes onStats through
+    // a locked weak_ptr, so `this` stays alive until we return even after the
+    // registry releases its shared_ptr. Skipped when the room is being torn
+    // down (registry already gone / cancelAll clearing the set).
+    if (auto registry = registry_.lock()) {
+        registry->remove(shared_from_this());
+    }
 }
 
 void OneShotStatsObserver::cancel() {
+    // Called only from StatsObserverRegistry::cancelAll under its mutex, so this
+    // must not touch the registry itself (it would deadlock / re-enter).
     if (fired_.exchange(true)) return;
 
     auto cb = std::move(callback_);
@@ -808,12 +826,10 @@ Napi::Value RoomWrap::GetStats(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    auto observer = std::make_shared<OneShotStatsObserver>(asyncContext_, callback);
+    auto observer = std::make_shared<OneShotStatsObserver>(
+        asyncContext_, callback, statsObservers_);
 
-    {
-        std::lock_guard<std::mutex> lock(statsObserversMutex_);
-        pendingStatsObservers_.insert(observer);
-    }
+    statsObservers_->add(observer);
 
     room_->getStats(observer);
 

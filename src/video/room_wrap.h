@@ -17,10 +17,30 @@ namespace twilio_video_node {
 
 class RoomWrap;
 
-class OneShotStatsObserver : public twilio::media::StatsObserver {
+// Holds the set of in-flight one-shot stats observers behind its own mutex.
+// Lives behind a shared_ptr so an observer can erase itself on completion (from
+// a WebRTC thread) even if the owning RoomWrap is being torn down concurrently
+// (on the main thread): the registry and its mutex stay alive as long as either
+// side still holds a reference.
+class StatsObserverRegistry {
+public:
+    void add(const std::shared_ptr<twilio::media::StatsObserver>& obs);
+    void remove(const std::shared_ptr<twilio::media::StatsObserver>& obs);
+    // cancel() every pending observer and drop them. Used on Dispose/teardown.
+    void cancelAll();
+
+private:
+    std::mutex mutex_;
+    std::set<std::shared_ptr<twilio::media::StatsObserver>> observers_;
+};
+
+class OneShotStatsObserver
+    : public twilio::media::StatsObserver,
+      public std::enable_shared_from_this<OneShotStatsObserver> {
 public:
     OneShotStatsObserver(std::shared_ptr<AsyncContext> ctx,
-                         std::shared_ptr<Napi::FunctionReference> cb);
+                         std::shared_ptr<Napi::FunctionReference> cb,
+                         std::weak_ptr<StatsObserverRegistry> registry);
     ~OneShotStatsObserver() override;
 
     void onStats(const std::vector<twilio::media::StatsReport>& stats_reports) override;
@@ -29,6 +49,7 @@ public:
 private:
     std::shared_ptr<AsyncContext> asyncContext_;
     std::shared_ptr<Napi::FunctionReference> callback_;
+    std::weak_ptr<StatsObserverRegistry> registry_;
     std::atomic<bool> fired_{false};
 };
 
@@ -64,9 +85,10 @@ private:
     std::shared_ptr<RoomObserverWrap> observer_;
     std::shared_ptr<AsyncContext> asyncContext_;
 
-    // rtc-cpp holds weak_ptr to stats observers, so we must prevent premature destruction
-    std::mutex statsObserversMutex_;
-    std::set<std::shared_ptr<twilio::media::StatsObserver>> pendingStatsObservers_;
+    // rtc-cpp holds weak_ptr to stats observers, so we must prevent premature
+    // destruction. Observers erase themselves on completion (see GetStats).
+    std::shared_ptr<StatsObserverRegistry> statsObservers_ =
+        std::make_shared<StatsObserverRegistry>();
 
     // Participant wrapper caches
     Napi::ObjectReference localParticipantCache_;
