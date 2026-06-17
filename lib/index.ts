@@ -96,7 +96,6 @@ export {
   MediaConnectionError,
   ParticipantMaxTracksExceededError,
   twilioErrorFromCode,
-  liftTwilioError,
 } from './errors.js';
 
 // --- Addon loading ---

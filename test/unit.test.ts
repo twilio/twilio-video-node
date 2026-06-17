@@ -14,9 +14,15 @@ import {
   MediaConnectionError,
   ParticipantMaxTracksExceededError,
   twilioErrorFromCode,
-  liftTwilioError,
   LocalVideoTrackPublication,
 } from '../dist/index.mjs';
+
+// Internal imports for testing non-exported utilities and error classes
+import {
+  liftTwilioError,
+  TwilioError as TwilioErrorSrc,
+  RoomNotFoundError as RoomNotFoundErrorSrc,
+} from '../lib/errors.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
 describe('Version', () => {
@@ -339,19 +345,19 @@ describe('createLocalTracks rejection', () => {
 
 describe('liftTwilioError', () => {
   it('passes an existing TwilioError through unchanged', () => {
-    const original = new RoomNotFoundError();
+    const original = new RoomNotFoundErrorSrc();
     expect(liftTwilioError(original)).toBe(original);
   });
 
   it('lifts a { code, message } payload into the matching subclass', () => {
     const err = liftTwilioError({ code: 53106, message: 'gone' });
-    expect(err).toBeInstanceOf(RoomNotFoundError);
+    expect(err).toBeInstanceOf(RoomNotFoundErrorSrc);
     expect(err.code).toBe(53106);
   });
 
   it('preserves a string payload as the message', () => {
     const err = liftTwilioError('boom');
-    expect(err).toBeInstanceOf(TwilioError);
+    expect(err).toBeInstanceOf(TwilioErrorSrc);
     expect(err.code).toBe(0);
     expect(err.message).toBe('boom');
   });

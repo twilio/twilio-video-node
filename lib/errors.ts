@@ -83,10 +83,10 @@ export function twilioErrorFromCode(code: number, message?: string): TwilioError
 }
 
 /**
- * Convert a value coming over the native event boundary into a `TwilioError`.
- * Already-lifted errors and `Error` instances pass their message through;
- * `{ code, message }` payloads route to the matching subclass; any other
- * payload preserves its `message` (or string value) rather than discarding it.
+ * Normalize an SDK-emitted error payload into a `TwilioError`.
+ *
+ * @internal SDK-emitted payloads only. An unrecognized code keeps its `message`
+ * verbatim, so never pass untrusted input.
  */
 export function liftTwilioError(raw: unknown): TwilioError {
   if (raw instanceof TwilioError) return raw;
