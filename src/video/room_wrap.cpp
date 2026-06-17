@@ -47,11 +47,13 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
     exports.Set("connect", Napi::Function::New(env, RoomWrap::Connect));
 }
 
-// Reads and validates connect options into the builder. On invalid input it
-// throws a JS TypeError/RangeError and returns false; the caller must bail
-// (returning env.Undefined()) without inspecting the builder further. All
-// type/range rejection happens here so Connect's try/catch only has to handle
-// runtime failures from build()/connect().
+// Reads connect options into the builder. The TS layer pre-populates and
+// validates options, so scalar fields are read directly; the complex fields
+// (networkQualityConfiguration, codecs, bitrates, tracks) are range/type
+// checked here to reject malformed input from direct callers. On a rejected
+// field this throws a JS TypeError/RangeError and returns false; the caller
+// must bail (returning env.Undefined()) without inspecting the builder. This
+// keeps Connect's try/catch focused on runtime failures from build()/connect().
 static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
                                 twilio::video::ConnectOptions::Builder& builder) {
     if (opts.Has("name"))

@@ -174,7 +174,8 @@ function getDefaultMediaFactory(): NativeMediaFactory {
  * @throws {RangeError} (as a rejection) If `options.networkQuality` verbosities are out of range.
  *
  * @example
- * const room = await connect(token, { name: 'my-room', audio: true });
+ * const audioTrack = createLocalAudioTrack('mic');
+ * const room = await connect(token, { name: 'my-room', audioTracks: [audioTrack] });
  */
 export function connect(token: string, options: ConnectOptions = {}): Promise<Room> {
   if (!token || typeof token !== 'string') {

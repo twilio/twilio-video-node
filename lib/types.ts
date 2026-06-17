@@ -307,7 +307,7 @@ export interface VideoContentPreferences {
 export interface RemoteVideoTrack {
   readonly name: string;
   readonly kind: 'video';
-  readonly sid: string;
+  readonly sid: Track.SID;
   readonly enabled: boolean;
   /** Whether the SDK has switched this track off (no frames delivered) under bandwidth pressure. Tracks the `videoTrackSwitchedOff`/`videoTrackSwitchedOn` events. */
   readonly isSwitchedOff: boolean;
@@ -325,7 +325,7 @@ export interface RemoteVideoTrack {
 export interface RemoteAudioTrack {
   readonly name: string;
   readonly kind: 'audio';
-  readonly sid: string;
+  readonly sid: Track.SID;
   readonly enabled: boolean;
   /** Register the frame callback, replacing any previous one. */
   onFrame(callback: (frame: AudioFrame) => void): void;
@@ -340,7 +340,7 @@ export interface RemoteAudioTrack {
 export interface RemoteDataTrack {
   readonly name: string;
   readonly kind: 'data';
-  readonly sid: string;
+  readonly sid: Track.SID;
   readonly reliable: boolean;
   readonly ordered: boolean;
   /** Register the message callback, replacing any previous one. */
