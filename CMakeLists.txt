@@ -92,11 +92,11 @@ elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/deps/twilio-video")
       "${TWILIO_VIDEO_ROOT}/include/third_party/webrtc/third_party/abseil-cpp"
       "${TWILIO_VIDEO_ROOT}/include/third_party/webrtc/third_party/libyuv/include")
    # Uncomment to capture all libs, idealy the linker should strip out unused sections (functions and data)
-   # file(GLOB TWILIO_VIDEO_LIBS "lib/${TARGET_ARCH}/*/${TWILIO_VIDEO_BUILD_TYPE_DIR}/*.a")
+   # file(GLOB TWILIO_VIDEO_LIBS "${TWILIO_VIDEO_ROOT}/lib/${TARGET_ARCH}/*/${TWILIO_VIDEO_BUILD_TYPE_DIR}/*.a")
    # comment out to enable the more flexable solution above
-   file(GLOB TWILIO_VIDEO_WEBRTC_LIB "lib/${TARGET_ARCH}/*/${TWILIO_VIDEO_BUILD_TYPE_DIR}/libwebrtc.a")
-   file(GLOB TWILIO_VIDEO_JSON_LIB "lib/${TARGET_ARCH}/*/${TWILIO_VIDEO_BUILD_TYPE_DIR}/libjsoncpp.a")
-   file(GLOB TWILIO_VIDEO_LIB "lib/${TARGET_ARCH}/*/${TWILIO_VIDEO_BUILD_TYPE_DIR}/libtwilio-video.a")
+   file(GLOB TWILIO_VIDEO_WEBRTC_LIB "${TWILIO_VIDEO_ROOT}/lib/${TARGET_ARCH}/*/${TWILIO_VIDEO_BUILD_TYPE_DIR}/libwebrtc.a")
+   file(GLOB TWILIO_VIDEO_JSON_LIB "${TWILIO_VIDEO_ROOT}/lib/${TARGET_ARCH}/*/${TWILIO_VIDEO_BUILD_TYPE_DIR}/libjsoncpp.a")
+   file(GLOB TWILIO_VIDEO_LIB "${TWILIO_VIDEO_ROOT}/lib/${TARGET_ARCH}/*/${TWILIO_VIDEO_BUILD_TYPE_DIR}/libtwilio-video.a")
    set(TWILIO_VIDEO_LIBS "${TWILIO_VIDEO_WEBRTC_LIB}" "${TWILIO_VIDEO_JSON_LIB}" "${TWILIO_VIDEO_LIB}")
    # end comment out
 else()
