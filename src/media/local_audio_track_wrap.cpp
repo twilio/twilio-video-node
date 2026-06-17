@@ -33,6 +33,7 @@ void PushableAudioSource::OnData(const void* audio_data, int bits_per_sample,
 void PushableAudioSource::PushSamples(const int16_t* data, int bits_per_sample,
                                        int sample_rate, size_t number_of_channels,
                                        size_t number_of_frames) {
+    RTC_DCHECK_EQ(bits_per_sample, NodeAudioDevice::kBitsPerSample);
     RTC_DCHECK_EQ(sample_rate, NodeAudioDevice::kSampleRate);
     RTC_DCHECK_EQ(number_of_channels, static_cast<size_t>(NodeAudioDevice::kChannels));
 

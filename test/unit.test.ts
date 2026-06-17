@@ -79,6 +79,13 @@ describe('connect() validation', () => {
       /enableDominantSpeaker must be a boolean/,
     );
   });
+
+  it('rejects a present-but-non-string videoEncodingMode', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { videoEncodingMode: 42 })).rejects.toThrow(
+      /videoEncodingMode must be a string/,
+    );
+  });
 });
 
 describe('createLocalVideoTrack validation', () => {

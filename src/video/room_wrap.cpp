@@ -189,8 +189,13 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
     }
 
     // Video encoding mode. Only "auto" is currently supported.
-    if (opts.Has("videoEncodingMode") && opts.Get("videoEncodingMode").IsString()) {
-        std::string m = opts.Get("videoEncodingMode").As<Napi::String>().Utf8Value();
+    if (opts.Has("videoEncodingMode")) {
+        Napi::Value value = opts.Get("videoEncodingMode");
+        if (!value.IsString()) {
+            Napi::TypeError::New(env, "videoEncodingMode must be a string").ThrowAsJavaScriptException();
+            return false;
+        }
+        std::string m = value.As<Napi::String>().Utf8Value();
         if (m == "auto") {
             builder.setVideoEncodingMode(twilio::media::VideoEncodingMode::kAuto);
         } else {
