@@ -181,6 +181,9 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
   if (!token || typeof token !== 'string') {
     return Promise.reject(new TypeError('token must be a non-empty string'));
   }
+  if (typeof options !== 'object' || options === null) {
+    return Promise.reject(new TypeError('options must be an object'));
+  }
   const { networkQuality, ...rest } = options;
   const internalOpts: Record<string, unknown> = { ...rest };
   // networkQuality is the public contract; clear the native-only fields before re-deriving them,

@@ -211,18 +211,39 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
             auto vObj = bpObj.Get("video").As<Napi::Object>();
             twilio::video::VideoBandwidthProfileOptions::Builder vBuilder;
 
-            if (vObj.Has("mode") && vObj.Get("mode").IsString()) {
-                std::string m = vObj.Get("mode").As<Napi::String>().Utf8Value();
-                if (m == "collaboration") vBuilder.setMode(twilio::video::BandwidthProfileMode::kCollaboration);
-                else if (m == "grid") vBuilder.setMode(twilio::video::BandwidthProfileMode::kGrid);
-                else if (m == "presentation") vBuilder.setMode(twilio::video::BandwidthProfileMode::kPresentation);
+            // Reads a present string enum field, rejecting a wrong type with a
+            // TypeError. *ok is set false (and the field skipped) on rejection.
+            auto readEnum = [&](const char* field, bool* ok) -> std::string {
+                *ok = true;
+                if (!vObj.Has(field)) return {};
+                Napi::Value value = vObj.Get(field);
+                if (!value.IsString()) {
+                    Napi::TypeError::New(env, std::string("bandwidthProfile.video.") + field + " must be a string").ThrowAsJavaScriptException();
+                    *ok = false;
+                    return {};
+                }
+                return value.As<Napi::String>().Utf8Value();
+            };
+            bool ok;
+
+            std::string mode = readEnum("mode", &ok);
+            if (!ok) return false;
+            if (vObj.Has("mode")) {
+                if (mode == "collaboration") vBuilder.setMode(twilio::video::BandwidthProfileMode::kCollaboration);
+                else if (mode == "grid") vBuilder.setMode(twilio::video::BandwidthProfileMode::kGrid);
+                else if (mode == "presentation") vBuilder.setMode(twilio::video::BandwidthProfileMode::kPresentation);
                 else {
-                    Napi::TypeError::New(env, "Unknown bandwidthProfile.video.mode: " + m).ThrowAsJavaScriptException();
+                    Napi::TypeError::New(env, "Unknown bandwidthProfile.video.mode: " + mode).ThrowAsJavaScriptException();
                     return false;
                 }
             }
-            if (vObj.Has("maxSubscriptionBitrate") && vObj.Get("maxSubscriptionBitrate").IsNumber()) {
-                double d = vObj.Get("maxSubscriptionBitrate").As<Napi::Number>().DoubleValue();
+            if (vObj.Has("maxSubscriptionBitrate")) {
+                Napi::Value value = vObj.Get("maxSubscriptionBitrate");
+                if (!value.IsNumber()) {
+                    Napi::TypeError::New(env, "bandwidthProfile.video.maxSubscriptionBitrate must be a number").ThrowAsJavaScriptException();
+                    return false;
+                }
+                double d = value.As<Napi::Number>().DoubleValue();
                 constexpr double kMaxSafe = 9007199254740991.0;
                 if (!std::isfinite(d) || d != std::floor(d) || d < 0 || d > kMaxSafe) {
                     Napi::RangeError::New(env, "bandwidthProfile.video.maxSubscriptionBitrate must be a non-negative integer <= Number.MAX_SAFE_INTEGER").ThrowAsJavaScriptException();
@@ -230,31 +251,34 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
                 }
                 vBuilder.setMaxSubscriptionBitrate(static_cast<uint64_t>(d));
             }
-            if (vObj.Has("trackSwitchOffMode") && vObj.Get("trackSwitchOffMode").IsString()) {
-                std::string m = vObj.Get("trackSwitchOffMode").As<Napi::String>().Utf8Value();
-                if (m == "detected") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kDetected);
-                else if (m == "predicted") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kPredicted);
-                else if (m == "disabled") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kDisabled);
+            std::string trackSwitchOffMode = readEnum("trackSwitchOffMode", &ok);
+            if (!ok) return false;
+            if (vObj.Has("trackSwitchOffMode")) {
+                if (trackSwitchOffMode == "detected") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kDetected);
+                else if (trackSwitchOffMode == "predicted") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kPredicted);
+                else if (trackSwitchOffMode == "disabled") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kDisabled);
                 else {
-                    Napi::TypeError::New(env, "Unknown trackSwitchOffMode: " + m).ThrowAsJavaScriptException();
+                    Napi::TypeError::New(env, "Unknown trackSwitchOffMode: " + trackSwitchOffMode).ThrowAsJavaScriptException();
                     return false;
                 }
             }
-            if (vObj.Has("clientTrackSwitchOffControl") && vObj.Get("clientTrackSwitchOffControl").IsString()) {
-                std::string m = vObj.Get("clientTrackSwitchOffControl").As<Napi::String>().Utf8Value();
-                if (m == "auto") vBuilder.setClientTrackSwitchOffControl(twilio::video::ClientTrackSwitchOffControl::kAuto);
-                else if (m == "manual") vBuilder.setClientTrackSwitchOffControl(twilio::video::ClientTrackSwitchOffControl::kManual);
+            std::string clientControl = readEnum("clientTrackSwitchOffControl", &ok);
+            if (!ok) return false;
+            if (vObj.Has("clientTrackSwitchOffControl")) {
+                if (clientControl == "auto") vBuilder.setClientTrackSwitchOffControl(twilio::video::ClientTrackSwitchOffControl::kAuto);
+                else if (clientControl == "manual") vBuilder.setClientTrackSwitchOffControl(twilio::video::ClientTrackSwitchOffControl::kManual);
                 else {
-                    Napi::TypeError::New(env, "Unknown clientTrackSwitchOffControl: " + m).ThrowAsJavaScriptException();
+                    Napi::TypeError::New(env, "Unknown clientTrackSwitchOffControl: " + clientControl).ThrowAsJavaScriptException();
                     return false;
                 }
             }
-            if (vObj.Has("contentPreferencesMode") && vObj.Get("contentPreferencesMode").IsString()) {
-                std::string m = vObj.Get("contentPreferencesMode").As<Napi::String>().Utf8Value();
-                if (m == "auto") vBuilder.setContentPreferencesMode(twilio::video::VideoContentPreferencesMode::kAuto);
-                else if (m == "manual") vBuilder.setContentPreferencesMode(twilio::video::VideoContentPreferencesMode::kManual);
+            std::string contentPrefMode = readEnum("contentPreferencesMode", &ok);
+            if (!ok) return false;
+            if (vObj.Has("contentPreferencesMode")) {
+                if (contentPrefMode == "auto") vBuilder.setContentPreferencesMode(twilio::video::VideoContentPreferencesMode::kAuto);
+                else if (contentPrefMode == "manual") vBuilder.setContentPreferencesMode(twilio::video::VideoContentPreferencesMode::kManual);
                 else {
-                    Napi::TypeError::New(env, "Unknown contentPreferencesMode: " + m).ThrowAsJavaScriptException();
+                    Napi::TypeError::New(env, "Unknown contentPreferencesMode: " + contentPrefMode).ThrowAsJavaScriptException();
                     return false;
                 }
             }
@@ -419,10 +443,14 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     std::string token = info[0].As<Napi::String>().Utf8Value();
     twilio::video::ConnectOptions::Builder builder(token);
 
-    // TS layer pre-populates all options; C++ just reads them
-    auto opts = (info.Length() >= 2 && info[1].IsObject())
-        ? info[1].As<Napi::Object>()
-        : Napi::Object::New(env);
+    // TS layer pre-populates all options; C++ just reads them. A present-but-
+    // non-object second argument is a caller error, not "no options".
+    bool hasOptions = info.Length() >= 2 && !info[1].IsUndefined() && !info[1].IsNull();
+    if (hasOptions && !info[1].IsObject()) {
+        Napi::TypeError::New(env, "options must be an object").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    auto opts = hasOptions ? info[1].As<Napi::Object>() : Napi::Object::New(env);
 
     if (!parseConnectOptions(env, opts, builder)) return env.Undefined();
 

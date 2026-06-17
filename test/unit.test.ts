@@ -86,6 +86,18 @@ describe('connect() validation', () => {
       /videoEncodingMode must be a string/,
     );
   });
+
+  it('rejects a non-object options argument', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', 42)).rejects.toThrow(/options must be an object/);
+  });
+
+  it('rejects a present-but-non-string bandwidthProfile.video.mode', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('token', { bandwidthProfile: { video: { mode: 1 } } }),
+    ).rejects.toThrow(/bandwidthProfile.video.mode must be a string/);
+  });
 });
 
 describe('createLocalVideoTrack validation', () => {
