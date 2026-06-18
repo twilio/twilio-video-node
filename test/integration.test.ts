@@ -913,15 +913,19 @@ describe('macOS main-queue pump (CFRunLoop)', () => {
       const roomName = uniqueRoom();
       const { connA, connB } = await connectPair(roomName);
 
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('getStats did not resolve — main-queue pump stalled')),
+          5_000,
+        );
+      });
+
       try {
-        const reports = await Promise.race([
-          connA.room.getStats(),
-          sleep(5_000).then(() => {
-            throw new Error('getStats did not resolve — main-queue pump stalled');
-          }),
-        ]);
+        const reports = await Promise.race([connA.room.getStats(), timeout]);
         expect(Array.isArray(reports)).toBe(true);
       } finally {
+        clearTimeout(timer);
         await Promise.all([connA.cleanup(), connB.cleanup()]);
       }
     },
