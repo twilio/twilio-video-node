@@ -170,7 +170,7 @@ function getDefaultMediaFactory(): NativeMediaFactory {
  * @param token - A Twilio access token with a Video grant.
  * @param options - Room name, tracks to publish on join, and feature toggles.
  * @returns A promise resolving to the connected {@link Room}.
- * @throws {TypeError} (as a rejection) If `token` is not a non-empty string.
+ * @throws {TypeError} (as a rejection) If `token` is not a non-empty string, or `options` is not an object.
  * @throws {RangeError} (as a rejection) If `options.networkQuality` verbosities are out of range.
  *
  * @example

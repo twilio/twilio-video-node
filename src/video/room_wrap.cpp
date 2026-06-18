@@ -211,8 +211,8 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
             auto vObj = bpObj.Get("video").As<Napi::Object>();
             twilio::video::VideoBandwidthProfileOptions::Builder vBuilder;
 
-            // Reads a present string enum field, rejecting a wrong type with a
-            // TypeError. *ok is set false (and the field skipped) on rejection.
+            // Reads a present string enum field. On a wrong type it throws a
+            // TypeError and sets *ok false; the caller must abort parsing.
             auto readEnum = [&](const char* field, bool* ok) -> std::string {
                 *ok = true;
                 if (!vObj.Has(field)) return {};
