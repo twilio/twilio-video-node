@@ -86,7 +86,7 @@ RTC_CPP_ARCHIVE=/tmp/twilio-video-darwin.tar.bz2 npm run fetch-deps
 
 ### Local source checkout
 
-If `../rtc-cpp` exists with a matching build directory (`build-{platform}-{arch}-{build_type}/`), it takes priority over Artifactory artifacts.
+To build against a local twilio-video-cpp source tree, point the build at it with `TWILIO_VIDEO_SRC_ROOT=/path/to/rtc-cpp` (or `npm run build -- --twilio-video-src /path/to/rtc-cpp`). The tree must already be built; CMake expects the output under `cmake-build-{build_type}/` (e.g. `cmake-build-release`). When set, this source takes priority over downloaded artifacts and `deps/twilio-video/`.
 
 ## 3. Build
 
@@ -98,14 +98,14 @@ npm run build:ts
 
 > **Note:** `TWILIO_VIDEO_NODE_SKIP_DOWNLOAD=1` skips the prebuilt binary download in the `install` script. This is required when building from source — the prebuilt download requires `gh` auth to the internal GitHub release.
 
-| Script                  | Description                         |
-| ----------------------- | ----------------------------------- |
-| `npm run build`         | Native addon (debug) via cmake-js   |
-| `npm run build:debug`   | Native addon (debug) via cmake-js   |
-| `npm run build:release` | Native addon (release) via cmake-js |
-| `npm run build:ts`      | TypeScript (tsdown -> dist/)        |
-| `npm run rebuild`       | Clean + full native build           |
-| `npm run clean`         | Remove native build artifacts       |
+| Script                  | Description                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `npm run build`         | Native addon via `scripts/build.js` (release by default; set `RTC_CPP_BUILD_TYPE=Debug` for debug) |
+| `npm run build:debug`   | Native addon (debug) via cmake-js                                                                  |
+| `npm run build:release` | Native addon (release) via cmake-js                                                                |
+| `npm run build:ts`      | TypeScript (tsdown -> dist/)                                                                       |
+| `npm run rebuild`       | Clean + full native build                                                                          |
+| `npm run clean`         | Remove native build artifacts                                                                      |
 
 ## 4. Credentials
 
@@ -121,17 +121,13 @@ Get these from the [Twilio Console](https://www.twilio.com/console) under API Ke
 
 ## 5. Troubleshooting
 
-### `FATAL_ERROR: No rtc-cpp found.`
+### `CMake Error ... unable to find Twilio-Video-C++`
 
-Neither `../rtc-cpp` nor `deps/twilio-video` exists. Run `npm run fetch-deps` or check out rtc-cpp as a sibling directory.
+No twilio-video-cpp could be located: `TWILIO_VIDEO_SRC_ROOT` is unset and `deps/twilio-video` does not exist. Run `npm run fetch-deps`, or point `TWILIO_VIDEO_SRC_ROOT` at a built local source tree (see [Local source checkout](#local-source-checkout)).
 
-### `rtc-cpp build directory not found: .../build-darwin-x86_64-debug`
+### `No prebuilt binary found for <platform>-<arch>. Run npm run build to compile from source.`
 
-Local `../rtc-cpp` detected but the build directory for your platform/arch/build-type is missing. Build rtc-cpp for the correct target, or remove `../rtc-cpp` to fall through to Artifactory artifacts.
-
-### `Cannot find module '.../twilio_video_sdk_node.node'`
-
-Native addon not built. Run `npm run build`. If using Artifactory, ensure `npm run fetch-deps` succeeded first.
+The native addon isn't built and no matching prebuild exists (the underlying cause reads `Cannot find module '.../twilio_video_sdk_node.node'`). Run `npm run build`. If using Artifactory, ensure `npm run fetch-deps` succeeded first.
 
 ### `TWILIO_ACCOUNT_SID, TWILIO_API_KEY, and TWILIO_API_SECRET are required`
 

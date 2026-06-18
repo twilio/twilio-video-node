@@ -73,7 +73,7 @@ room.disconnect();
 | `createLocalDataTrack(name?)`         | Create a local data track.                                                                                                                                                                                                                                                                   |
 | `createLocalTracks(options?)`         | Create local audio and/or video tracks. With no options, returns both. If either `audio` or `video` is specified, the other defaults to `false`. Each key accepts `true`/`false` or a per-track options object (e.g. `{ name }`). Returns `Promise<(LocalAudioTrack \| LocalVideoTrack)[]>`. |
 | `twilioErrorFromCode(code, message?)` | Build a `TwilioError` (or matching subclass) from a numeric error code.                                                                                                                                                                                                                      |
-| `setLogLevel(level)`                  | Set native log level (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`).                                                                                                                                                                    |
+| `setLogLevel(level)`                  | Set native log level. Accepts a name (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`) or the equivalent number `0` (off) through `7` (all).                                                                                               |
 | `getVersion()`                        | Returns the native SDK version string.                                                                                                                                                                                                                                                       |
 
 ### Key Classes
@@ -85,7 +85,7 @@ room.disconnect();
 | `RemoteParticipant`      | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`.                                                                                                     |
 | `LocalVideoTrack`        | Pushable video track (`write(frame)`).                                                                                                                                 |
 | `LocalAudioTrack`        | Pushable audio track (`write(frame)`).                                                                                                                                 |
-| `LocalDataTrack`         | Send arbitrary data (`send`). Construct via `new LocalDataTrack(options?)` or `createLocalDataTrack(name?)`.                                                           |
+| `LocalDataTrack`         | Send arbitrary data (`send`). Create via `createLocalDataTrack(name \| options?)`.                                                                                     |
 | `RemoteVideoTrack`       | Receive video frames (`onFrame`).                                                                                                                                      |
 | `RemoteAudioTrack`       | Receive audio frames (`onFrame`).                                                                                                                                      |
 | `RemoteDataTrack`        | Receive data messages (`onMessage`).                                                                                                                                   |
@@ -117,10 +117,10 @@ room.disconnect();
 | `trackSubscribed`         | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
 | `trackUnsubscribed`       | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
 | `trackSubscriptionFailed` | `(error: TwilioError) => void`                                             |
-| `trackPublished`          | `(publication: RemoteTrackPublication) => void`                            |
-| `trackUnpublished`        | `(publication: RemoteTrackPublication) => void`                            |
-| `trackEnabled`            | `(publication: RemoteTrackPublication) => void`                            |
-| `trackDisabled`           | `(publication: RemoteTrackPublication) => void`                            |
+| `trackPublished`          | `(publication: RemoteTrackPublishEvent) => void`                           |
+| `trackUnpublished`        | `(publication: RemoteTrackPublishEvent) => void`                           |
+| `trackEnabled`            | `(publication: RemoteTrackStateEvent) => void`                             |
+| `trackDisabled`           | `(publication: RemoteTrackStateEvent) => void`                             |
 | `videoTrackSwitchedOff`   | `(track: RemoteVideoTrack) => void`                                        |
 | `videoTrackSwitchedOn`    | `(track: RemoteVideoTrack) => void`                                        |
 
@@ -197,7 +197,7 @@ track.write({
 Send arbitrary string or binary messages.
 
 ```js
-const track = new LocalDataTrack({ name: 'chat', ordered: true });
+const track = createLocalDataTrack({ name: 'chat', ordered: true });
 room.localParticipant.publishTrack(track);
 track.send('hello');
 track.send(Buffer.from([0x01, 0x02]));
