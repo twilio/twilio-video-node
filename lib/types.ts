@@ -4,9 +4,6 @@
 export namespace Track {
   /** A Track SID (`MT...`), unique per published track. */
   export type SID = string;
-  /** A Track's local ID, unique within the SDK process. */
-  export type ID = string;
-  export type Kind = 'audio' | 'video' | 'data';
 }
 
 // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -27,9 +24,10 @@ export interface I420Plane {
 
 /**
  * An I420 video frame to push into a {@link LocalVideoTrack} via its `write`
- * method. The `y`/`u`/`v` buffers hold the planes; each plane buffer must be at
- * least `stride * height` bytes. `width` and `height` must be positive and even
- * (I420 chroma is 2x-subsampled); odd dimensions are rejected with a `RangeError`.
+ * method. The `y` buffer must be at least `yStride * height` bytes; the `u`/`v`
+ * buffers at least `uStride * (height / 2)` / `vStride * (height / 2)` bytes
+ * (chroma is 2x-subsampled in each dimension). `width` and `height` must be
+ * positive and even; odd dimensions are rejected with a `RangeError`.
  */
 export interface VideoFrameInput {
   width: number;

@@ -105,6 +105,41 @@ describe('connect() validation', () => {
     ).rejects.toThrow(/bandwidthProfile.video.mode must be a string/);
   });
 
+  it('rejects a non-array track option', async () => {
+    const track = createLocalVideoTrack('arr-test');
+    // @ts-expect-error testing runtime validation: videoTracks must be an array
+    await expect(connect('token', { videoTracks: track })).rejects.toThrow(
+      /videoTracks must be an array/,
+    );
+  });
+
+  it('rejects a non-array preferredVideoCodecs option', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { preferredVideoCodecs: 'VP8' })).rejects.toThrow(
+      /preferredVideoCodecs must be an array/,
+    );
+  });
+
+  it('rejects a non-object iceOptions option', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { iceOptions: 'relay' })).rejects.toThrow(
+      /iceOptions must be an object/,
+    );
+  });
+
+  it('rejects an unknown iceOptions.transportPolicy', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('token', { iceOptions: { transportPolicy: 'nope' } }),
+    ).rejects.toThrow(/Unknown iceOptions.transportPolicy/);
+  });
+
+  it('rejects an out-of-range bandwidthProfile.video.maxSubscriptionBitrate', async () => {
+    await expect(
+      connect('token', { bandwidthProfile: { video: { maxSubscriptionBitrate: -1 } } }),
+    ).rejects.toThrow(/maxSubscriptionBitrate/);
+  });
+
   it('rejects when native option access throws', async () => {
     const options: ConnectOptions = {
       bandwidthProfile: {

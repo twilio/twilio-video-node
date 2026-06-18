@@ -76,13 +76,26 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
         out = value.As<Napi::Boolean>().Value();
         return true;
     };
+    // For a present container/structured option, require the given type or throw.
+    // Absent keys are left to builder defaults. `key` may be on a nested object;
+    // `msg` is the full caller-facing message.
+    auto requireType = [&](const Napi::Object& obj, const char* key, bool valid,
+                           const char* msg) -> bool {
+        if (obj.Has(key) && !valid) {
+            Napi::TypeError::New(env, msg).ThrowAsJavaScriptException();
+            return false;
+        }
+        return true;
+    };
 
     std::string name;
     if (!readString("name", name)) return false;
     if (opts.Has("name")) builder.setRoomName(name);
 
     // MediaFactory (always provided by TS layer)
-    if (opts.Has("mediaFactory") && opts.Get("mediaFactory").IsObject()) {
+    if (!requireType(opts, "mediaFactory", opts.Get("mediaFactory").IsObject(),
+                     "mediaFactory must be a MediaFactory instance")) return false;
+    if (opts.Has("mediaFactory")) {
         auto factoryObj = opts.Get("mediaFactory").As<Napi::Object>();
         if (!MediaFactoryWrap::IsInstance(factoryObj)) {
             Napi::TypeError::New(env, "mediaFactory must be a MediaFactory instance").ThrowAsJavaScriptException();
@@ -108,7 +121,10 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
     if (!readString("region", region)) return false;
     if (opts.Has("region")) builder.setRegion(region);
 
-    if (opts.Has("networkQualityConfiguration") && opts.Get("networkQualityConfiguration").IsObject()) {
+    if (!requireType(opts, "networkQualityConfiguration",
+                     opts.Get("networkQualityConfiguration").IsObject(),
+                     "networkQualityConfiguration must be an object")) return false;
+    if (opts.Has("networkQualityConfiguration")) {
         auto nqObj = opts.Get("networkQualityConfiguration").As<Napi::Object>();
         // rtc-cpp exposes only kNone(0)/kMinimal(1). The TS layer already validates this,
         // but a direct (JS) caller can reach here, so reject anything other than 0/1.
@@ -144,7 +160,9 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
     }
 
     // Preferred audio codecs
-    if (opts.Has("preferredAudioCodecs") && opts.Get("preferredAudioCodecs").IsArray()) {
+    if (!requireType(opts, "preferredAudioCodecs", opts.Get("preferredAudioCodecs").IsArray(),
+                     "preferredAudioCodecs must be an array")) return false;
+    if (opts.Has("preferredAudioCodecs")) {
         auto codecs = opts.Get("preferredAudioCodecs").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::AudioCodec>> audioCodecs;
         for (uint32_t i = 0; i < codecs.Length(); i++) {
@@ -167,7 +185,9 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
     }
 
     // Preferred video codecs
-    if (opts.Has("preferredVideoCodecs") && opts.Get("preferredVideoCodecs").IsArray()) {
+    if (!requireType(opts, "preferredVideoCodecs", opts.Get("preferredVideoCodecs").IsArray(),
+                     "preferredVideoCodecs must be an array")) return false;
+    if (opts.Has("preferredVideoCodecs")) {
         auto codecs = opts.Get("preferredVideoCodecs").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::VideoCodec>> videoCodecs;
         for (uint32_t i = 0; i < codecs.Length(); i++) {
@@ -205,9 +225,13 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
     }
 
     // Forward bandwidthProfile.video sub-options (mode, switch-off, content-preferences, max bitrate).
-    if (opts.Has("bandwidthProfile") && opts.Get("bandwidthProfile").IsObject()) {
+    if (!requireType(opts, "bandwidthProfile", opts.Get("bandwidthProfile").IsObject(),
+                     "bandwidthProfile must be an object")) return false;
+    if (opts.Has("bandwidthProfile")) {
         auto bpObj = opts.Get("bandwidthProfile").As<Napi::Object>();
-        if (bpObj.Has("video") && bpObj.Get("video").IsObject()) {
+        if (!requireType(bpObj, "video", bpObj.Get("video").IsObject(),
+                         "bandwidthProfile.video must be an object")) return false;
+        if (bpObj.Has("video")) {
             auto vObj = bpObj.Get("video").As<Napi::Object>();
             twilio::video::VideoBandwidthProfileOptions::Builder vBuilder;
 
@@ -287,7 +311,9 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
     }
 
     // Encoding parameters
-    if (opts.Has("encodingParameters") && opts.Get("encodingParameters").IsObject()) {
+    if (!requireType(opts, "encodingParameters", opts.Get("encodingParameters").IsObject(),
+                     "encodingParameters must be an object")) return false;
+    if (opts.Has("encodingParameters")) {
         auto epObj = opts.Get("encodingParameters").As<Napi::Object>();
         twilio::media::EncodingParameters ep;
         constexpr double kMaxSafe = 9007199254740991.0;
@@ -311,19 +337,30 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
         builder.setEncodingParameters(ep);
     }
 
-    // ICE options (TS maps transportPolicy string → int)
-    if (opts.Has("iceOptions") && opts.Get("iceOptions").IsObject()) {
+    // ICE options
+    if (!requireType(opts, "iceOptions", opts.Get("iceOptions").IsObject(),
+                     "iceOptions must be an object")) return false;
+    if (opts.Has("iceOptions")) {
         auto iceObj = opts.Get("iceOptions").As<Napi::Object>();
         twilio::media::IceOptions iceOptions;
 
-        if (iceObj.Has("transportPolicy") && iceObj.Get("transportPolicy").IsString()) {
+        if (!requireType(iceObj, "transportPolicy", iceObj.Get("transportPolicy").IsString(),
+                         "iceOptions.transportPolicy must be a string")) return false;
+        if (iceObj.Has("transportPolicy")) {
             std::string policy = iceObj.Get("transportPolicy").As<Napi::String>().Utf8Value();
-            iceOptions.ice_transport_policy = policy == "relay"
-                ? twilio::media::IceTransportPolicy::kIceTransportPolicyRelay
-                : twilio::media::IceTransportPolicy::kIceTransportPolicyAll;
+            if (policy == "relay") {
+                iceOptions.ice_transport_policy = twilio::media::IceTransportPolicy::kIceTransportPolicyRelay;
+            } else if (policy == "all") {
+                iceOptions.ice_transport_policy = twilio::media::IceTransportPolicy::kIceTransportPolicyAll;
+            } else {
+                Napi::TypeError::New(env, "Unknown iceOptions.transportPolicy: " + policy).ThrowAsJavaScriptException();
+                return false;
+            }
         }
 
-        if (iceObj.Has("iceServers") && iceObj.Get("iceServers").IsArray()) {
+        if (!requireType(iceObj, "iceServers", iceObj.Get("iceServers").IsArray(),
+                         "iceOptions.iceServers must be an array")) return false;
+        if (iceObj.Has("iceServers")) {
             auto servers = iceObj.Get("iceServers").As<Napi::Array>();
             twilio::media::IceServers iceServers;
             for (uint32_t i = 0; i < servers.Length(); i++) {
@@ -368,18 +405,33 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
     }
 
     // Platform info (pre-populated by TS layer)
-    if (opts.Has("platformInfo") && opts.Get("platformInfo").IsObject()) {
+    if (!requireType(opts, "platformInfo", opts.Get("platformInfo").IsObject(),
+                     "platformInfo must be an object")) return false;
+    if (opts.Has("platformInfo")) {
         auto piObj = opts.Get("platformInfo").As<Napi::Object>();
         twilio::PlatformInfo platformInfo;
-        if (piObj.Has("sdkVersion")) platformInfo.sdkVersion = piObj.Get("sdkVersion").As<Napi::String>().Utf8Value();
-        if (piObj.Has("platformName")) platformInfo.platformName = piObj.Get("platformName").As<Napi::String>().Utf8Value();
-        if (piObj.Has("platformVersion")) platformInfo.platformVersion = piObj.Get("platformVersion").As<Napi::String>().Utf8Value();
-        if (piObj.Has("deviceArchitecture")) platformInfo.hwDeviceArch = piObj.Get("deviceArchitecture").As<Napi::String>().Utf8Value();
+        // Reads a present string subfield, rejecting a wrong type with a TypeError.
+        auto readPlatformString = [&](const char* field, std::string& out) -> bool {
+            if (!piObj.Has(field)) return true;
+            Napi::Value value = piObj.Get(field);
+            if (!value.IsString()) {
+                Napi::TypeError::New(env, std::string("platformInfo.") + field + " must be a string").ThrowAsJavaScriptException();
+                return false;
+            }
+            out = value.As<Napi::String>().Utf8Value();
+            return true;
+        };
+        if (!readPlatformString("sdkVersion", platformInfo.sdkVersion)) return false;
+        if (!readPlatformString("platformName", platformInfo.platformName)) return false;
+        if (!readPlatformString("platformVersion", platformInfo.platformVersion)) return false;
+        if (!readPlatformString("deviceArchitecture", platformInfo.hwDeviceArch)) return false;
         builder.setPlatformInfo(platformInfo);
     }
 
     // Tracks
-    if (opts.Has("videoTracks") && opts.Get("videoTracks").IsArray()) {
+    if (!requireType(opts, "videoTracks", opts.Get("videoTracks").IsArray(),
+                     "videoTracks must be an array")) return false;
+    if (opts.Has("videoTracks")) {
         auto tracks = opts.Get("videoTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalVideoTrack>> videoTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
@@ -393,7 +445,9 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
         }
         builder.setVideoTracks(videoTracks);
     }
-    if (opts.Has("audioTracks") && opts.Get("audioTracks").IsArray()) {
+    if (!requireType(opts, "audioTracks", opts.Get("audioTracks").IsArray(),
+                     "audioTracks must be an array")) return false;
+    if (opts.Has("audioTracks")) {
         auto tracks = opts.Get("audioTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalAudioTrack>> audioTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
@@ -407,7 +461,9 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
         }
         builder.setAudioTracks(audioTracks);
     }
-    if (opts.Has("dataTracks") && opts.Get("dataTracks").IsArray()) {
+    if (!requireType(opts, "dataTracks", opts.Get("dataTracks").IsArray(),
+                     "dataTracks must be an array")) return false;
+    if (opts.Has("dataTracks")) {
         auto tracks = opts.Get("dataTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalDataTrack>> dataTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
