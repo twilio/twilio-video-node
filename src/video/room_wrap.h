@@ -10,6 +10,7 @@
 #include "../common/async_context.h"
 #include <atomic>
 #include <cassert>
+#include <memory>
 #include <set>
 #include <mutex>
 

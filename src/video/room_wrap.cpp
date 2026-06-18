@@ -443,9 +443,10 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     std::string token = info[0].As<Napi::String>().Utf8Value();
     twilio::video::ConnectOptions::Builder builder(token);
 
-    // TS layer pre-populates all options; C++ just reads them. A present-but-
-    // non-object second argument is a caller error, not "no options".
-    bool hasOptions = info.Length() >= 2 && !info[1].IsUndefined() && !info[1].IsNull();
+    // TS layer pre-populates all options; C++ just reads them. Only an absent
+    // (undefined) second argument means "no options"; any other present-but-
+    // non-object value (including null) is a caller error.
+    bool hasOptions = info.Length() >= 2 && !info[1].IsUndefined();
     if (hasOptions && !info[1].IsObject()) {
         Napi::TypeError::New(env, "options must be an object").ThrowAsJavaScriptException();
         return env.Undefined();
