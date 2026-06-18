@@ -452,13 +452,21 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     }
     auto opts = hasOptions ? info[1].As<Napi::Object>() : Napi::Object::New(env);
 
-    if (!parseConnectOptions(env, opts, builder)) return env.Undefined();
-
     try {
+        // Inside the try so a Napi::Error from an N-API access (e.g. a throwing
+        // property getter on the options object) surfaces as a JS exception
+        // rather than escaping the N-API callback and aborting the process.
+        if (!parseConnectOptions(env, opts, builder)) return env.Undefined();
+
         auto connectOptions = builder.build();
         std::shared_ptr<twilio::video::RoomObserver> observer =
             std::static_pointer_cast<twilio::video::RoomObserver>(roomWrap->observer_);
         roomWrap->room_ = twilio::video::connect(connectOptions, observer);
+    } catch (const Napi::Error& e) {
+        // Re-surface the already-constructed JS error (carries its original value).
+        // Caught before std::exception because Napi::Error derives from it.
+        e.ThrowAsJavaScriptException();
+        return env.Undefined();
     } catch (const std::exception& e) {
         // Use Error, not TypeError: bad arguments are already rejected with TypeError
         // in parseConnectOptions, so anything reaching here is a runtime failure.

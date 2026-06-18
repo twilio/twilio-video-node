@@ -16,6 +16,7 @@ import {
   twilioErrorFromCode,
   LocalVideoTrackPublication,
 } from '../dist/index.mjs';
+import type { ConnectOptions, BandwidthProfileMode } from '../dist/index.mjs';
 
 // Internal imports for testing non-exported utilities and error classes
 import {
@@ -97,6 +98,19 @@ describe('connect() validation', () => {
       // @ts-expect-error testing runtime validation
       connect('token', { bandwidthProfile: { video: { mode: 1 } } }),
     ).rejects.toThrow(/bandwidthProfile.video.mode must be a string/);
+  });
+
+  it('rejects when native option access throws', async () => {
+    const options: ConnectOptions = {
+      bandwidthProfile: {
+        video: {
+          get mode(): BandwidthProfileMode {
+            throw new Error('expected error from mode getter');
+          },
+        },
+      },
+    };
+    await expect(connect('token', options)).rejects.toThrow(/expected error from mode getter/);
   });
 });
 
