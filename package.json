@@ -91,6 +91,6 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "repository": {
     "type": "git",
-    "url": "https://code.hq.twilio.com/client/twilio-video-node.git"
+    "url": "https://github.com/twilio/twilio-video-node.git"
   }
 }
