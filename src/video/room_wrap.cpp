@@ -47,58 +47,84 @@ void RoomWrap::Init(Napi::Env env, Napi::Object exports) {
     exports.Set("connect", Napi::Function::New(env, RoomWrap::Connect));
 }
 
-Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
+// Reads and validates connect options into the builder. On invalid input it
+// throws a JS TypeError/RangeError and returns false; the caller must bail
+// (returning env.Undefined()) without inspecting the builder further. All
+// type/range rejection happens here so Connect's try/catch only has to handle
+// runtime failures from build()/connect().
+static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
+                                twilio::video::ConnectOptions::Builder& builder) {
+    // Rejects a present-but-wrong-typed scalar option with a TypeError. Absent
+    // options are left to builder defaults.
+    auto readString = [&](const char* field, std::string& out) -> bool {
+        if (!opts.Has(field)) return true;
+        Napi::Value value = opts.Get(field);
+        if (!value.IsString()) {
+            Napi::TypeError::New(env, std::string(field) + " must be a string").ThrowAsJavaScriptException();
+            return false;
+        }
+        out = value.As<Napi::String>().Utf8Value();
+        return true;
+    };
+    auto readBool = [&](const char* field, bool& out) -> bool {
+        if (!opts.Has(field)) return true;
+        Napi::Value value = opts.Get(field);
+        if (!value.IsBoolean()) {
+            Napi::TypeError::New(env, std::string(field) + " must be a boolean").ThrowAsJavaScriptException();
+            return false;
+        }
+        out = value.As<Napi::Boolean>().Value();
+        return true;
+    };
+    // For a present container/structured option, require the given type or throw.
+    // Absent keys are left to builder defaults. `key` may be on a nested object;
+    // `msg` is the full caller-facing message.
+    auto requireType = [&](const Napi::Object& obj, const char* key, bool valid,
+                           const char* msg) -> bool {
+        if (obj.Has(key) && !valid) {
+            Napi::TypeError::New(env, msg).ThrowAsJavaScriptException();
+            return false;
+        }
+        return true;
+    };
 
-    if (info.Length() < 1 || !info[0].IsString()) {
-        Napi::TypeError::New(env, "Token must be a string").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    // Create the Room JS object
-    Napi::Object obj = constructor_.New({});
-    RoomWrap* roomWrap = Napi::ObjectWrap<RoomWrap>::Unwrap(obj);
-
-    roomWrap->observer_ = std::make_shared<RoomObserverWrap>(env, roomWrap);
-    roomWrap->asyncContext_ = std::make_shared<AsyncContext>(env, 0);
-
-    std::string token = info[0].As<Napi::String>().Utf8Value();
-    twilio::video::ConnectOptions::Builder builder(token);
-
-    // TS layer pre-populates all options; C++ just reads them
-    auto opts = (info.Length() >= 2 && info[1].IsObject())
-        ? info[1].As<Napi::Object>()
-        : Napi::Object::New(env);
-
-    try {
-    if (opts.Has("name"))
-        builder.setRoomName(opts.Get("name").As<Napi::String>().Utf8Value());
+    std::string name;
+    if (!readString("name", name)) return false;
+    if (opts.Has("name")) builder.setRoomName(name);
 
     // MediaFactory (always provided by TS layer)
-    if (opts.Has("mediaFactory") && opts.Get("mediaFactory").IsObject()) {
+    if (!requireType(opts, "mediaFactory", opts.Get("mediaFactory").IsObject(),
+                     "mediaFactory must be a MediaFactory instance")) return false;
+    if (opts.Has("mediaFactory")) {
         auto factoryObj = opts.Get("mediaFactory").As<Napi::Object>();
         if (!MediaFactoryWrap::IsInstance(factoryObj)) {
             Napi::TypeError::New(env, "mediaFactory must be a MediaFactory instance").ThrowAsJavaScriptException();
-            return env.Undefined();
+            return false;
         }
         auto* factoryWrap = Napi::ObjectWrap<MediaFactoryWrap>::Unwrap(factoryObj);
         if (factoryWrap) builder.setMediaFactory(factoryWrap->getFactory());
     }
 
-    if (opts.Has("enableInsights"))
-        builder.enableInsights(opts.Get("enableInsights").As<Napi::Boolean>().Value());
-    if (opts.Has("enableAutomaticSubscription"))
-        builder.enableAutomaticSubscription(opts.Get("enableAutomaticSubscription").As<Napi::Boolean>().Value());
-    if (opts.Has("enableDominantSpeaker"))
-        builder.enableDominantSpeaker(opts.Get("enableDominantSpeaker").As<Napi::Boolean>().Value());
-    if (opts.Has("enableNetworkQuality"))
-        builder.enableNetworkQuality(opts.Get("enableNetworkQuality").As<Napi::Boolean>().Value());
-    if (opts.Has("receiveTranscriptions"))
-        builder.receiveTranscriptions(opts.Get("receiveTranscriptions").As<Napi::Boolean>().Value());
-    if (opts.Has("region"))
-        builder.setRegion(opts.Get("region").As<Napi::String>().Utf8Value());
+    bool flag;
+    if (!readBool("enableInsights", flag)) return false;
+    if (opts.Has("enableInsights")) builder.enableInsights(flag);
+    if (!readBool("enableAutomaticSubscription", flag)) return false;
+    if (opts.Has("enableAutomaticSubscription")) builder.enableAutomaticSubscription(flag);
+    if (!readBool("enableDominantSpeaker", flag)) return false;
+    if (opts.Has("enableDominantSpeaker")) builder.enableDominantSpeaker(flag);
+    if (!readBool("enableNetworkQuality", flag)) return false;
+    if (opts.Has("enableNetworkQuality")) builder.enableNetworkQuality(flag);
+    if (!readBool("receiveTranscriptions", flag)) return false;
+    if (opts.Has("receiveTranscriptions")) builder.receiveTranscriptions(flag);
 
-    if (opts.Has("networkQualityConfiguration") && opts.Get("networkQualityConfiguration").IsObject()) {
+    std::string region;
+    if (!readString("region", region)) return false;
+    if (opts.Has("region")) builder.setRegion(region);
+
+    if (!requireType(opts, "networkQualityConfiguration",
+                     opts.Get("networkQualityConfiguration").IsObject(),
+                     "networkQualityConfiguration must be an object")) return false;
+    if (opts.Has("networkQualityConfiguration")) {
         auto nqObj = opts.Get("networkQualityConfiguration").As<Napi::Object>();
         // rtc-cpp exposes only kNone(0)/kMinimal(1). The TS layer already validates this,
         // but a direct (JS) caller can reach here, so reject anything other than 0/1.
@@ -122,26 +148,28 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         twilio::video::NetworkQualityConfiguration::Builder nqBuilder;
         if (nqObj.Has("local")) {
             twilio::video::NetworkQualityVerbosity local;
-            if (!readVerbosity("local", local)) return env.Undefined();
+            if (!readVerbosity("local", local)) return false;
             nqBuilder.setLocalVerbosityLevel(local);
         }
         if (nqObj.Has("remote")) {
             twilio::video::NetworkQualityVerbosity remote;
-            if (!readVerbosity("remote", remote)) return env.Undefined();
+            if (!readVerbosity("remote", remote)) return false;
             nqBuilder.setRemoteVerbosityLevel(remote);
         }
         builder.setNetworkQualityConfiguration(nqBuilder.build());
     }
 
     // Preferred audio codecs
-    if (opts.Has("preferredAudioCodecs") && opts.Get("preferredAudioCodecs").IsArray()) {
+    if (!requireType(opts, "preferredAudioCodecs", opts.Get("preferredAudioCodecs").IsArray(),
+                     "preferredAudioCodecs must be an array")) return false;
+    if (opts.Has("preferredAudioCodecs")) {
         auto codecs = opts.Get("preferredAudioCodecs").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::AudioCodec>> audioCodecs;
         for (uint32_t i = 0; i < codecs.Length(); i++) {
             auto el = codecs.Get(i);
             if (!el.IsString()) {
                 Napi::TypeError::New(env, "preferredAudioCodecs entries must be strings").ThrowAsJavaScriptException();
-                return env.Undefined();
+                return false;
             }
             std::string n = el.As<Napi::String>().Utf8Value();
             if (n == "opus") audioCodecs.push_back(std::make_shared<twilio::media::OpusCodec>());
@@ -150,21 +178,23 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
             else if (n == "PCMU") audioCodecs.push_back(std::make_shared<twilio::media::PcmuCodec>());
             else {
                 Napi::TypeError::New(env, "Unknown audio codec: " + n).ThrowAsJavaScriptException();
-                return env.Undefined();
+                return false;
             }
         }
         builder.setPreferredAudioCodecs(audioCodecs);
     }
 
     // Preferred video codecs
-    if (opts.Has("preferredVideoCodecs") && opts.Get("preferredVideoCodecs").IsArray()) {
+    if (!requireType(opts, "preferredVideoCodecs", opts.Get("preferredVideoCodecs").IsArray(),
+                     "preferredVideoCodecs must be an array")) return false;
+    if (opts.Has("preferredVideoCodecs")) {
         auto codecs = opts.Get("preferredVideoCodecs").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::VideoCodec>> videoCodecs;
         for (uint32_t i = 0; i < codecs.Length(); i++) {
             auto el = codecs.Get(i);
             if (!el.IsString()) {
                 Napi::TypeError::New(env, "preferredVideoCodecs entries must be strings").ThrowAsJavaScriptException();
-                return env.Undefined();
+                return false;
             }
             std::string n = el.As<Napi::String>().Utf8Value();
             if (n == "H264") videoCodecs.push_back(std::make_shared<twilio::media::H264Codec>());
@@ -172,75 +202,108 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
             else if (n == "VP9") videoCodecs.push_back(std::make_shared<twilio::media::Vp9Codec>());
             else {
                 Napi::TypeError::New(env, "Unknown video codec: " + n).ThrowAsJavaScriptException();
-                return env.Undefined();
+                return false;
             }
         }
         builder.setPreferredVideoCodecs(videoCodecs);
     }
 
     // Video encoding mode. Only "auto" is currently supported.
-    if (opts.Has("videoEncodingMode") && opts.Get("videoEncodingMode").IsString()) {
-        std::string m = opts.Get("videoEncodingMode").As<Napi::String>().Utf8Value();
+    if (opts.Has("videoEncodingMode")) {
+        Napi::Value value = opts.Get("videoEncodingMode");
+        if (!value.IsString()) {
+            Napi::TypeError::New(env, "videoEncodingMode must be a string").ThrowAsJavaScriptException();
+            return false;
+        }
+        std::string m = value.As<Napi::String>().Utf8Value();
         if (m == "auto") {
             builder.setVideoEncodingMode(twilio::media::VideoEncodingMode::kAuto);
         } else {
             Napi::TypeError::New(env, "Unknown videoEncodingMode: " + m).ThrowAsJavaScriptException();
-            return env.Undefined();
+            return false;
         }
     }
 
     // Forward bandwidthProfile.video sub-options (mode, switch-off, content-preferences, max bitrate).
-    if (opts.Has("bandwidthProfile") && opts.Get("bandwidthProfile").IsObject()) {
+    if (!requireType(opts, "bandwidthProfile", opts.Get("bandwidthProfile").IsObject(),
+                     "bandwidthProfile must be an object")) return false;
+    if (opts.Has("bandwidthProfile")) {
         auto bpObj = opts.Get("bandwidthProfile").As<Napi::Object>();
-        if (bpObj.Has("video") && bpObj.Get("video").IsObject()) {
+        if (!requireType(bpObj, "video", bpObj.Get("video").IsObject(),
+                         "bandwidthProfile.video must be an object")) return false;
+        if (bpObj.Has("video")) {
             auto vObj = bpObj.Get("video").As<Napi::Object>();
             twilio::video::VideoBandwidthProfileOptions::Builder vBuilder;
 
-            if (vObj.Has("mode") && vObj.Get("mode").IsString()) {
-                std::string m = vObj.Get("mode").As<Napi::String>().Utf8Value();
-                if (m == "collaboration") vBuilder.setMode(twilio::video::BandwidthProfileMode::kCollaboration);
-                else if (m == "grid") vBuilder.setMode(twilio::video::BandwidthProfileMode::kGrid);
-                else if (m == "presentation") vBuilder.setMode(twilio::video::BandwidthProfileMode::kPresentation);
+            // Reads a present string enum field. On a wrong type it throws a
+            // TypeError and sets *ok false; the caller must abort parsing.
+            auto readEnum = [&](const char* field, bool* ok) -> std::string {
+                *ok = true;
+                if (!vObj.Has(field)) return {};
+                Napi::Value value = vObj.Get(field);
+                if (!value.IsString()) {
+                    Napi::TypeError::New(env, std::string("bandwidthProfile.video.") + field + " must be a string").ThrowAsJavaScriptException();
+                    *ok = false;
+                    return {};
+                }
+                return value.As<Napi::String>().Utf8Value();
+            };
+            bool ok;
+
+            std::string mode = readEnum("mode", &ok);
+            if (!ok) return false;
+            if (vObj.Has("mode")) {
+                if (mode == "collaboration") vBuilder.setMode(twilio::video::BandwidthProfileMode::kCollaboration);
+                else if (mode == "grid") vBuilder.setMode(twilio::video::BandwidthProfileMode::kGrid);
+                else if (mode == "presentation") vBuilder.setMode(twilio::video::BandwidthProfileMode::kPresentation);
                 else {
-                    Napi::TypeError::New(env, "Unknown bandwidthProfile.video.mode: " + m).ThrowAsJavaScriptException();
-                    return env.Undefined();
+                    Napi::TypeError::New(env, "Unknown bandwidthProfile.video.mode: " + mode).ThrowAsJavaScriptException();
+                    return false;
                 }
             }
-            if (vObj.Has("maxSubscriptionBitrate") && vObj.Get("maxSubscriptionBitrate").IsNumber()) {
-                double d = vObj.Get("maxSubscriptionBitrate").As<Napi::Number>().DoubleValue();
+            if (vObj.Has("maxSubscriptionBitrate")) {
+                Napi::Value value = vObj.Get("maxSubscriptionBitrate");
+                if (!value.IsNumber()) {
+                    Napi::TypeError::New(env, "bandwidthProfile.video.maxSubscriptionBitrate must be a number").ThrowAsJavaScriptException();
+                    return false;
+                }
+                double d = value.As<Napi::Number>().DoubleValue();
                 constexpr double kMaxSafe = 9007199254740991.0;
                 if (!std::isfinite(d) || d != std::floor(d) || d < 0 || d > kMaxSafe) {
                     Napi::RangeError::New(env, "bandwidthProfile.video.maxSubscriptionBitrate must be a non-negative integer <= Number.MAX_SAFE_INTEGER").ThrowAsJavaScriptException();
-                    return env.Undefined();
+                    return false;
                 }
                 vBuilder.setMaxSubscriptionBitrate(static_cast<uint64_t>(d));
             }
-            if (vObj.Has("trackSwitchOffMode") && vObj.Get("trackSwitchOffMode").IsString()) {
-                std::string m = vObj.Get("trackSwitchOffMode").As<Napi::String>().Utf8Value();
-                if (m == "detected") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kDetected);
-                else if (m == "predicted") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kPredicted);
-                else if (m == "disabled") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kDisabled);
+            std::string trackSwitchOffMode = readEnum("trackSwitchOffMode", &ok);
+            if (!ok) return false;
+            if (vObj.Has("trackSwitchOffMode")) {
+                if (trackSwitchOffMode == "detected") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kDetected);
+                else if (trackSwitchOffMode == "predicted") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kPredicted);
+                else if (trackSwitchOffMode == "disabled") vBuilder.setTrackSwitchOffMode(twilio::video::TrackSwitchOffMode::kDisabled);
                 else {
-                    Napi::TypeError::New(env, "Unknown trackSwitchOffMode: " + m).ThrowAsJavaScriptException();
-                    return env.Undefined();
+                    Napi::TypeError::New(env, "Unknown trackSwitchOffMode: " + trackSwitchOffMode).ThrowAsJavaScriptException();
+                    return false;
                 }
             }
-            if (vObj.Has("clientTrackSwitchOffControl") && vObj.Get("clientTrackSwitchOffControl").IsString()) {
-                std::string m = vObj.Get("clientTrackSwitchOffControl").As<Napi::String>().Utf8Value();
-                if (m == "auto") vBuilder.setClientTrackSwitchOffControl(twilio::video::ClientTrackSwitchOffControl::kAuto);
-                else if (m == "manual") vBuilder.setClientTrackSwitchOffControl(twilio::video::ClientTrackSwitchOffControl::kManual);
+            std::string clientControl = readEnum("clientTrackSwitchOffControl", &ok);
+            if (!ok) return false;
+            if (vObj.Has("clientTrackSwitchOffControl")) {
+                if (clientControl == "auto") vBuilder.setClientTrackSwitchOffControl(twilio::video::ClientTrackSwitchOffControl::kAuto);
+                else if (clientControl == "manual") vBuilder.setClientTrackSwitchOffControl(twilio::video::ClientTrackSwitchOffControl::kManual);
                 else {
-                    Napi::TypeError::New(env, "Unknown clientTrackSwitchOffControl: " + m).ThrowAsJavaScriptException();
-                    return env.Undefined();
+                    Napi::TypeError::New(env, "Unknown clientTrackSwitchOffControl: " + clientControl).ThrowAsJavaScriptException();
+                    return false;
                 }
             }
-            if (vObj.Has("contentPreferencesMode") && vObj.Get("contentPreferencesMode").IsString()) {
-                std::string m = vObj.Get("contentPreferencesMode").As<Napi::String>().Utf8Value();
-                if (m == "auto") vBuilder.setContentPreferencesMode(twilio::video::VideoContentPreferencesMode::kAuto);
-                else if (m == "manual") vBuilder.setContentPreferencesMode(twilio::video::VideoContentPreferencesMode::kManual);
+            std::string contentPrefMode = readEnum("contentPreferencesMode", &ok);
+            if (!ok) return false;
+            if (vObj.Has("contentPreferencesMode")) {
+                if (contentPrefMode == "auto") vBuilder.setContentPreferencesMode(twilio::video::VideoContentPreferencesMode::kAuto);
+                else if (contentPrefMode == "manual") vBuilder.setContentPreferencesMode(twilio::video::VideoContentPreferencesMode::kManual);
                 else {
-                    Napi::TypeError::New(env, "Unknown contentPreferencesMode: " + m).ThrowAsJavaScriptException();
-                    return env.Undefined();
+                    Napi::TypeError::New(env, "Unknown contentPreferencesMode: " + contentPrefMode).ThrowAsJavaScriptException();
+                    return false;
                 }
             }
             builder.setBandwidthProfile(twilio::video::BandwidthProfileOptions(vBuilder.build()));
@@ -248,7 +311,9 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     }
 
     // Encoding parameters
-    if (opts.Has("encodingParameters") && opts.Get("encodingParameters").IsObject()) {
+    if (!requireType(opts, "encodingParameters", opts.Get("encodingParameters").IsObject(),
+                     "encodingParameters must be an object")) return false;
+    if (opts.Has("encodingParameters")) {
         auto epObj = opts.Get("encodingParameters").As<Napi::Object>();
         twilio::media::EncodingParameters ep;
         constexpr double kMaxSafe = 9007199254740991.0;
@@ -267,30 +332,41 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
             out = static_cast<unsigned long>(d);
             return true;
         };
-        if (!readBitrate("maxAudioBitrate", ep.max_audio_bitrate_)) return env.Undefined();
-        if (!readBitrate("maxVideoBitrate", ep.max_video_bitrate_)) return env.Undefined();
+        if (!readBitrate("maxAudioBitrate", ep.max_audio_bitrate_)) return false;
+        if (!readBitrate("maxVideoBitrate", ep.max_video_bitrate_)) return false;
         builder.setEncodingParameters(ep);
     }
 
-    // ICE options (TS maps transportPolicy string → int)
-    if (opts.Has("iceOptions") && opts.Get("iceOptions").IsObject()) {
+    // ICE options
+    if (!requireType(opts, "iceOptions", opts.Get("iceOptions").IsObject(),
+                     "iceOptions must be an object")) return false;
+    if (opts.Has("iceOptions")) {
         auto iceObj = opts.Get("iceOptions").As<Napi::Object>();
         twilio::media::IceOptions iceOptions;
 
-        if (iceObj.Has("transportPolicy") && iceObj.Get("transportPolicy").IsString()) {
+        if (!requireType(iceObj, "transportPolicy", iceObj.Get("transportPolicy").IsString(),
+                         "iceOptions.transportPolicy must be a string")) return false;
+        if (iceObj.Has("transportPolicy")) {
             std::string policy = iceObj.Get("transportPolicy").As<Napi::String>().Utf8Value();
-            iceOptions.ice_transport_policy = policy == "relay"
-                ? twilio::media::IceTransportPolicy::kIceTransportPolicyRelay
-                : twilio::media::IceTransportPolicy::kIceTransportPolicyAll;
+            if (policy == "relay") {
+                iceOptions.ice_transport_policy = twilio::media::IceTransportPolicy::kIceTransportPolicyRelay;
+            } else if (policy == "all") {
+                iceOptions.ice_transport_policy = twilio::media::IceTransportPolicy::kIceTransportPolicyAll;
+            } else {
+                Napi::TypeError::New(env, "Unknown iceOptions.transportPolicy: " + policy).ThrowAsJavaScriptException();
+                return false;
+            }
         }
 
-        if (iceObj.Has("iceServers") && iceObj.Get("iceServers").IsArray()) {
+        if (!requireType(iceObj, "iceServers", iceObj.Get("iceServers").IsArray(),
+                         "iceOptions.iceServers must be an array")) return false;
+        if (iceObj.Has("iceServers")) {
             auto servers = iceObj.Get("iceServers").As<Napi::Array>();
             twilio::media::IceServers iceServers;
             for (uint32_t i = 0; i < servers.Length(); i++) {
                 if (!servers.Get(i).IsObject()) {
                     Napi::TypeError::New(env, "iceServers entries must be objects").ThrowAsJavaScriptException();
-                    return env.Undefined();
+                    return false;
                 }
                 auto serverObj = servers.Get(i).As<Napi::Object>();
                 twilio::media::IceServer server;
@@ -300,7 +376,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
                         auto u = urls.Get(j);
                         if (!u.IsString()) {
                             Napi::TypeError::New(env, "iceServers[].urls entries must be strings").ThrowAsJavaScriptException();
-                            return env.Undefined();
+                            return false;
                         }
                         server.urls.push_back(u.As<Napi::String>().Utf8Value());
                     }
@@ -309,7 +385,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
                     auto v = serverObj.Get("username");
                     if (!v.IsString()) {
                         Napi::TypeError::New(env, "iceServers[].username must be a string").ThrowAsJavaScriptException();
-                        return env.Undefined();
+                        return false;
                     }
                     server.username = v.As<Napi::String>().Utf8Value();
                 }
@@ -317,7 +393,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
                     auto v = serverObj.Get("credential");
                     if (!v.IsString()) {
                         Napi::TypeError::New(env, "iceServers[].credential must be a string").ThrowAsJavaScriptException();
-                        return env.Undefined();
+                        return false;
                     }
                     server.password = v.As<Napi::String>().Utf8Value();
                 }
@@ -329,53 +405,72 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     }
 
     // Platform info (pre-populated by TS layer)
-    if (opts.Has("platformInfo") && opts.Get("platformInfo").IsObject()) {
+    if (!requireType(opts, "platformInfo", opts.Get("platformInfo").IsObject(),
+                     "platformInfo must be an object")) return false;
+    if (opts.Has("platformInfo")) {
         auto piObj = opts.Get("platformInfo").As<Napi::Object>();
         twilio::PlatformInfo platformInfo;
-        if (piObj.Has("sdkVersion")) platformInfo.sdkVersion = piObj.Get("sdkVersion").As<Napi::String>().Utf8Value();
-        if (piObj.Has("platformName")) platformInfo.platformName = piObj.Get("platformName").As<Napi::String>().Utf8Value();
-        if (piObj.Has("platformVersion")) platformInfo.platformVersion = piObj.Get("platformVersion").As<Napi::String>().Utf8Value();
-        if (piObj.Has("deviceArchitecture")) platformInfo.hwDeviceArch = piObj.Get("deviceArchitecture").As<Napi::String>().Utf8Value();
+        // Reads a present string subfield, rejecting a wrong type with a TypeError.
+        auto readPlatformString = [&](const char* field, std::string& out) -> bool {
+            if (!piObj.Has(field)) return true;
+            Napi::Value value = piObj.Get(field);
+            if (!value.IsString()) {
+                Napi::TypeError::New(env, std::string("platformInfo.") + field + " must be a string").ThrowAsJavaScriptException();
+                return false;
+            }
+            out = value.As<Napi::String>().Utf8Value();
+            return true;
+        };
+        if (!readPlatformString("sdkVersion", platformInfo.sdkVersion)) return false;
+        if (!readPlatformString("platformName", platformInfo.platformName)) return false;
+        if (!readPlatformString("platformVersion", platformInfo.platformVersion)) return false;
+        if (!readPlatformString("deviceArchitecture", platformInfo.hwDeviceArch)) return false;
         builder.setPlatformInfo(platformInfo);
     }
 
     // Tracks
-    if (opts.Has("videoTracks") && opts.Get("videoTracks").IsArray()) {
+    if (!requireType(opts, "videoTracks", opts.Get("videoTracks").IsArray(),
+                     "videoTracks must be an array")) return false;
+    if (opts.Has("videoTracks")) {
         auto tracks = opts.Get("videoTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalVideoTrack>> videoTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
             auto el = tracks.Get(i);
             if (!el.IsObject() || !LocalVideoTrackWrap::IsInstance(el.As<Napi::Object>())) {
                 Napi::TypeError::New(env, "videoTracks entries must be LocalVideoTrack instances").ThrowAsJavaScriptException();
-                return env.Undefined();
+                return false;
             }
             auto* trackWrap = Napi::ObjectWrap<LocalVideoTrackWrap>::Unwrap(el.As<Napi::Object>());
             if (trackWrap) videoTracks.push_back(trackWrap->getTrack());
         }
         builder.setVideoTracks(videoTracks);
     }
-    if (opts.Has("audioTracks") && opts.Get("audioTracks").IsArray()) {
+    if (!requireType(opts, "audioTracks", opts.Get("audioTracks").IsArray(),
+                     "audioTracks must be an array")) return false;
+    if (opts.Has("audioTracks")) {
         auto tracks = opts.Get("audioTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalAudioTrack>> audioTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
             auto el = tracks.Get(i);
             if (!el.IsObject() || !LocalAudioTrackWrap::IsInstance(el.As<Napi::Object>())) {
                 Napi::TypeError::New(env, "audioTracks entries must be LocalAudioTrack instances").ThrowAsJavaScriptException();
-                return env.Undefined();
+                return false;
             }
             auto* trackWrap = Napi::ObjectWrap<LocalAudioTrackWrap>::Unwrap(el.As<Napi::Object>());
             if (trackWrap) audioTracks.push_back(trackWrap->getTrack());
         }
         builder.setAudioTracks(audioTracks);
     }
-    if (opts.Has("dataTracks") && opts.Get("dataTracks").IsArray()) {
+    if (!requireType(opts, "dataTracks", opts.Get("dataTracks").IsArray(),
+                     "dataTracks must be an array")) return false;
+    if (opts.Has("dataTracks")) {
         auto tracks = opts.Get("dataTracks").As<Napi::Array>();
         std::vector<std::shared_ptr<twilio::media::LocalDataTrack>> dataTracks;
         for (uint32_t i = 0; i < tracks.Length(); i++) {
             auto el = tracks.Get(i);
             if (!el.IsObject() || !LocalDataTrackWrap::IsInstance(el.As<Napi::Object>())) {
                 Napi::TypeError::New(env, "dataTracks entries must be LocalDataTrack instances").ThrowAsJavaScriptException();
-                return env.Undefined();
+                return false;
             }
             auto* trackWrap = Napi::ObjectWrap<LocalDataTrackWrap>::Unwrap(el.As<Napi::Object>());
             if (trackWrap) dataTracks.push_back(trackWrap->getTrack());
@@ -383,20 +478,61 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         builder.setDataTracks(dataTracks);
     }
 
-    auto connectOptions = builder.build();
+    return true;
+}
 
-    std::shared_ptr<twilio::video::RoomObserver> observer =
-        std::static_pointer_cast<twilio::video::RoomObserver>(roomWrap->observer_);
-    roomWrap->room_ = twilio::video::connect(connectOptions, observer);
+Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "Token must be a string").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create the Room JS object
+    Napi::Object obj = constructor_.New({});
+    RoomWrap* roomWrap = Napi::ObjectWrap<RoomWrap>::Unwrap(obj);
+
+    roomWrap->observer_ = std::make_shared<RoomObserverWrap>(env, roomWrap);
+    roomWrap->asyncContext_ = std::make_shared<AsyncContext>(env, 0);
+
+    std::string token = info[0].As<Napi::String>().Utf8Value();
+    twilio::video::ConnectOptions::Builder builder(token);
+
+    // TS layer pre-populates all options; C++ just reads them. Only an absent
+    // (undefined) second argument means "no options"; any other present-but-
+    // non-object value (including null) is a caller error.
+    bool hasOptions = info.Length() >= 2 && !info[1].IsUndefined();
+    if (hasOptions && !info[1].IsObject()) {
+        Napi::TypeError::New(env, "options must be an object").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    auto opts = hasOptions ? info[1].As<Napi::Object>() : Napi::Object::New(env);
+
+    try {
+        // Inside the try so a Napi::Error from an N-API access (e.g. a throwing
+        // property getter on the options object) surfaces as a JS exception
+        // rather than escaping the N-API callback and aborting the process.
+        if (!parseConnectOptions(env, opts, builder)) return env.Undefined();
+
+        auto connectOptions = builder.build();
+        std::shared_ptr<twilio::video::RoomObserver> observer =
+            std::static_pointer_cast<twilio::video::RoomObserver>(roomWrap->observer_);
+        roomWrap->room_ = twilio::video::connect(connectOptions, observer);
+    } catch (const Napi::Error& e) {
+        // Re-surface the already-constructed JS error (carries its original value).
+        // Caught before std::exception because Napi::Error derives from it.
+        e.ThrowAsJavaScriptException();
+        return env.Undefined();
+    } catch (const std::exception& e) {
+        // Use Error, not TypeError: bad arguments are already rejected with TypeError
+        // in parseConnectOptions, so anything reaching here is a runtime failure.
+        Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
 
     if (!roomWrap->room_) {
         Napi::Error::New(env, "Failed to create room").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-    } catch (const std::exception& e) {
-        // Use Error, not TypeError: bad arguments are already rejected with TypeError
-        // inline above, so anything reaching here is a runtime failure, not bad input.
-        Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
@@ -422,14 +558,7 @@ RoomWrap::RoomWrap(const Napi::CallbackInfo& info)
 }
 
 RoomWrap::~RoomWrap() {
-    {
-        std::lock_guard<std::mutex> lock(statsObserversMutex_);
-        for (auto& obs : pendingStatsObservers_) {
-            auto* oneShot = static_cast<OneShotStatsObserver*>(obs.get());
-            oneShot->cancel();
-        }
-        pendingStatsObservers_.clear();
-    }
+    statsObservers_->cancelAll();
 
     // Close observer before disconnect to prevent callbacks during teardown
     if (observer_) {
@@ -572,14 +701,7 @@ Napi::Value RoomWrap::Disconnect(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
-    {
-        std::lock_guard<std::mutex> lock(statsObserversMutex_);
-        for (auto& obs : pendingStatsObservers_) {
-            auto* oneShot = static_cast<OneShotStatsObserver*>(obs.get());
-            oneShot->cancel();
-        }
-        pendingStatsObservers_.clear();
-    }
+    statsObservers_->cancelAll();
 
     // Close observer before disconnect to prevent callbacks during teardown
     if (observer_) {
@@ -717,11 +839,37 @@ static Napi::Value convertStatsReportsToJS(Napi::Env env,
     return jsArray;
 }
 
+void StatsObserverRegistry::add(
+    const std::shared_ptr<OneShotStatsObserver>& obs) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    observers_.insert(obs);
+}
+
+void StatsObserverRegistry::remove(
+    const std::shared_ptr<OneShotStatsObserver>& obs) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    observers_.erase(obs);
+}
+
+void StatsObserverRegistry::cancelAll() {
+    // Cancel outside the lock so dispatch work doesn't block onStats()'s remove().
+    std::set<std::shared_ptr<OneShotStatsObserver>> pending;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending.swap(observers_);
+    }
+    for (auto& obs : pending) {
+        obs->cancel();
+    }
+}
+
 OneShotStatsObserver::OneShotStatsObserver(
     std::shared_ptr<AsyncContext> ctx,
-    std::shared_ptr<Napi::FunctionReference> cb)
+    std::shared_ptr<Napi::FunctionReference> cb,
+    std::weak_ptr<StatsObserverRegistry> registry)
     : asyncContext_(std::move(ctx)),
-      callback_(std::move(cb)) {}
+      callback_(std::move(cb)),
+      registry_(std::move(registry)) {}
 
 OneShotStatsObserver::~OneShotStatsObserver() {
     // cancel() or onStats() must have moved callback_ away before destruction.
@@ -737,17 +885,27 @@ void OneShotStatsObserver::onStats(
     auto cb = std::move(callback_);
     auto ctx = asyncContext_;
 
-    if (!ctx || ctx->isClosed()) return;
+    if (ctx && !ctx->isClosed()) {
+        ctx->dispatch([reports = std::move(reports), cb](Napi::Env env) {
+            if (!cb || cb->IsEmpty()) return;
+            Napi::HandleScope scope(env);
+            auto jsReports = convertStatsReportsToJS(env, reports);
+            cb->Call({env.Null(), jsReports});
+        });
+    }
 
-    ctx->dispatch([reports = std::move(reports), cb](Napi::Env env) {
-        if (!cb || cb->IsEmpty()) return;
-        Napi::HandleScope scope(env);
-        auto jsReports = convertStatsReportsToJS(env, reports);
-        cb->Call({env.Null(), jsReports});
-    });
+    // Drop ourselves from the pending set last: rtc-cpp invokes onStats through
+    // a locked weak_ptr, so `this` stays alive until we return even after the
+    // registry releases its shared_ptr. Skipped when the room is being torn
+    // down (registry already gone / cancelAll clearing the set).
+    if (auto registry = registry_.lock()) {
+        registry->remove(shared_from_this());
+    }
 }
 
 void OneShotStatsObserver::cancel() {
+    // Called only from StatsObserverRegistry::cancelAll during teardown; the
+    // fired_ guard makes it mutually exclusive with onStats().
     if (fired_.exchange(true)) return;
 
     auto cb = std::move(callback_);
@@ -797,12 +955,10 @@ Napi::Value RoomWrap::GetStats(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    auto observer = std::make_shared<OneShotStatsObserver>(asyncContext_, callback);
+    auto observer = std::make_shared<OneShotStatsObserver>(
+        asyncContext_, callback, statsObservers_);
 
-    {
-        std::lock_guard<std::mutex> lock(statsObserversMutex_);
-        pendingStatsObservers_.insert(observer);
-    }
+    statsObservers_->add(observer);
 
     room_->getStats(observer);
 

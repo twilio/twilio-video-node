@@ -38,6 +38,7 @@ export {
   RemoteDataTrackPublication,
 } from './track_publication.js';
 export type { LocalTrack, RemoteTrack } from './track_publication.js';
+export type { Track, Participant } from './types.js';
 export type {
   ConnectOptions,
   IceOptions,
@@ -86,6 +87,8 @@ export type {
   NetworkQualityConfiguration,
   VideoRenderDimensions,
   VideoContentPreferences,
+  RemoteTrackPublishEvent,
+  RemoteTrackStateEvent,
 } from './types.js';
 
 export {
@@ -159,9 +162,27 @@ function getDefaultMediaFactory(): NativeMediaFactory {
 
 // --- Public API ---
 
+/**
+ * Connect to a Twilio Group Room. The returned promise resolves once the Room
+ * emits `connected`, and rejects with a {@link TwilioError} if it emits
+ * `connectFailure` first (the partially-built Room is disposed on failure).
+ *
+ * @param token - A Twilio access token with a Video grant.
+ * @param options - Room name, tracks to publish on join, and feature toggles.
+ * @returns A promise resolving to the connected {@link Room}.
+ * @throws {TypeError} (as a rejection) If `token` is not a non-empty string, or `options` is not an object.
+ * @throws {RangeError} (as a rejection) If `options.networkQuality` verbosities are out of range.
+ *
+ * @example
+ * const audioTrack = createLocalAudioTrack('mic');
+ * const room = await connect(token, { name: 'my-room', audioTracks: [audioTrack] });
+ */
 export function connect(token: string, options: ConnectOptions = {}): Promise<Room> {
   if (!token || typeof token !== 'string') {
     return Promise.reject(new TypeError('token must be a non-empty string'));
+  }
+  if (typeof options !== 'object' || options === null) {
+    return Promise.reject(new TypeError('options must be an object'));
   }
   const { networkQuality, ...rest } = options;
   const internalOpts: Record<string, unknown> = { ...rest };
@@ -394,6 +415,11 @@ export async function createLocalTracks(
   return tracks;
 }
 
+/**
+ * Known Twilio error codes, mapping a descriptive name to its numeric code.
+ * Match against {@link TwilioError.code} to identify a failure without
+ * depending on the error message.
+ */
 export const ErrorCode = Object.freeze({
   ACCESS_TOKEN_INVALID: 20101,
   ACCESS_TOKEN_HEADER_INVALID: 20102,
@@ -409,6 +435,7 @@ export const ErrorCode = Object.freeze({
   ROOM_CONNECT_FAILED: 53104,
   ROOM_MAX_PARTICIPANTS_EXCEEDED: 53105,
   ROOM_COMPLETED: 53118,
+  PARTICIPANT_MAX_TRACKS_EXCEEDED: 53203,
   PARTICIPANT_DUPLICATE_IDENTITY: 53205,
   TRACK_INVALID: 53300,
   TRACK_NAME_TOO_LONG: 53301,
@@ -421,10 +448,17 @@ export const ErrorCode = Object.freeze({
   MEDIA_CONNECTION_ERROR: 53405,
 } as const);
 
+/** The version of the underlying native rtc-cpp engine (distinct from this package's version). */
 export function getVersion(): string {
   return addon.getVersion();
 }
 
+/**
+ * Set the verbosity of the native SDK's logging. Process-global and effective
+ * immediately for all current and future Rooms.
+ *
+ * @param level - A {@link LogLevel} name or its equivalent native numeric level.
+ */
 export function setLogLevel(level: LogLevel | number): void {
   addon.setLogLevel(level);
 }

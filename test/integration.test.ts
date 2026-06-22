@@ -868,6 +868,68 @@ describe('Room.getStats()', () => {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
+
+  // Repeated getStats followed by a clean dispose: guards against pending stats
+  // observers accumulating instead of being released on completion.
+  it('handles many sequential getStats calls and disposes cleanly', async () => {
+    const roomName = uniqueRoom();
+    const { connA, connB } = await connectPair(roomName);
+
+    try {
+      for (let i = 0; i < 25; i++) {
+        const reports: StatsReport[] = await connA.room.getStats();
+        expect(Array.isArray(reports)).toBe(true);
+      }
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+
+  // Dispose with stats calls in flight: exercises cancelAll() against a
+  // non-empty observer set. Pending promises are abandoned on dispose (their
+  // rejection is dropped when the async context closes), so they aren't awaited
+  // — the contract is that disposing mid-flight doesn't crash.
+  it('disposes cleanly while getStats calls are in flight', async () => {
+    const roomName = uniqueRoom();
+    const { connA, connB } = await connectPair(roomName);
+
+    // Guard against unhandled-rejection noise from the abandoned promises.
+    for (let i = 0; i < 3; i++) connA.room.getStats().catch(() => {});
+
+    try {
+      await connA.cleanup();
+      expect(connA.room.state).toBe('disconnected');
+    } finally {
+      await connB.cleanup();
+    }
+  });
+});
+
+// macOS-only: verifies main-queue callbacks are delivered (getStats resolves).
+describe('macOS main-queue pump (CFRunLoop)', () => {
+  it.skipIf(process.platform !== 'darwin')(
+    'delivers main-queue callbacks (getStats resolves)',
+    async () => {
+      const roomName = uniqueRoom();
+      const { connA, connB } = await connectPair(roomName);
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('getStats did not resolve — main-queue pump stalled')),
+          5_000,
+        );
+      });
+
+      try {
+        const reports = await Promise.race([connA.room.getStats(), timeout]);
+        expect(Array.isArray(reports)).toBe(true);
+      } finally {
+        clearTimeout(timer);
+        await Promise.all([connA.cleanup(), connB.cleanup()]);
+      }
+    },
+  );
 });
 
 describe('RemoteVideoTrack.setContentPreferences', () => {

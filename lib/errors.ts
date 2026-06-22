@@ -1,4 +1,10 @@
+/**
+ * Base class for all errors the SDK surfaces from Twilio. Carries a numeric
+ * Twilio error `code` alongside the standard `Error` message. Subclasses pin a
+ * specific code; an unmatched code is represented by a plain `TwilioError`.
+ */
 export class TwilioError extends Error {
+  /** The Twilio error code identifying the failure. See {@link ErrorCode} for known values. */
   readonly code: number;
 
   constructor(code: number, message?: string) {
@@ -8,7 +14,9 @@ export class TwilioError extends Error {
   }
 }
 
+/** Raised when the access token passed to {@link connect} is malformed or otherwise invalid. Code `20101`. */
 export class AccessTokenInvalidError extends TwilioError {
+  /** The fixed Twilio code for this error: `20101`. */
   static readonly code = 20101;
 
   constructor(message?: string) {
@@ -17,7 +25,9 @@ export class AccessTokenInvalidError extends TwilioError {
   }
 }
 
+/** Raised when the client cannot establish or maintain the signaling connection to Twilio. Code `53000`. */
 export class SignalingConnectionError extends TwilioError {
+  /** The fixed Twilio code for this error: `53000`. */
   static readonly code = 53000;
 
   constructor(message?: string) {
@@ -26,7 +36,9 @@ export class SignalingConnectionError extends TwilioError {
   }
 }
 
+/** Raised when {@link connect} targets a Room that does not exist (and cannot be created). Code `53106`. */
 export class RoomNotFoundError extends TwilioError {
+  /** The fixed Twilio code for this error: `53106`. */
   static readonly code = 53106;
 
   constructor(message?: string) {
@@ -35,7 +47,9 @@ export class RoomNotFoundError extends TwilioError {
   }
 }
 
+/** Raised when publishing a track would exceed the Room's maximum number of simultaneously published tracks. Code `53203`. */
 export class ParticipantMaxTracksExceededError extends TwilioError {
+  /** The fixed Twilio code for this error: `53203`. */
   static readonly code = 53203;
 
   constructor(message?: string) {
@@ -48,7 +62,9 @@ export class ParticipantMaxTracksExceededError extends TwilioError {
   }
 }
 
+/** Raised when the media (PeerConnection) fails to connect or media activity ceases. Code `53405`. */
 export class MediaConnectionError extends TwilioError {
+  /** The fixed Twilio code for this error: `53405`. */
   static readonly code = 53405;
 
   constructor(message?: string) {

@@ -1,4 +1,6 @@
 #include <napi.h>
+#include <cmath>
+#include <string>
 #include "video/room_wrap.h"
 #include "video/local_participant_wrap.h"
 #include "video/remote_participant_wrap.h"
@@ -28,7 +30,17 @@ void SetLogLevel(const Napi::CallbackInfo& info) {
 
     twilio::LogLevel level;
     if (info[0].IsNumber()) {
-        level = static_cast<twilio::LogLevel>(info[0].As<Napi::Number>().Int32Value());
+        // LogLevel is the contiguous range kOff(0)..kAll(7); reject anything else
+        // before casting so an out-of-range number can't become an invalid enum.
+        double d = info[0].As<Napi::Number>().DoubleValue();
+        if (!std::isfinite(d) || d != std::trunc(d) ||
+            d < static_cast<int>(twilio::LogLevel::kOff) ||
+            d > static_cast<int>(twilio::LogLevel::kAll)) {
+            Napi::RangeError::New(env, "Invalid log level: " + std::to_string(d))
+                .ThrowAsJavaScriptException();
+            return;
+        }
+        level = static_cast<twilio::LogLevel>(static_cast<int>(d));
     } else if (info[0].IsString()) {
         std::string s = info[0].As<Napi::String>().Utf8Value();
         if (s == "off") level = twilio::LogLevel::kOff;

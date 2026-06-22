@@ -9,10 +9,14 @@ import type {
   RemoteVideoTrack,
   RemoteAudioTrack,
   RemoteDataTrack,
+  RemoteTrackPublishEvent,
+  RemoteTrackStateEvent,
   StatsReport,
+  Participant,
 } from './types.js';
 import { TwilioError, liftTwilioError } from './errors.js';
 
+/** Listener signatures for every event a {@link Room} can emit. */
 export type RoomEvents = {
   connected: () => void;
   disconnected: (error?: TwilioError) => void;
@@ -35,10 +39,10 @@ export type RoomEvents = {
     track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
     participant: RemoteParticipant,
   ) => void;
-  trackPublished: (publication: unknown, participant: RemoteParticipant) => void;
-  trackUnpublished: (publication: unknown, participant: RemoteParticipant) => void;
-  trackEnabled: (publication: unknown, participant: RemoteParticipant) => void;
-  trackDisabled: (publication: unknown, participant: RemoteParticipant) => void;
+  trackPublished: (publication: RemoteTrackPublishEvent, participant: RemoteParticipant) => void;
+  trackUnpublished: (publication: RemoteTrackPublishEvent, participant: RemoteParticipant) => void;
+  trackEnabled: (publication: RemoteTrackStateEvent, participant: RemoteParticipant) => void;
+  trackDisabled: (publication: RemoteTrackStateEvent, participant: RemoteParticipant) => void;
   videoTrackSwitchedOff: (track: RemoteVideoTrack, participant: RemoteParticipant) => void;
   videoTrackSwitchedOn: (track: RemoteVideoTrack, participant: RemoteParticipant) => void;
 };
@@ -67,11 +71,17 @@ const BUBBLED_TRACK_EVENTS = [
   'videoTrackSwitchedOn',
 ] as const;
 
+/**
+ * A connected Group Room. Obtained by awaiting {@link connect}; the SDK never
+ * constructs one directly for consumers. Emits the lifecycle, participant, and
+ * track events listed in {@link RoomEvents}. Call {@link Room.dispose} when done
+ * to release native resources and listeners.
+ */
 export class Room extends TypedEventEmitter<RoomEvents> {
   /** @internal */
   readonly _native: NativeRoom;
   private _localParticipant: LocalParticipant | null = null;
-  private _remoteParticipantCache = new Map<string, RemoteParticipant>();
+  private _remoteParticipantCache = new Map<Participant.SID, RemoteParticipant>();
   private _seededTracks: ReadonlyArray<LocalTrack>;
 
   constructor(nativeRoom: NativeRoom, seededTracks: ReadonlyArray<LocalTrack> = []) {
@@ -97,32 +107,43 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     });
   }
 
+  /** The name passed to {@link connect}, or the Room SID if no name was given. */
   get name(): string {
     return this._native.name;
   }
 
-  get sid(): string {
+  /** This Room's SID (`RM...`), unique per room instance. */
+  get sid(): Room.SID {
     return this._native.sid;
   }
 
+  /** Current connection state. Transitions are mirrored by the corresponding lifecycle events. */
   get state(): RoomState {
     return this._native.state as RoomState;
   }
 
+  /** The geographic region (e.g. `us1`) where the Room's media is being processed. */
   get mediaRegion(): string {
     return this._native.mediaRegion;
   }
 
+  /** Whether the Room is currently being recorded. Tracks the `recordingStarted`/`recordingStopped` events. */
   get isRecording(): boolean {
     return this._native.isRecording;
   }
 
+  /**
+   * The participant currently speaking loudest, or `null` when no one is
+   * dominant. Only populated when the Room was connected with dominant-speaker
+   * detection enabled. Updated by the `dominantSpeakerChanged` event.
+   */
   get dominantSpeaker(): RemoteParticipant | null {
     const native = this._native.dominantSpeaker;
     if (!native) return null;
     return this._wrapRemoteParticipant(native);
   }
 
+  /** The {@link LocalParticipant} representing this client. Lazily created and cached on first access. */
   get localParticipant(): LocalParticipant {
     if (!this._localParticipant) {
       this._localParticipant = new LocalParticipant(
@@ -133,9 +154,14 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     return this._localParticipant;
   }
 
-  get participants(): Map<string, RemoteParticipant> {
+  /**
+   * The remote participants currently connected, keyed by Participant SID
+   * (`PA...`). A fresh map is returned on each access; the {@link RemoteParticipant}
+   * instances are cached, so repeated reads return the same objects.
+   */
+  get participants(): Map<Participant.SID, RemoteParticipant> {
     const natives = this._native.remoteParticipants;
-    const map = new Map<string, RemoteParticipant>();
+    const map = new Map<Participant.SID, RemoteParticipant>();
 
     for (const native of natives) {
       map.set(native.sid, this._wrapRemoteParticipant(native));
@@ -156,6 +182,12 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     return [...this.participants.values()];
   }
 
+  /**
+   * Sample current media statistics, one {@link StatsReport} per underlying
+   * peer connection.
+   *
+   * @returns A promise that rejects if the Room is already `disconnected`.
+   */
   getStats(): Promise<StatsReport[]> {
     if (this.state === 'disconnected') {
       return Promise.reject(new Error('Room is disconnected'));
@@ -171,10 +203,18 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     });
   }
 
+  /**
+   * Leave the Room. Triggers the `disconnected` event once teardown completes;
+   * does not release the JS-side wrapper — call {@link Room.dispose} for that.
+   */
   disconnect(): void {
     this._native.disconnect();
   }
 
+  /**
+   * Disconnect (if still connected) and release all native resources, cached
+   * participant wrappers, and event listeners. The Room is unusable afterward.
+   */
   dispose(): void {
     if (this._localParticipant) {
       this._localParticipant.dispose();
@@ -206,4 +246,10 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     }
     return wrapped;
   }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-namespace
+export namespace Room {
+  /** A Room SID (`RM...`), unique per room instance. */
+  export type SID = string;
 }

@@ -142,7 +142,14 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    // I420 chroma planes are subsampled 2x in each dimension.
+    // I420 chroma planes are subsampled 2x in each dimension, so odd dimensions
+    // have no well-defined chroma plane size.
+    if ((width & 1) || (height & 1)) {
+        Napi::RangeError::New(env, "VideoFrameInput width and height must be even")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
     int uvWidth = (width + 1) / 2;
     int uvHeight = (height + 1) / 2;
     if (yStride < width || uStride < uvWidth || vStride < uvWidth) {

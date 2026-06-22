@@ -16,6 +16,7 @@ import {
   twilioErrorFromCode,
   LocalVideoTrackPublication,
 } from '../dist/index.mjs';
+import type { ConnectOptions, BandwidthProfileMode } from '../dist/index.mjs';
 
 // Internal imports for testing non-exported utilities and error classes
 import {
@@ -44,6 +45,18 @@ describe('Log Level', () => {
   it('setLogLevel rejects invalid level', () => {
     expect(() => setLogLevel('invalid' as any)).toThrow(/Invalid log level/);
   });
+
+  it('setLogLevel accepts numeric levels 0 through 7', () => {
+    for (let n = 0; n <= 7; n++) {
+      expect(() => setLogLevel(n)).not.toThrow();
+    }
+  });
+
+  it('setLogLevel rejects out-of-range numeric levels', () => {
+    expect(() => setLogLevel(8)).toThrow(/Invalid log level/);
+    expect(() => setLogLevel(-1)).toThrow(/Invalid log level/);
+    expect(() => setLogLevel(1.5)).toThrow(/Invalid log level/);
+  });
 });
 
 describe('connect() validation', () => {
@@ -54,6 +67,90 @@ describe('connect() validation', () => {
   it('rejects with non-string token', async () => {
     // @ts-expect-error testing runtime validation
     await expect(connect(123)).rejects.toThrow(/token/i);
+  });
+
+  it('rejects a non-string name option', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { name: 123 })).rejects.toThrow(/name must be a string/);
+  });
+
+  it('rejects a non-boolean feature toggle', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { enableDominantSpeaker: 'yes' })).rejects.toThrow(
+      /enableDominantSpeaker must be a boolean/,
+    );
+  });
+
+  it('rejects a present-but-non-string videoEncodingMode', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { videoEncodingMode: 42 })).rejects.toThrow(
+      /videoEncodingMode must be a string/,
+    );
+  });
+
+  it('rejects a non-object options argument', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', 42)).rejects.toThrow(/options must be an object/);
+  });
+
+  it('rejects a null options argument', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', null)).rejects.toThrow(/options must be an object/);
+  });
+
+  it('rejects a present-but-non-string bandwidthProfile.video.mode', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('token', { bandwidthProfile: { video: { mode: 1 } } }),
+    ).rejects.toThrow(/bandwidthProfile.video.mode must be a string/);
+  });
+
+  it('rejects a non-array track option', async () => {
+    const track = createLocalVideoTrack('arr-test');
+    // @ts-expect-error testing runtime validation: videoTracks must be an array
+    await expect(connect('token', { videoTracks: track })).rejects.toThrow(
+      /videoTracks must be an array/,
+    );
+  });
+
+  it('rejects a non-array preferredVideoCodecs option', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { preferredVideoCodecs: 'VP8' })).rejects.toThrow(
+      /preferredVideoCodecs must be an array/,
+    );
+  });
+
+  it('rejects a non-object iceOptions option', async () => {
+    // @ts-expect-error testing runtime validation
+    await expect(connect('token', { iceOptions: 'relay' })).rejects.toThrow(
+      /iceOptions must be an object/,
+    );
+  });
+
+  it('rejects an unknown iceOptions.transportPolicy', async () => {
+    await expect(
+      // @ts-expect-error testing runtime validation
+      connect('token', { iceOptions: { transportPolicy: 'nope' } }),
+    ).rejects.toThrow(/Unknown iceOptions.transportPolicy/);
+  });
+
+  it('rejects an out-of-range bandwidthProfile.video.maxSubscriptionBitrate', async () => {
+    await expect(
+      connect('token', { bandwidthProfile: { video: { maxSubscriptionBitrate: -1 } } }),
+    ).rejects.toThrow(/maxSubscriptionBitrate/);
+  });
+
+  it('rejects when native option access throws', async () => {
+    const options: ConnectOptions = {
+      bandwidthProfile: {
+        video: {
+          get mode(): BandwidthProfileMode {
+            throw new Error('expected error from mode getter');
+          },
+        },
+      },
+    };
+    await expect(connect('token', options)).rejects.toThrow(/expected error from mode getter/);
   });
 });
 
@@ -105,6 +202,22 @@ describe('Video Track', () => {
       timestampNs: process.hrtime.bigint(),
     });
     expect(result).toBe(false);
+  });
+
+  it('write rejects odd width or height', () => {
+    const track = createLocalVideoTrack('odd-dims-test');
+    const frame = generateI420Frame(320, 240);
+    const base = {
+      y: frame.y,
+      u: frame.u,
+      v: frame.v,
+      yStride: 320,
+      uStride: 160,
+      vStride: 160,
+      timestampNs: process.hrtime.bigint(),
+    };
+    expect(() => track.write({ ...base, width: 321, height: 240 })).toThrow(/must be even/);
+    expect(() => track.write({ ...base, width: 320, height: 241 })).toThrow(/must be even/);
   });
 });
 
