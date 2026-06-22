@@ -4,19 +4,20 @@ Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access
 
 ## Installation
 
+Install the provided `.tgz` file directly:
+
 ```bash
-npm install git+ssh://git@github.com/twilio/twilio-video-node.git
+npm install ./twilio-video-sdk-<version>.tgz
 ```
 
-A prebuilt native binary is downloaded automatically during `npm install` via the [GitHub CLI](https://cli.github.com/) (`gh`). No compilation required.
+The native binary is prebuilt and bundled — no build step required.
 
 **Requirements:**
 
 - Node.js >= 24
-- macOS x64 or Linux x64
-- [`gh` CLI](https://cli.github.com/) installed and authenticated (`gh auth login`)
+- Linux x64, or macOS on x64 Node
 
-> **Apple Silicon:** The native binary is x64-only. Install Rosetta (`softwareupdate --install-rosetta`) and run Node under x64: `arch -x86_64 node ...`
+> **Apple Silicon (M-series) Macs:** The native binary is x64-only. Install Rosetta once (`softwareupdate --install-rosetta`) and run an x64 Node so `process.arch` is `x64` (e.g. `arch -x86_64 node ...`, or an x64 Node selected via `nvm`). Installing under native arm64 Node fails with `npm error code EBADPLATFORM`.
 
 ## Quick Start
 
@@ -367,4 +368,4 @@ node examples/virtual_camera.js [room-name]
 
 ## License
 
-See [LICENSE.md](https://github.com/twilio/twilio-video-node/blob/main/LICENSE.md).
+See [LICENSE.md](./LICENSE.md).
