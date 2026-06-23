@@ -40,6 +40,14 @@ if (fs.existsSync(releasePath) || fs.existsSync(debugPath)) {
   process.exit(0);
 }
 
+if (process.env.TWILIO_VIDEO_NODE_ALLOW_GH_DOWNLOAD !== '1') {
+  exit(
+    `No prebuilt binary for ${platformDir} in this package. ` +
+      'Supported platforms: linux-x64, and macOS x64 (Apple Silicon via `arch -x86_64 node`). ' +
+      'Contact the Twilio Video team for access to other platforms.',
+  );
+}
+
 const pkg = require(path.join(ROOT, 'package.json'));
 const ghInfo = getGitHubInfo(pkg);
 

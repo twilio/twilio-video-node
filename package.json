@@ -1,6 +1,6 @@
 {
   "name": "twilio-video-sdk",
-  "version": "0.4.0",
+  "version": "1.0.0-dev",
   "description": "Twilio Video Media Streams SDK for Node.js - Server-side access to decoded video/audio frames",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -91,6 +91,6 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "repository": {
     "type": "git",
-    "url": "https://code.hq.twilio.com/client/twilio-video-node.git"
+    "url": "https://github.com/twilio/twilio-video-node.git"
   }
 }

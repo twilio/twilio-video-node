@@ -29,6 +29,9 @@ yarn-error.log*
 prebuilds/
 deps/
 
+# Packed release tarballs
+*.tgz
+
 # Coverage
 coverage/
 
