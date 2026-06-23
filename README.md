@@ -18,48 +18,85 @@ A prebuilt native binary is downloaded automatically during `npm install` via th
 
 > **Apple Silicon:** The native binary is x64-only. Install Rosetta (`softwareupdate --install-rosetta`) and run Node under x64: `arch -x86_64 node ...`
 
+### Access Token
+
+The `connect()` function takes a standard Twilio Video Access Token with a
+VideoGrant, the same token format used by the JavaScript SDK. Generate one
+using the [`twilio`](https://www.npmjs.com/package/twilio) helper library. See
+[User Identity and Access Tokens](https://www.twilio.com/docs/video/tutorials/user-identity-access-tokens)
+for details.
+
 ## Quick Start
 
 ```js
 const { connect, createLocalVideoTrack } = require('twilio-video-sdk');
 
-const videoTrack = createLocalVideoTrack('my-camera');
+async function main() {
+  const videoTrack = createLocalVideoTrack('my-camera');
 
-const room = await connect(token, {
-  name: 'my-room',
-  videoTracks: [videoTrack],
-});
-
-console.log('Connected:', room.name, room.sid);
-
-// Push I420 video frames (only after `connected` — earlier frames are dropped)
-room.on('connected', () => {
-  videoTrack.write({
-    y: yPlane,
-    u: uPlane,
-    v: vPlane,
-    yStride: 1280,
-    uStride: 640,
-    vStride: 640,
-    width: 1280,
-    height: 720,
+  const room = await connect(token, {
+    name: 'my-room',
+    videoTracks: [videoTrack],
   });
-});
 
-// Receive remote video frames
-room.on('participantConnected', participant => {
-  participant.on('trackSubscribed', track => {
-    if (track.kind === 'video') {
-      track.onFrame(frame => {
-        console.log(`${frame.width}x${frame.height}`);
-      });
-    }
+  console.log('Connected:', room.name, room.sid);
+
+  // Push I420 video frames (only after `connected` — earlier frames are dropped)
+  room.on('connected', () => {
+    videoTrack.write({
+      y: yPlane,
+      u: uPlane,
+      v: vPlane,
+      yStride: 1280,
+      uStride: 640,
+      vStride: 640,
+      width: 1280,
+      height: 720,
+    });
   });
-});
 
-// Clean up
-room.disconnect();
+  // Receive remote video frames
+  room.on('participantConnected', participant => {
+    participant.on('trackSubscribed', track => {
+      if (track.kind === 'video') {
+        track.onFrame(frame => {
+          console.log(`${frame.width}x${frame.height}`);
+        });
+      }
+    });
+  });
+}
+
+main().catch(err => {
+  console.error('Error:', err);
+  process.exit(1);
+});
 ```
+
+## Differences from the JavaScript SDK
+
+This SDK shares the same Room/Participant/Track model and event names as the
+[Twilio Video JavaScript SDK](https://www.twilio.com/docs/video/javascript),
+but is designed for server-side media processing rather than browser-based
+conferencing. Key differences:
+
+- **No device capture.** `createLocalVideoTrack()` and `createLocalAudioTrack()`
+  return pushable tracks with no media constraints. You supply raw frames via
+  `track.write()` instead of capturing from a camera or microphone.
+
+- **No rendering.** There is no `track.attach(element)`. Remote media arrives as
+  raw decoded frames (I420 video, PCM audio) via `track.onFrame(callback)`.
+
+- **Fixed audio input format.** `LocalAudioTrack.write()` accepts only 48 kHz
+  mono S16LE PCM. Received audio may vary in sample rate and channel count.
+
+- **No Bandwidth Profile or adaptive simulcast.** Track priority, render
+  dimensions, and bandwidth limits are not configurable from this SDK. Video
+  encoding is controlled via `encodingParameters` at connect time.
+
+- **Synchronous track creation.** `createLocalVideoTrack()` returns a track
+  immediately (no async device permissions). Tracks can be passed to `connect()`
+  or published later via `localParticipant.publishTrack()`.
 
 ## API Overview
 
