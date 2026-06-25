@@ -10,7 +10,7 @@ Install the provided `.tgz` file directly:
 npm install ./twilio-video-node-sdk-<version>.tgz
 ```
 
-The native binary is prebuilt and bundled — no build step required.
+The native binary is prebuilt and bundled — no build step required. Import it as `@twilio/video-node-sdk`.
 
 **Requirements:**
 
