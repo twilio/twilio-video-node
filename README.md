@@ -2,7 +2,7 @@
 
 Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access. Built on a native C++ addon over WebRTC, it lets you push and receive decoded video and audio frames from Node.js on realtime.
 
-**Note: this is a private beta release of the Twilio Media SDK for Node.js. It is provided for evaluation purposes only and should not be used with production traffic. During the beta period this SDK is not HIPAA eligible.**  
+**Note: this is a beta release of the Twilio Media SDK for Node.js. It is provided for evaluation purposes only and should not be used with production traffic. During the beta period this SDK is not HIPAA eligible.**  
 
 ## Installation
 
