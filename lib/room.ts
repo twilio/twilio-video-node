@@ -18,7 +18,6 @@ import { TwilioError, liftTwilioError } from './errors.js';
 
 /** Listener signatures for every event a {@link Room} can emit. */
 export type RoomEvents = {
-  connected: () => void;
   disconnected: (error?: TwilioError) => void;
   connectFailure: (error: TwilioError) => void;
   reconnecting: (error?: TwilioError) => void;
@@ -84,13 +83,24 @@ export class Room extends TypedEventEmitter<RoomEvents> {
   private _remoteParticipantCache = new Map<Participant.SID, RemoteParticipant>();
   private _seededTracks: ReadonlyArray<LocalTrack>;
 
-  constructor(nativeRoom: NativeRoom, seededTracks: ReadonlyArray<LocalTrack> = []) {
+  /**
+   * @internal `onConnected` fires once for the native connect signal, which is
+   * already consumed by {@link connect} before the Room is handed to the caller.
+   */
+  constructor(
+    nativeRoom: NativeRoom,
+    seededTracks: ReadonlyArray<LocalTrack> = [],
+    onConnected?: () => void,
+  ) {
     super();
     this._native = nativeRoom;
     this._seededTracks = seededTracks;
 
     this._native.setEventCallback((event: string, data?: unknown) => {
-      if (PARTICIPANT_EVENTS.has(event)) {
+      if (event === 'connected') {
+        onConnected?.();
+        onConnected = undefined;
+      } else if (PARTICIPANT_EVENTS.has(event)) {
         const wrapped = data ? this._wrapRemoteParticipant(data as NativeRemoteParticipant) : null;
         this.emit(event, wrapped);
         if (event === 'participantDisconnected' && wrapped) {

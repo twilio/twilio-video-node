@@ -225,19 +225,14 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
       ...(options.audioTracks ?? []),
       ...(options.dataTracks ?? []),
     ];
-    const room = new Room(nativeRoom, seededTracks);
-
-    const onConnected = () => {
+    const room = new Room(nativeRoom, seededTracks, () => {
       room.removeListener('connectFailure', onFailure);
       resolve(room);
-    };
+    });
     const onFailure = (error: unknown) => {
-      room.removeListener('connected', onConnected);
       room.dispose();
       reject(error || new Error('Connection failed'));
     };
-
-    room.once('connected', onConnected);
     room.once('connectFailure', onFailure);
   });
 }

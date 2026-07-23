@@ -1,0 +1,11 @@
+This SDK is currently in beta. See the [README](README.md) for details.
+
+# 1.0.0-preview.2 (Unreleased)
+
+## Breaking Changes
+
+- Room no longer emits a `connected` event. The underlying native signal was always
+  one-shot and consumed internally to resolve `connect()`'s promise before the Room
+  was returned, so a `room.on('connected', ...)` listener could never fire. TypeScript
+  consumers with such a listener will see a compile error and should remove it;
+  plain JavaScript consumers are unaffected.

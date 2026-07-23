@@ -2,7 +2,7 @@
 
 Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access. Built on a native C++ addon over WebRTC, it lets you push and receive decoded video and audio frames from Node.js on realtime.
 
-**Note: this is a beta release of the Twilio Media SDK for Node.js. It is provided for evaluation purposes only and should not be used with production traffic. During the beta period this SDK is not HIPAA eligible.**  
+**Note: this is a beta release of the Twilio Media SDK for Node.js. It is provided for evaluation purposes only and should not be used with production traffic. During the beta period this SDK is not HIPAA eligible.**
 
 ## Installation
 
@@ -44,18 +44,17 @@ async function main() {
 
   console.log('Connected:', room.name, room.sid);
 
-  // Push I420 video frames (only after `connected` — earlier frames are dropped)
-  room.on('connected', () => {
-    videoTrack.write({
-      y: yPlane,
-      u: uPlane,
-      v: vPlane,
-      yStride: 1280,
-      uStride: 640,
-      vStride: 640,
-      width: 1280,
-      height: 720,
-    });
+  // Push I420 video frames (connect() only resolves once the room is connected;
+  // frames pushed before that point would be silently dropped)
+  videoTrack.write({
+    y: yPlane,
+    u: uPlane,
+    v: vPlane,
+    yStride: 1280,
+    uStride: 640,
+    vStride: 640,
+    width: 1280,
+    height: 720,
   });
 
   // Receive remote video frames
@@ -139,7 +138,6 @@ conferencing. Key differences:
 
 | Event                     | Handler Signature                                  |
 | ------------------------- | -------------------------------------------------- |
-| `connected`               | `() => void`                                       |
 | `disconnected`            | `(error?: TwilioError) => void`                    |
 | `connectFailure`          | `(error: TwilioError) => void`                     |
 | `reconnecting`            | `(error?: TwilioError) => void`                    |
@@ -199,7 +197,7 @@ const reports = await room.getStats();
 
 ### LocalVideoTrack
 
-Push raw I420 video frames into a room. Frames pushed before the room `connected` event are silently dropped.
+Push raw I420 video frames into a room. Frames pushed before `connect()` resolves are silently dropped.
 
 ```js
 const track = createLocalVideoTrack('camera');
