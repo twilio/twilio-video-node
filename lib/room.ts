@@ -98,6 +98,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'connected') {
+        this._seedExistingParticipants();
         onConnected?.();
         onConnected = undefined;
       } else if (PARTICIPANT_EVENTS.has(event)) {
@@ -236,6 +237,16 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     this._remoteParticipantCache.clear();
     this._native.dispose();
     this.removeAllListeners();
+  }
+
+  /**
+   * Wraps every participant already in the Room, so their track events are
+   * observable from the moment the Room connects.
+   */
+  private _seedExistingParticipants(): void {
+    for (const native of this._native.remoteParticipants) {
+      this._wrapRemoteParticipant(native);
+    }
   }
 
   private _bubbleTrackEvents(participant: RemoteParticipant): void {

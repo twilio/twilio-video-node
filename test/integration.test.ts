@@ -658,6 +658,65 @@ describe('Room-level track event bubbling', () => {
   });
 });
 
+describe('Late joiner into a populated room', () => {
+  it('emits trackSubscribed for tracks a peer published before we joined', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('late-cam');
+    const audioTrack = createLocalAudioTrack('late-mic');
+
+    const connA = await connectToRoom('alice', roomName, {
+      videoTracks: [videoTrack],
+      audioTracks: [audioTrack],
+    });
+    const connB = await connectToRoom('bob', roomName);
+
+    const publishers: string[] = [];
+    const kinds: string[] = [];
+    const bothSubscribed = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error(`Timeout waiting for trackSubscribed x2, got: [${kinds}]`)),
+        TIMEOUT.subscribe,
+      );
+      connB.room.on('trackSubscribed', (track: RemoteTrack, participant: RemoteParticipant) => {
+        kinds.push(track.kind);
+        publishers.push(participant.identity);
+        if (kinds.length === 2) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+
+    try {
+      await bothSubscribed;
+      expect(kinds.toSorted()).toEqual(['audio', 'video']);
+      expect(publishers).toEqual(['alice', 'alice']);
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+
+  it('emits trackDisabled and trackEnabled for a peer already in the room', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('late-toggle-cam');
+
+    const connA = await connectToRoom('alice', roomName, { videoTracks: [videoTrack] });
+    const connB = await connectToRoom('bob', roomName);
+
+    const disabled = waitForEvent(connB.room, 'trackDisabled', TIMEOUT.subscribe);
+    const enabled = waitForEvent(connB.room, 'trackEnabled', TIMEOUT.subscribe);
+
+    try {
+      videoTrack.enabled = false;
+      await disabled;
+      videoTrack.enabled = true;
+      await enabled;
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
 describe('RemoteTrackPublication', () => {
   it('remote videoTracks Map has publication with correct properties after subscription', async () => {
     const roomName = uniqueRoom();
