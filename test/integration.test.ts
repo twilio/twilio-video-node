@@ -394,6 +394,8 @@ describe('RemoteParticipant trackPublished/trackUnpublished', () => {
       'trackPublished',
       TIMEOUT.subscribe,
     );
+    const subscribedPromise = waitForEvent(remoteA, 'trackSubscribed', TIMEOUT.subscribe);
+
     connA.room.localParticipant.publishTrack(videoTrack);
     const publication = await publishedPromise;
 
@@ -401,7 +403,7 @@ describe('RemoteParticipant trackPublished/trackUnpublished', () => {
     expect(publication.trackSid).toBeTruthy();
 
     // Wait for subscription to complete before unpublishing
-    await waitForEvent(remoteA, 'trackSubscribed', TIMEOUT.subscribe);
+    await subscribedPromise;
 
     const unpublishedPromise = waitForEvent<{ trackName: string }>(
       remoteA,
@@ -905,8 +907,9 @@ describe('Room.getStats()', () => {
     const roomName = uniqueRoom();
     const { room, cleanup } = await connectToRoom('alice', roomName);
 
+    const disconnectedPromise = waitForEvent(room, 'disconnected', 5_000);
     room.disconnect();
-    await waitForEvent(room, 'disconnected', 5_000);
+    await disconnectedPromise;
 
     await expect(room.getStats()).rejects.toThrow(/disconnected/i);
     await cleanup();
