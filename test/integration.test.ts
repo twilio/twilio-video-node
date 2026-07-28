@@ -907,9 +907,9 @@ describe('Room.getStats()', () => {
     const roomName = uniqueRoom();
     const { room, cleanup } = await connectToRoom('alice', roomName);
 
-    const disconnected = waitForEvent(room, 'disconnected', 5_000);
+    const disconnectedPromise = waitForEvent(room, 'disconnected', 5_000);
     room.disconnect();
-    await disconnected;
+    await disconnectedPromise;
 
     await expect(room.getStats()).rejects.toThrow(/disconnected/i);
     await cleanup();
