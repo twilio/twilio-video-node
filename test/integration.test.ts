@@ -34,22 +34,6 @@ function uniqueRoom(): string {
   return `test-${crypto.randomUUID()}`;
 }
 
-function waitForEvent<T = unknown>(
-  emitter: EventEmitter,
-  event: string,
-  timeout: number,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timeout waiting for '${event}'`)), timeout);
-    const handler = (arg: T) => {
-      clearTimeout(timer);
-      emitter.removeListener(event, handler);
-      resolve(arg);
-    };
-    emitter.on(event, handler);
-  });
-}
-
 function waitForEvents<T = unknown>(
   emitter: EventEmitter,
   event: string,
@@ -60,7 +44,13 @@ function waitForEvents<T = unknown>(
     const received: T[] = [];
     const timer = setTimeout(() => {
       emitter.removeListener(event, handler);
-      reject(new Error(`Timeout waiting for ${count} '${event}' events; got ${received.length}`));
+      reject(
+        new Error(
+          count === 1
+            ? `Timeout waiting for '${event}'`
+            : `Timeout waiting for ${count} '${event}' events; got ${received.length}`,
+        ),
+      );
     }, timeout);
     const handler = (arg: T) => {
       received.push(arg);
@@ -71,6 +61,14 @@ function waitForEvents<T = unknown>(
     };
     emitter.on(event, handler);
   });
+}
+
+function waitForEvent<T = unknown>(
+  emitter: EventEmitter,
+  event: string,
+  timeout: number,
+): Promise<T> {
+  return waitForEvents<T>(emitter, event, 1, timeout).then(([first]) => first);
 }
 
 function sleep(ms: number): Promise<void> {
