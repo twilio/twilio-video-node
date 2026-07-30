@@ -1,6 +1,18 @@
 #include "local_data_track_wrap.h"
 
 namespace twilio_video_node {
+namespace {
+
+// DataTrackOptions stores -1 when unset, so the requested value is preserved
+// exactly, 65535 included.
+Napi::Value RequestedOptionOrNull(Napi::Env env, int value) {
+    if (value < 0) {
+        return env.Null();
+    }
+    return Napi::Number::New(env, value);
+}
+
+}
 
 Napi::FunctionReference LocalDataTrackWrap::constructor_;
 
@@ -34,6 +46,8 @@ Napi::Object LocalDataTrackWrap::NewInstance(Napi::Env env,
     Napi::Object obj = constructor_.New({});
     LocalDataTrackWrap* wrap = Napi::ObjectWrap<LocalDataTrackWrap>::Unwrap(obj);
     wrap->track_ = track;
+    wrap->max_packet_life_time_ = options.getMaxPacketLifeTime();
+    wrap->max_retransmits_ = options.getMaxRetransmits();
 
     return scope.Escape(obj).ToObject();
 }
@@ -55,13 +69,11 @@ Napi::Value LocalDataTrackWrap::GetName(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value LocalDataTrackWrap::GetMaxPacketLifeTime(const Napi::CallbackInfo& info) {
-    if (!track_) return info.Env().Undefined();
-    return Napi::Number::New(info.Env(), track_->getMaxPacketLifeTime());
+    return RequestedOptionOrNull(info.Env(), max_packet_life_time_);
 }
 
 Napi::Value LocalDataTrackWrap::GetMaxRetransmits(const Napi::CallbackInfo& info) {
-    if (!track_) return info.Env().Undefined();
-    return Napi::Number::New(info.Env(), track_->getMaxRetransmits());
+    return RequestedOptionOrNull(info.Env(), max_retransmits_);
 }
 
 Napi::Value LocalDataTrackWrap::IsReliable(const Napi::CallbackInfo& info) {

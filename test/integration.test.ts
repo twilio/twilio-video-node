@@ -50,6 +50,29 @@ function waitForEvent<T = unknown>(
   });
 }
 
+function waitForEvents<T = unknown>(
+  emitter: EventEmitter,
+  event: string,
+  count: number,
+  timeout: number,
+): Promise<T[]> {
+  return new Promise((resolve, reject) => {
+    const received: T[] = [];
+    const timer = setTimeout(() => {
+      emitter.removeListener(event, handler);
+      reject(new Error(`Timeout waiting for ${count} '${event}' events; got ${received.length}`));
+    }, timeout);
+    const handler = (arg: T) => {
+      received.push(arg);
+      if (received.length < count) return;
+      clearTimeout(timer);
+      emitter.removeListener(event, handler);
+      resolve(received);
+    };
+    emitter.on(event, handler);
+  });
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -279,6 +302,68 @@ describe('Multiple tracks', () => {
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
+  });
+});
+
+describe('RemoteDataTrack delivery options', () => {
+  const deliveryCases = [
+    {
+      name: 'maxRetransmits and ordered',
+      options: { name: 'retransmit-chat', maxRetransmits: 3, ordered: false },
+      expected: { maxRetransmits: 3, maxPacketLifeTime: null, reliable: false, ordered: false },
+    },
+    {
+      name: 'maxPacketLifeTime',
+      options: { name: 'lifetime-chat', maxPacketLifeTime: 500 },
+      expected: { maxRetransmits: null, maxPacketLifeTime: 500, reliable: false, ordered: true },
+    },
+    {
+      name: 'neither limit',
+      options: { name: 'reliable-chat' },
+      expected: { maxRetransmits: null, maxPacketLifeTime: null, reliable: true, ordered: true },
+    },
+    {
+      // A subscribed track reports 65535 the same way it reports an unset limit, so the
+      // value does not survive the wire. `reliable` is read separately and stays accurate.
+      name: 'a maxPacketLifeTime of 65535',
+      options: { name: 'max-lifetime-chat', maxPacketLifeTime: 65535 },
+      expected: { maxRetransmits: null, maxPacketLifeTime: null, reliable: false, ordered: true },
+    },
+  ];
+
+  // Delivery options are per-track, so one publisher carries every case at once
+  // and the cases share a single room rather than connecting one each.
+  const subscribed = new Map<string, RemoteDataTrack>();
+  const connections: Array<{ cleanup: () => Promise<void> }> = [];
+
+  beforeAll(async () => {
+    const { connA, connB, remoteA } = await connectPair(uniqueRoom());
+    connections.push(connA, connB);
+    const tracksPromise = waitForEvents<RemoteDataTrack>(
+      remoteA,
+      'trackSubscribed',
+      deliveryCases.length,
+      TIMEOUT.subscribe,
+    );
+    for (const { options } of deliveryCases) {
+      connA.room.localParticipant.publishTrack(createLocalDataTrack(options));
+    }
+    for (const track of await tracksPromise) {
+      subscribed.set(track.name, track);
+    }
+  }, 2 * TIMEOUT.subscribe);
+
+  afterAll(() => Promise.all(connections.map(c => c.cleanup())));
+
+  it.each(deliveryCases)('carries $name from the publisher', ({ options, expected }) => {
+    const track = subscribed.get(options.name);
+    if (!track) {
+      throw new Error(`no track subscribed for '${options.name}'`);
+    }
+    expect(track.maxRetransmits).toBe(expected.maxRetransmits);
+    expect(track.maxPacketLifeTime).toBe(expected.maxPacketLifeTime);
+    expect(track.reliable).toBe(expected.reliable);
+    expect(track.ordered).toBe(expected.ordered);
   });
 });
 

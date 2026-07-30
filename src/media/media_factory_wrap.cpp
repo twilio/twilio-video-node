@@ -98,17 +98,21 @@ Napi::Value MediaFactoryWrap::CreateDataTrack(const Napi::CallbackInfo& info) {
 
     if (info.Length() > 0 && info[0].IsObject()) {
         auto options = info[0].As<Napi::Object>();
-        if (options.Has("name")) {
-            name = options.Get("name").As<Napi::String>().Utf8Value();
+        auto nameValue = options.Get("name");
+        if (nameValue.IsString()) {
+            name = nameValue.As<Napi::String>().Utf8Value();
         }
-        if (options.Has("maxPacketLifeTime")) {
-            builder.setMaxPacketLifeTime(options.Get("maxPacketLifeTime").As<Napi::Number>().Int32Value());
+        auto maxPacketLifeTime = options.Get("maxPacketLifeTime");
+        if (maxPacketLifeTime.IsNumber()) {
+            builder.setMaxPacketLifeTime(maxPacketLifeTime.As<Napi::Number>().Int32Value());
         }
-        if (options.Has("maxRetransmits")) {
-            builder.setMaxRetransmits(options.Get("maxRetransmits").As<Napi::Number>().Int32Value());
+        auto maxRetransmits = options.Get("maxRetransmits");
+        if (maxRetransmits.IsNumber()) {
+            builder.setMaxRetransmits(maxRetransmits.As<Napi::Number>().Int32Value());
         }
-        if (options.Has("ordered")) {
-            builder.setOrdered(options.Get("ordered").As<Napi::Boolean>().Value());
+        auto ordered = options.Get("ordered");
+        if (ordered.IsBoolean()) {
+            builder.setOrdered(ordered.As<Napi::Boolean>().Value());
         }
     }
 

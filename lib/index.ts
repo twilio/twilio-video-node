@@ -150,6 +150,9 @@ function loadAddon(): NativeAddon {
 
 const addon = loadAddon();
 
+/** Upper bound for a data track's `maxPacketLifeTime`/`maxRetransmits`; both are `unsigned short` in RTCDataChannelInit. */
+const MAX_DATA_TRACK_LIMIT = 65535;
+
 // --- Default MediaFactory ---
 
 let defaultFactory: NativeMediaFactory | null = null;
@@ -334,8 +337,10 @@ export function createLocalAudioTrack(
  *
  * @param options - A track name, or a {@link LocalDataTrackOptions} object.
  * @returns The created {@link LocalDataTrack}.
- * @throws {TypeError} If `options` is not a string or object, or if `name` is not a non-empty string.
- * @throws {Error} If both `maxRetransmits` and `maxPacketLifeTime` are set, or if either is negative.
+ * @throws {TypeError} If `options` is not a string or object, if `name` is not a non-empty string,
+ * or if `ordered` is not a boolean.
+ * @throws {Error} If both `maxRetransmits` and `maxPacketLifeTime` are set.
+ * @throws {RangeError} If either `maxRetransmits` or `maxPacketLifeTime` is not an integer in [0, 65535].
  *
  * @example
  * // Reliable, ordered messaging.
@@ -348,23 +353,25 @@ export function createLocalAudioTrack(
  * const dataTrack = createLocalDataTrack({ name: 'telemetry', maxPacketLifeTime: 1000 });
  */
 export function createLocalDataTrack(options: LocalDataTrackOptions | string = {}): LocalDataTrack {
-  if (typeof options !== 'string' && (typeof options !== 'object' || options === null)) {
-    throw new TypeError('createLocalDataTrack expects a string or options object');
-  }
-  const opts: LocalDataTrackOptions = typeof options === 'string' ? { name: options } : options;
-  if (opts.name !== undefined && (typeof opts.name !== 'string' || opts.name.length === 0)) {
-    throw new TypeError('name must be a non-empty string');
+  const name = resolveName(options, 'createLocalDataTrack');
+  const opts: LocalDataTrackOptions = typeof options === 'string' ? {} : options;
+  if (opts.ordered !== undefined && typeof opts.ordered !== 'boolean') {
+    throw new TypeError('ordered must be a boolean');
   }
   if (opts.maxRetransmits != null && opts.maxPacketLifeTime != null) {
     throw new Error('maxRetransmits and maxPacketLifeTime are mutually exclusive');
   }
-  if (
-    (opts.maxRetransmits != null && opts.maxRetransmits < 0) ||
-    (opts.maxPacketLifeTime != null && opts.maxPacketLifeTime < 0)
-  ) {
-    throw new Error('maxRetransmits and maxPacketLifeTime must be non-negative');
+  for (const key of ['maxRetransmits', 'maxPacketLifeTime'] as const) {
+    const value = opts[key];
+    // Out-of-range values would be truncated silently by the native layer,
+    // yielding a track with delivery guarantees the caller never asked for.
+    if (value != null && (!Number.isInteger(value) || value < 0 || value > MAX_DATA_TRACK_LIMIT)) {
+      throw new RangeError(
+        `${key} must be an integer between 0 and ${MAX_DATA_TRACK_LIMIT}; got ${value}`,
+      );
+    }
   }
-  return getDefaultMediaFactory().createDataTrack(opts);
+  return getDefaultMediaFactory().createDataTrack({ ...opts, name });
 }
 
 /**

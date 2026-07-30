@@ -266,9 +266,9 @@ export interface LocalAudioTrack {
 export interface LocalDataTrackOptions {
   name?: string;
   /** Max time (ms) to attempt retransmitting a message before dropping it. Mutually exclusive with `maxRetransmits`. */
-  maxPacketLifeTime?: number;
+  maxPacketLifeTime?: number | null;
   /** Max number of retransmit attempts per message. Mutually exclusive with `maxPacketLifeTime`. */
-  maxRetransmits?: number;
+  maxRetransmits?: number | null;
   /** Whether messages are delivered in order. Defaults to `true`. */
   ordered?: boolean;
 }
@@ -277,10 +277,16 @@ export interface LocalDataTrackOptions {
 export interface LocalDataTrack {
   readonly name: string;
   readonly kind: 'data';
-  /** Configured `maxPacketLifeTime` in ms, or a sentinel when unset. */
-  readonly maxPacketLifeTime: number;
-  /** Configured `maxRetransmits`, or a sentinel when unset. */
-  readonly maxRetransmits: number;
+  /**
+   * The maximum period of time in milliseconds in which retransmissions will be
+   * sent, as passed to {@link createLocalDataTrack}, or `null` when unset.
+   */
+  readonly maxPacketLifeTime: number | null;
+  /**
+   * The maximum number of times a message is retransmitted before being given
+   * up on, as passed to {@link createLocalDataTrack}, or `null` when unset.
+   */
+  readonly maxRetransmits: number | null;
   /** Whether delivery is reliable (neither retransmit limit set). */
   readonly reliable: boolean;
   readonly ordered: boolean;
@@ -340,6 +346,21 @@ export interface RemoteDataTrack {
   readonly name: string;
   readonly kind: 'data';
   readonly sid: Track.SID;
+  /**
+   * The maximum period of time in milliseconds in which the publisher
+   * retransmits messages, or `null` when they left it unset. A publisher's
+   * `65535` also reads back as `null`, because the subscribed track reports it
+   * the same way it reports an unset limit; use `reliable` to tell the two
+   * apart.
+   */
+  readonly maxPacketLifeTime: number | null;
+  /**
+   * The maximum number of times the publisher retransmits a message before
+   * giving up, or `null` when unset. `65535` reads back as `null`, as for
+   * {@link RemoteDataTrack.maxPacketLifeTime}.
+   */
+  readonly maxRetransmits: number | null;
+  /** Whether delivery is reliable (the publisher set neither retransmit limit). */
   readonly reliable: boolean;
   readonly ordered: boolean;
   /** Register the message callback, replacing any previous one. */
