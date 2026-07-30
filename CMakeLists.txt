@@ -110,6 +110,7 @@ add_library(${PROJECT_NAME} SHARED
    src/addon.cpp
    src/common/error.cpp
    src/common/async_context.cpp
+   src/common/napi_options.cpp
    src/media/media_factory_wrap.cpp
    src/media/local_video_track_wrap.cpp
    src/media/local_audio_track_wrap.cpp
