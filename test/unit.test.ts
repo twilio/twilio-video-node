@@ -254,16 +254,13 @@ describe('Audio Track', () => {
 });
 
 describe('Data Track', () => {
-  // rtc-cpp uses UINT16_MAX when maxRetransmits/maxPacketLifeTime are unset (reliable mode)
-  const RELIABLE_DEFAULT = 65535;
-
   it('creates a named data track with expected defaults', () => {
     const track = createLocalDataTrack('my-channel');
     expect(track.name).toBe('my-channel');
     expect(track.ordered).toBe(true);
     expect(track.reliable).toBe(true);
-    expect(track.maxRetransmits).toBe(RELIABLE_DEFAULT);
-    expect(track.maxPacketLifeTime).toBe(RELIABLE_DEFAULT);
+    expect(track.maxRetransmits).toBeNull();
+    expect(track.maxPacketLifeTime).toBeNull();
   });
 
   it('creates a data track with defaults when called with no arguments', () => {
@@ -271,15 +268,15 @@ describe('Data Track', () => {
     expect(track.name).toBeDefined();
     expect(track.ordered).toBe(true);
     expect(track.reliable).toBe(true);
-    expect(track.maxRetransmits).toBe(RELIABLE_DEFAULT);
-    expect(track.maxPacketLifeTime).toBe(RELIABLE_DEFAULT);
+    expect(track.maxRetransmits).toBeNull();
+    expect(track.maxPacketLifeTime).toBeNull();
   });
 
   it('accepts maxRetransmits option', () => {
     const track = createLocalDataTrack({ name: 'retransmit-track', maxRetransmits: 3 });
     expect(track.name).toBe('retransmit-track');
     expect(track.maxRetransmits).toBe(3);
-    expect(track.maxPacketLifeTime).toBe(RELIABLE_DEFAULT);
+    expect(track.maxPacketLifeTime).toBeNull();
     expect(track.reliable).toBe(false);
     expect(track.ordered).toBe(true);
   });
@@ -288,7 +285,7 @@ describe('Data Track', () => {
     const track = createLocalDataTrack({ name: 'lifetime-track', maxPacketLifeTime: 1000 });
     expect(track.name).toBe('lifetime-track');
     expect(track.maxPacketLifeTime).toBe(1000);
-    expect(track.maxRetransmits).toBe(RELIABLE_DEFAULT);
+    expect(track.maxRetransmits).toBeNull();
     expect(track.reliable).toBe(false);
     expect(track.ordered).toBe(true);
   });
@@ -305,16 +302,60 @@ describe('Data Track', () => {
     );
   });
 
-  it('throws on negative maxRetransmits', () => {
-    expect(() => createLocalDataTrack({ maxRetransmits: -1 })).toThrow(
-      'maxRetransmits and maxPacketLifeTime must be non-negative',
-    );
+  // Every out-of-range value must be rejected loudly: the native layer reads these
+  // with Int32Value(), which turns NaN into 0 and truncates fractions, silently
+  // producing an unreliable track the caller never asked for.
+  const rejectedLimits = [-1, 65536, 70000, 1.5, NaN, Infinity, -Infinity];
+  const rejectedCases = (['maxRetransmits', 'maxPacketLifeTime'] as const).flatMap(key =>
+    rejectedLimits.map(value => ({ key, value })),
+  );
+
+  it.each(rejectedCases)('throws on $key: $value', ({ key, value }) => {
+    const create = () => createLocalDataTrack({ [key]: value });
+    expect(create).toThrow(RangeError);
+    expect(create).toThrow(new RegExp(`^${key} must be an integer between 0 and 65535`));
   });
 
-  it('throws on negative maxPacketLifeTime', () => {
-    expect(() => createLocalDataTrack({ maxPacketLifeTime: -1 })).toThrow(
-      'maxRetransmits and maxPacketLifeTime must be non-negative',
-    );
+  it('throws on a non-boolean ordered', () => {
+    expect(() => createLocalDataTrack({ ordered: 0 as unknown as boolean })).toThrow(TypeError);
+  });
+
+  it('treats explicitly undefined options as unset', () => {
+    const track = createLocalDataTrack({
+      name: 'spread-track',
+      maxRetransmits: undefined,
+      maxPacketLifeTime: undefined,
+      ordered: undefined,
+    });
+    expect(track.name).toBe('spread-track');
+    expect(track.maxRetransmits).toBeNull();
+    expect(track.maxPacketLifeTime).toBeNull();
+    expect(track.ordered).toBe(true);
+    expect(track.reliable).toBe(true);
+  });
+
+  it('accepts a value read off a track as an option', () => {
+    const source = createLocalDataTrack({ name: 'source', maxRetransmits: 3 });
+    const clone = createLocalDataTrack({
+      name: 'clone',
+      maxRetransmits: source.maxRetransmits,
+      maxPacketLifeTime: source.maxPacketLifeTime,
+    });
+    expect(clone.maxRetransmits).toBe(3);
+    expect(clone.maxPacketLifeTime).toBeNull();
+  });
+
+  it('accepts 0 as a distinct value from unset', () => {
+    const track = createLocalDataTrack({ name: 'zero-retransmits', maxRetransmits: 0 });
+    expect(track.maxRetransmits).toBe(0);
+    expect(track.reliable).toBe(false);
+  });
+
+  it('reports the maximum maxPacketLifeTime rather than collapsing it to unset', () => {
+    const track = createLocalDataTrack({ name: 'max-lifetime', maxPacketLifeTime: 65535 });
+    expect(track.maxPacketLifeTime).toBe(65535);
+    expect(track.maxRetransmits).toBeNull();
+    expect(track.reliable).toBe(false);
   });
 
   it('send does not throw on disconnected track', () => {

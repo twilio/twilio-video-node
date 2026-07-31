@@ -2,8 +2,10 @@
 #include "local_video_track_wrap.h"
 #include "local_audio_track_wrap.h"
 #include "local_data_track_wrap.h"
+#include "../common/napi_options.h"
 #include <twilio/media/data_track_options.h>
 #include <atomic>
+#include <optional>
 
 namespace twilio_video_node {
 
@@ -63,30 +65,26 @@ MediaFactoryWrap::~MediaFactoryWrap() {
 Napi::Value MediaFactoryWrap::CreateVideoTrack(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    std::string name = nextDefaultName("video");
+    std::optional<std::string> name;
     if (info.Length() > 0 && info[0].IsObject()) {
         auto options = info[0].As<Napi::Object>();
-        if (options.Has("name")) {
-            name = options.Get("name").As<Napi::String>().Utf8Value();
-        }
+        if (!ReadOptionalString(env, options, "name", name)) return env.Undefined();
     }
 
-    twilio::media::VideoTrackOptions trackOptions(true, name);
+    twilio::media::VideoTrackOptions trackOptions(true, name ? *name : nextDefaultName("video"));
     return LocalVideoTrackWrap::NewInstance(env, factory_, trackOptions);
 }
 
 Napi::Value MediaFactoryWrap::CreateAudioTrack(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    std::string name = nextDefaultName("audio");
+    std::optional<std::string> name;
     if (info.Length() > 0 && info[0].IsObject()) {
         auto options = info[0].As<Napi::Object>();
-        if (options.Has("name")) {
-            name = options.Get("name").As<Napi::String>().Utf8Value();
-        }
+        if (!ReadOptionalString(env, options, "name", name)) return env.Undefined();
     }
 
-    twilio::media::AudioTrackOptions trackOptions(true, name);
+    twilio::media::AudioTrackOptions trackOptions(true, name ? *name : nextDefaultName("audio"));
     return LocalAudioTrackWrap::NewInstance(env, factory_, trackOptions, adm_);
 }
 
@@ -94,25 +92,27 @@ Napi::Value MediaFactoryWrap::CreateDataTrack(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     twilio::media::DataTrackOptions::Builder builder;
-    std::string name = nextDefaultName("data");
+    std::optional<std::string> name;
 
     if (info.Length() > 0 && info[0].IsObject()) {
         auto options = info[0].As<Napi::Object>();
-        if (options.Has("name")) {
-            name = options.Get("name").As<Napi::String>().Utf8Value();
+        std::optional<int32_t> maxPacketLifeTime;
+        std::optional<int32_t> maxRetransmits;
+        std::optional<bool> ordered;
+        if (!ReadOptionalString(env, options, "name", name) ||
+            !ReadOptionalInt32(env, options, "maxPacketLifeTime", maxPacketLifeTime) ||
+            !ReadOptionalInt32(env, options, "maxRetransmits", maxRetransmits) ||
+            !ReadOptionalBool(env, options, "ordered", ordered)) {
+            return env.Undefined();
         }
-        if (options.Has("maxPacketLifeTime")) {
-            builder.setMaxPacketLifeTime(options.Get("maxPacketLifeTime").As<Napi::Number>().Int32Value());
-        }
-        if (options.Has("maxRetransmits")) {
-            builder.setMaxRetransmits(options.Get("maxRetransmits").As<Napi::Number>().Int32Value());
-        }
-        if (options.Has("ordered")) {
-            builder.setOrdered(options.Get("ordered").As<Napi::Boolean>().Value());
-        }
+        // Each setter is called only when the caller set it, so an unset limit
+        // keeps the builder's "no limit" default rather than becoming a value.
+        if (maxPacketLifeTime) builder.setMaxPacketLifeTime(*maxPacketLifeTime);
+        if (maxRetransmits) builder.setMaxRetransmits(*maxRetransmits);
+        if (ordered) builder.setOrdered(*ordered);
     }
 
-    builder.setName(name);
+    builder.setName(name ? *name : nextDefaultName("data"));
     twilio::media::DataTrackOptions trackOptions = builder.build();
     return LocalDataTrackWrap::NewInstance(env, factory_, trackOptions);
 }

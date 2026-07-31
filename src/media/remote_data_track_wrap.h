@@ -26,6 +26,8 @@ private:
     Napi::Value GetName(const Napi::CallbackInfo& info);
     Napi::Value GetKind(const Napi::CallbackInfo& info);
     Napi::Value GetSid(const Napi::CallbackInfo& info);
+    Napi::Value GetMaxPacketLifeTime(const Napi::CallbackInfo& info);
+    Napi::Value GetMaxRetransmits(const Napi::CallbackInfo& info);
     Napi::Value IsReliable(const Napi::CallbackInfo& info);
     Napi::Value IsOrdered(const Napi::CallbackInfo& info);
     Napi::Value OnMessage(const Napi::CallbackInfo& info);

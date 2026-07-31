@@ -32,6 +32,10 @@ private:
     Napi::Value IsOrdered(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::media::LocalDataTrack> track_;
+
+    // Requested values, kept because LocalDataTrack's getters narrow them to uint16_t.
+    int max_packet_life_time_ = -1;
+    int max_retransmits_ = -1;
 };
 
 }

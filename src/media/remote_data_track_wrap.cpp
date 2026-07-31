@@ -1,7 +1,21 @@
 #include "remote_data_track_wrap.h"
 #include <twilio/media/data_track_observer.h>
+#include <cstdint>
+#include <limits>
 
 namespace twilio_video_node {
+namespace {
+
+// DataTrack reports an unset option as UINT16_MAX, indistinguishable from a
+// publisher's 65535. Both read back as unset.
+Napi::Value SubscribedOptionOrNull(Napi::Env env, uint16_t value) {
+    if (value == std::numeric_limits<uint16_t>::max()) {
+        return env.Null();
+    }
+    return Napi::Number::New(env, value);
+}
+
+}
 
 class RemoteDataTrackObserverImpl : public twilio::media::RemoteDataTrackObserver {
 public:
@@ -54,6 +68,8 @@ void RemoteDataTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("name", &RemoteDataTrackWrap::GetName, nullptr),
         InstanceAccessor("kind", &RemoteDataTrackWrap::GetKind, nullptr),
         InstanceAccessor("sid", &RemoteDataTrackWrap::GetSid, nullptr),
+        InstanceAccessor("maxPacketLifeTime", &RemoteDataTrackWrap::GetMaxPacketLifeTime, nullptr),
+        InstanceAccessor("maxRetransmits", &RemoteDataTrackWrap::GetMaxRetransmits, nullptr),
         InstanceAccessor("reliable", &RemoteDataTrackWrap::IsReliable, nullptr),
         InstanceAccessor("ordered", &RemoteDataTrackWrap::IsOrdered, nullptr),
         InstanceMethod("onMessage", &RemoteDataTrackWrap::OnMessage),
@@ -121,6 +137,17 @@ Napi::Value RemoteDataTrackWrap::GetName(const Napi::CallbackInfo& info) {
 Napi::Value RemoteDataTrackWrap::GetSid(const Napi::CallbackInfo& info) {
     if (!track_) return info.Env().Undefined();
     return Napi::String::New(info.Env(), track_->getSid());
+}
+
+Napi::Value RemoteDataTrackWrap::GetMaxPacketLifeTime(const Napi::CallbackInfo& info) {
+    // Null, not undefined: the JS type for this property is `number | null`.
+    if (!track_) return info.Env().Null();
+    return SubscribedOptionOrNull(info.Env(), track_->getMaxPacketLifeTime());
+}
+
+Napi::Value RemoteDataTrackWrap::GetMaxRetransmits(const Napi::CallbackInfo& info) {
+    if (!track_) return info.Env().Null();
+    return SubscribedOptionOrNull(info.Env(), track_->getMaxRetransmits());
 }
 
 Napi::Value RemoteDataTrackWrap::IsReliable(const Napi::CallbackInfo& info) {

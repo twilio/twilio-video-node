@@ -104,16 +104,16 @@ conferencing. Key differences:
 
 ### Top-level Functions
 
-| Function                              | Description                                                                                                                                                                                                                                                                                  |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connect(token, options?)`            | Connect to a room. Returns `Promise<Room>`.                                                                                                                                                                                                                                                  |
-| `createLocalVideoTrack(name?)`        | Create a pushable local video track.                                                                                                                                                                                                                                                         |
-| `createLocalAudioTrack(name?)`        | Create a pushable local audio track.                                                                                                                                                                                                                                                         |
-| `createLocalDataTrack(name?)`         | Create a local data track.                                                                                                                                                                                                                                                                   |
-| `createLocalTracks(options?)`         | Create local audio and/or video tracks. With no options, returns both. If either `audio` or `video` is specified, the other defaults to `false`. Each key accepts `true`/`false` or a per-track options object (e.g. `{ name }`). Returns `Promise<(LocalAudioTrack \| LocalVideoTrack)[]>`. |
-| `twilioErrorFromCode(code, message?)` | Build a `TwilioError` (or matching subclass) from a numeric error code.                                                                                                                                                                                                                      |
-| `setLogLevel(level)`                  | Set native log level. Accepts a name (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`) or the equivalent number `0` (off) through `7` (all).                                                                                               |
-| `getVersion()`                        | Returns the native SDK version string.                                                                                                                                                                                                                                                       |
+| Function                                 | Description                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connect(token, options?)`               | Connect to a room. Returns `Promise<Room>`.                                                                                                                                                                                                                                                  |
+| `createLocalVideoTrack(name?)`           | Create a pushable local video track.                                                                                                                                                                                                                                                         |
+| `createLocalAudioTrack(name?)`           | Create a pushable local audio track.                                                                                                                                                                                                                                                         |
+| `createLocalDataTrack(name \| options?)` | Create a local data track. Options are `name`, `ordered`, and one of `maxPacketLifeTime`/`maxRetransmits`.                                                                                                                                                                                   |
+| `createLocalTracks(options?)`            | Create local audio and/or video tracks. With no options, returns both. If either `audio` or `video` is specified, the other defaults to `false`. Each key accepts `true`/`false` or a per-track options object (e.g. `{ name }`). Returns `Promise<(LocalAudioTrack \| LocalVideoTrack)[]>`. |
+| `twilioErrorFromCode(code, message?)`    | Build a `TwilioError` (or matching subclass) from a numeric error code.                                                                                                                                                                                                                      |
+| `setLogLevel(level)`                     | Set native log level. Accepts a name (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`) or the equivalent number `0` (off) through `7` (all).                                                                                               |
+| `getVersion()`                           | Returns the native SDK version string.                                                                                                                                                                                                                                                       |
 
 ### Key Classes
 
@@ -232,7 +232,7 @@ track.write({
 
 ### LocalDataTrack
 
-Send arbitrary string or binary messages.
+Send arbitrary string or binary messages. Delivery is reliable and ordered by default.
 
 ```js
 const track = createLocalDataTrack({ name: 'chat', ordered: true });
@@ -240,6 +240,19 @@ room.localParticipant.publishTrack(track);
 track.send('hello');
 track.send(Buffer.from([0x01, 0x02]));
 ```
+
+Pass `maxPacketLifeTime` (milliseconds) or `maxRetransmits` (a count) to trade reliability for
+latency. The two are mutually exclusive, and each must be an integer from 0 to 65535.
+
+```js
+const telemetry = createLocalDataTrack({ name: 'telemetry', maxPacketLifeTime: 500 });
+telemetry.maxPacketLifeTime; // 500
+telemetry.maxRetransmits; // null
+telemetry.reliable; // false
+```
+
+`maxPacketLifeTime` and `maxRetransmits` are `number | null`, reading back as `null` when the
+limit was not set. `reliable` is `true` only when neither is set.
 
 ### RemoteVideoTrack
 
@@ -298,6 +311,10 @@ track.onMessage(data => {
 });
 track.removeMessageCallback();
 ```
+
+`maxPacketLifeTime`, `maxRetransmits`, `reliable`, and `ordered` report how the publisher
+configured delivery. A publisher's limit of `65535` reads back as `null`, because a subscribed
+track reports it the same way it reports an unset limit; `reliable` still distinguishes the two.
 
 ## Frame Formats
 
