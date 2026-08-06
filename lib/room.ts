@@ -38,6 +38,7 @@ export type RoomEvents = {
     track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
     participant: RemoteParticipant,
   ) => void;
+  trackSubscriptionFailed: (error: TwilioError, participant: RemoteParticipant) => void;
   trackPublished: (publication: RemoteTrackPublishEvent, participant: RemoteParticipant) => void;
   trackUnpublished: (publication: RemoteTrackPublishEvent, participant: RemoteParticipant) => void;
   trackEnabled: (publication: RemoteTrackStateEvent, participant: RemoteParticipant) => void;
@@ -62,6 +63,7 @@ const ROOM_OPTIONAL_ERROR_EVENTS = new Set(['disconnected', 'reconnecting']);
 const BUBBLED_TRACK_EVENTS = [
   'trackSubscribed',
   'trackUnsubscribed',
+  'trackSubscriptionFailed',
   'trackPublished',
   'trackUnpublished',
   'trackEnabled',

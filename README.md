@@ -57,16 +57,29 @@ async function main() {
     height: 720,
   });
 
-  // Receive remote video frames
-  room.on('participantConnected', participant => {
-    participant.on('trackSubscribed', track => {
-      if (track.kind === 'video') {
-        track.onFrame(frame => {
-          console.log(`${frame.width}x${frame.height}`);
-        });
+  function trackSubscribed(track) {
+    if (track.kind === 'video') {
+      track.onFrame(frame => {
+        console.log(`${frame.width}x${frame.height}`);
+      });
+    }
+  }
+
+  function participantConnected(participant) {
+    participant.on('trackSubscribed', trackSubscribed);
+
+    participant.tracks.forEach(publication => {
+      if (publication.isSubscribed) {
+        trackSubscribed(publication.track);
       }
     });
-  });
+  }
+
+  // Participants already in the Room are not announced: read them from
+  // room.participants. Subscription can finish before a listener is attached, so
+  // check isSubscribed rather than relying on trackSubscribed alone.
+  room.participants.forEach(participantConnected);
+  room.on('participantConnected', participantConnected);
 }
 
 main().catch(err => {
@@ -136,6 +149,16 @@ conferencing. Key differences:
 
 ## Room Events
 
+### Room state at connect
+
+`participantConnected` is not emitted for participants who were already in the Room when
+`connect()` resolved. They are part of the Room's starting state: read them from
+`room.participants`.
+
+Their track events are delivered normally: a peer who was already publishing raises
+`trackSubscribed` shortly after `connect()` resolves. A subscription that completed earlier
+is not replayed as an event, and appears in `participant.tracks` with `isSubscribed` set.
+
 | Event                     | Handler Signature                                  |
 | ------------------------- | -------------------------------------------------- |
 | `disconnected`            | `(error?: TwilioError) => void`                    |
@@ -147,6 +170,10 @@ conferencing. Key differences:
 | `recordingStarted`        | `() => void`                                       |
 | `recordingStopped`        | `() => void`                                       |
 | `dominantSpeakerChanged`  | `(participant: RemoteParticipant \| null) => void` |
+
+The Room also re-emits every event in the [RemoteParticipant Events](#remoteparticipant-events)
+table below, with the participant it came from appended as the last argument, so you can
+handle every participant's tracks from one place instead of subscribing per participant.
 
 ### RemoteParticipant Events
 
