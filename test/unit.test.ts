@@ -15,6 +15,7 @@ import {
   ParticipantMaxTracksExceededError,
   twilioErrorFromCode,
   LocalVideoTrackPublication,
+  Room,
 } from '../dist/index.mjs';
 import type { ConnectOptions, BandwidthProfileMode } from '../dist/index.mjs';
 
@@ -24,6 +25,7 @@ import {
   TwilioError as TwilioErrorSrc,
   RoomNotFoundError as RoomNotFoundErrorSrc,
 } from '../lib/errors.js';
+import type { NativeRoom, NativeRemoteParticipant, RemoteTrackPublication } from '../lib/types.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
 describe('Version', () => {
@@ -557,5 +559,97 @@ describe('LocalTrackPublication.unpublish()', () => {
     const pub = new LocalVideoTrackPublication(raw, track);
     expect(() => pub.unpublish()).not.toThrow();
     expect(pub.unpublish()).toBe(pub);
+  });
+});
+
+describe('Participants already in the Room at connect', () => {
+  type NativeCallback = (event: string, data?: unknown) => void;
+  // `emit` stands in for the native side raising an event on the wrap.
+  type FakeParticipant = NativeRemoteParticipant & { emit: NativeCallback };
+
+  function subscribedPublication(kind: 'video' | 'audio') {
+    return {
+      trackSid: `MT-${kind}`,
+      trackName: `${kind}-track`,
+      kind,
+      isTrackEnabled: true,
+      isSubscribed: true,
+      track: { kind } as never,
+    };
+  }
+
+  function makeNativeParticipant(
+    videoTracks: RemoteTrackPublication[] = [],
+    audioTracks: RemoteTrackPublication[] = [],
+  ): FakeParticipant {
+    const participant = {
+      sid: 'PA1',
+      identity: 'alice',
+      state: 'connected',
+      networkQualityLevel: null,
+      videoTracks,
+      audioTracks,
+      dataTracks: [],
+      setEventCallback(cb: NativeCallback) {
+        participant.emit = cb;
+      },
+    } as unknown as FakeParticipant;
+    return participant;
+  }
+
+  // The native 'connected' event is what seeds the participants, so it has to fire
+  // before the Room is handed back, exactly as connect() does.
+  function connectFake(participants: FakeParticipant[]): Room {
+    let emit!: NativeCallback;
+    const nativeRoom = {
+      remoteParticipants: participants,
+      setEventCallback(cb: NativeCallback) {
+        emit = cb;
+      },
+    } as unknown as NativeRoom;
+    const room = new Room(nativeRoom);
+    emit('connected');
+    return room;
+  }
+
+  it('exposes the tracks a participant had already subscribed to as Room state', () => {
+    const alice = makeNativeParticipant(
+      [subscribedPublication('video')],
+      [subscribedPublication('audio')],
+    );
+
+    const room = connectFake([alice]);
+
+    // The state the README directs consumers to read instead of trackSubscribed.
+    const [participant] = [...room.participants.values()];
+    const subscribed = [...participant.tracks.values()].filter(pub => pub.isSubscribed);
+    expect(subscribed.map(pub => pub.track?.kind)).toEqual(['video', 'audio']);
+  });
+
+  it('emits track events that arrive after connect for a participant who was already present', () => {
+    const alice = makeNativeParticipant();
+    const room = connectFake([alice]);
+    const seen: string[] = [];
+    room.on('trackSubscribed', (track, participant) =>
+      seen.push(`${participant.identity}:${track.kind}`),
+    );
+
+    alice.emit('trackSubscribed', { kind: 'video' });
+    expect(seen).toEqual(['alice:video']);
+  });
+
+  it('bubbles trackSubscriptionFailed with the participant appended', () => {
+    const alice = makeNativeParticipant();
+    const room = connectFake([alice]);
+    const seen: [TwilioErrorSrc, string][] = [];
+    room.on('trackSubscriptionFailed', (error, participant) =>
+      seen.push([error, participant.identity]),
+    );
+
+    alice.emit('trackSubscriptionFailed', { code: 53106, message: 'gone' });
+    expect(seen).toHaveLength(1);
+    const [error, identity] = seen[0];
+    expect(error.code).toBe(53106);
+    expect(identity).toBe('alice');
   });
 });

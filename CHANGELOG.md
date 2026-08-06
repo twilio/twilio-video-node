@@ -31,6 +31,9 @@ This SDK is currently in beta. See the [README](README.md) for details.
   `trackUnpublished` were never emitted for participants who were already present.
   Participants who joined later were unaffected.
 
+- Room now re-emits `trackSubscriptionFailed` (with the participant appended), matching
+  the rest of the `RemoteParticipant` track events it already bubbles.
+
 # 1.0.0-preview.2 (July 23, 2026)
 
 ## Breaking Changes
