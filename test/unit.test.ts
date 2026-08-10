@@ -25,7 +25,12 @@ import {
   TwilioError as TwilioErrorSrc,
   RoomNotFoundError as RoomNotFoundErrorSrc,
 } from '../lib/errors.js';
-import type { NativeRoom, NativeRemoteParticipant, RemoteTrackPublication } from '../lib/types.js';
+import type {
+  NativeRoom,
+  NativeRemoteParticipant,
+  RemoteTrackPublication,
+  RemoteTrackSubscriptionFailedEvent,
+} from '../lib/types.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
 describe('Version', () => {
@@ -620,7 +625,7 @@ describe('Participants already in the Room at connect', () => {
 
     const room = connectFake([alice]);
 
-    // The state the README directs consumers to read instead of trackSubscribed.
+    // Tracks subscribed before connect() resolved are visible here with isSubscribed true.
     const [participant] = [...room.participants.values()];
     const subscribed = [...participant.tracks.values()].filter(pub => pub.isSubscribed);
     expect(subscribed.map(pub => pub.track?.kind)).toEqual(['video', 'audio']);
@@ -638,18 +643,38 @@ describe('Participants already in the Room at connect', () => {
     expect(seen).toEqual(['alice:video']);
   });
 
-  it('bubbles trackSubscriptionFailed with the participant appended', () => {
+  const nativeSubscriptionFailure = {
+    error: { code: 53106, message: 'gone' },
+    publication: { trackSid: 'MT-video', trackName: 'cam', kind: 'video' },
+  };
+
+  it('bubbles trackSubscriptionFailed with the publication and the participant appended', () => {
     const alice = makeNativeParticipant();
     const room = connectFake([alice]);
-    const seen: [TwilioErrorSrc, string][] = [];
-    room.on('trackSubscriptionFailed', (error, participant) =>
-      seen.push([error, participant.identity]),
+    const seen: [TwilioErrorSrc, RemoteTrackSubscriptionFailedEvent, string][] = [];
+    room.on('trackSubscriptionFailed', (error, publication, participant) =>
+      seen.push([error, publication, participant.identity]),
     );
 
-    alice.emit('trackSubscriptionFailed', { code: 53106, message: 'gone' });
+    alice.emit('trackSubscriptionFailed', nativeSubscriptionFailure);
     expect(seen).toHaveLength(1);
-    const [error, identity] = seen[0];
+    const [error, publication, identity] = seen[0];
     expect(error.code).toBe(53106);
     expect(identity).toBe('alice');
+    expect(publication.trackSid).toBe('MT-video');
+    expect(publication.kind).toBe('video');
+  });
+
+  it('reports the failing publication on the participant', () => {
+    const alice = makeNativeParticipant();
+    const room = connectFake([alice]);
+    const [participant] = [...room.participants.values()];
+    const seen: [number, string][] = [];
+    participant.on('trackSubscriptionFailed', (error, publication) =>
+      seen.push([error.code, publication.trackSid]),
+    );
+
+    alice.emit('trackSubscriptionFailed', nativeSubscriptionFailure);
+    expect(seen).toEqual([[53106, 'MT-video']]);
   });
 });

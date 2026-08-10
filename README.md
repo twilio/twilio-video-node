@@ -75,9 +75,9 @@ async function main() {
     });
   }
 
-  // Participants already in the Room are not announced: read them from
-  // room.participants. Subscription can finish before a listener is attached, so
-  // check isSubscribed rather than relying on trackSubscribed alone.
+  // participantConnected does not fire for participants already in the Room, and a
+  // track can finish subscribing before this listener is attached. Seed from
+  // room.participants and check isSubscribed on the publications found there.
   room.participants.forEach(participantConnected);
   room.on('participantConnected', participantConnected);
 }
@@ -155,9 +155,9 @@ conferencing. Key differences:
 `connect()` resolved. They are part of the Room's starting state: read them from
 `room.participants`.
 
-Their track events are delivered normally: a peer who was already publishing raises
-`trackSubscribed` shortly after `connect()` resolves. A subscription that completed earlier
-is not replayed as an event, and appears in `participant.tracks` with `isSubscribed` set.
+A participant who was already publishing emits `trackSubscribed` after `connect()` resolves.
+Subscriptions that completed before the listener was attached are not replayed, and appear in
+`participant.tracks` with `isSubscribed` set to `true`.
 
 | Event                     | Handler Signature                                  |
 | ------------------------- | -------------------------------------------------- |
@@ -171,23 +171,23 @@ is not replayed as an event, and appears in `participant.tracks` with `isSubscri
 | `recordingStopped`        | `() => void`                                       |
 | `dominantSpeakerChanged`  | `(participant: RemoteParticipant \| null) => void` |
 
-The Room also re-emits every event in the [RemoteParticipant Events](#remoteparticipant-events)
-table below, with the participant it came from appended as the last argument, so you can
-handle every participant's tracks from one place instead of subscribing per participant.
+The Room re-emits every event in [RemoteParticipant Events](#remoteparticipant-events),
+appending the `RemoteParticipant` that emitted it as the last argument. Handle every
+participant's tracks from one place instead of attaching a listener to each participant.
 
 ### RemoteParticipant Events
 
-| Event                     | Handler Signature                                                          |
-| ------------------------- | -------------------------------------------------------------------------- |
-| `trackSubscribed`         | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
-| `trackUnsubscribed`       | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
-| `trackSubscriptionFailed` | `(error: TwilioError) => void`                                             |
-| `trackPublished`          | `(publication: RemoteTrackPublishEvent) => void`                           |
-| `trackUnpublished`        | `(publication: RemoteTrackPublishEvent) => void`                           |
-| `trackEnabled`            | `(publication: RemoteTrackStateEvent) => void`                             |
-| `trackDisabled`           | `(publication: RemoteTrackStateEvent) => void`                             |
-| `videoTrackSwitchedOff`   | `(track: RemoteVideoTrack) => void`                                        |
-| `videoTrackSwitchedOn`    | `(track: RemoteVideoTrack) => void`                                        |
+| Event                     | Handler Signature                                                               |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `trackSubscribed`         | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
+| `trackUnsubscribed`       | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
+| `trackSubscriptionFailed` | `(error: TwilioError, publication: RemoteTrackSubscriptionFailedEvent) => void` |
+| `trackPublished`          | `(publication: RemoteTrackPublishEvent) => void`                                |
+| `trackUnpublished`        | `(publication: RemoteTrackPublishEvent) => void`                                |
+| `trackEnabled`            | `(publication: RemoteTrackStateEvent) => void`                                  |
+| `trackDisabled`           | `(publication: RemoteTrackStateEvent) => void`                                  |
+| `videoTrackSwitchedOff`   | `(track: RemoteVideoTrack) => void`                                             |
+| `videoTrackSwitchedOn`    | `(track: RemoteVideoTrack) => void`                                             |
 
 ### LocalParticipant Events
 

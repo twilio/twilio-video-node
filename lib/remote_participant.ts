@@ -6,6 +6,7 @@ import type {
   RemoteDataTrack,
   RemoteTrackPublishEvent,
   RemoteTrackStateEvent,
+  RemoteTrackSubscriptionFailedEvent,
   Participant,
   Track,
 } from './types.js';
@@ -26,7 +27,10 @@ export type RemoteParticipantEvents = {
   trackUnpublished: (publication: RemoteTrackPublishEvent) => void;
   trackEnabled: (publication: RemoteTrackStateEvent) => void;
   trackDisabled: (publication: RemoteTrackStateEvent) => void;
-  trackSubscriptionFailed: (error: TwilioError) => void;
+  trackSubscriptionFailed: (
+    error: TwilioError,
+    publication: RemoteTrackSubscriptionFailedEvent,
+  ) => void;
   videoTrackSwitchedOff: (track: RemoteVideoTrack) => void;
   videoTrackSwitchedOn: (track: RemoteVideoTrack) => void;
   networkQualityLevelChanged: (level: number) => void;
@@ -47,7 +51,11 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'trackSubscriptionFailed') {
-        this.emit(event, liftTwilioError(data));
+        const { error, publication } = (data ?? {}) as {
+          error?: unknown;
+          publication?: RemoteTrackSubscriptionFailedEvent;
+        };
+        this.emit(event, liftTwilioError(error), publication as RemoteTrackSubscriptionFailedEvent);
       } else {
         this.emit(event, data);
       }
