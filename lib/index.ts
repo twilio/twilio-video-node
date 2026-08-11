@@ -89,6 +89,7 @@ export type {
   VideoContentPreferences,
   RemoteTrackPublishEvent,
   RemoteTrackStateEvent,
+  RemoteTrackSubscriptionFailedEvent,
 } from './types.js';
 
 export {

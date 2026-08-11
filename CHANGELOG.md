@@ -21,6 +21,10 @@ This SDK is currently in beta. See the [README](README.md) for details.
 - `LocalDataTrackOptions.maxPacketLifeTime` and `maxRetransmits` accept `null`, so a value read
   off a track can be passed back into `createLocalDataTrack()`.
 
+- `trackSubscriptionFailed` passes a `RemoteTrackSubscriptionFailedEvent` (`trackSid`,
+  `trackName`, `kind`) after the error, so a listener can tell which publication failed.
+  Existing single-argument listeners are unaffected.
+
 ## Bug Fixes
 
 - Data track options set to `undefined` are treated as unset. `{ maxRetransmits: undefined }`
@@ -30,6 +34,9 @@ This SDK is currently in beta. See the [README](README.md) for details.
   events. `trackSubscribed`, `trackEnabled`, `trackDisabled`, `trackPublished`, and
   `trackUnpublished` were never emitted for participants who were already present.
   Participants who joined later were unaffected.
+
+- Room now re-emits `trackSubscriptionFailed`. It was the only `RemoteParticipant` track
+  event the Room did not forward, so `room` listeners never saw subscription failures.
 
 # 1.0.0-preview.2 (July 23, 2026)
 

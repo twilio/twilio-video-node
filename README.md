@@ -57,16 +57,29 @@ async function main() {
     height: 720,
   });
 
-  // Receive remote video frames
-  room.on('participantConnected', participant => {
-    participant.on('trackSubscribed', track => {
-      if (track.kind === 'video') {
-        track.onFrame(frame => {
-          console.log(`${frame.width}x${frame.height}`);
-        });
+  function trackSubscribed(track) {
+    if (track.kind === 'video') {
+      track.onFrame(frame => {
+        console.log(`${frame.width}x${frame.height}`);
+      });
+    }
+  }
+
+  function participantConnected(participant) {
+    participant.on('trackSubscribed', trackSubscribed);
+
+    participant.tracks.forEach(publication => {
+      if (publication.isSubscribed) {
+        trackSubscribed(publication.track);
       }
     });
-  });
+  }
+
+  // participantConnected does not fire for participants already in the Room, and a
+  // track can finish subscribing before this listener is attached. Seed from
+  // room.participants and check isSubscribed on the publications found there.
+  room.participants.forEach(participantConnected);
+  room.on('participantConnected', participantConnected);
 }
 
 main().catch(err => {
@@ -136,6 +149,16 @@ conferencing. Key differences:
 
 ## Room Events
 
+### Room state at connect
+
+`participantConnected` is not emitted for participants who were already in the Room when
+`connect()` resolved. They are part of the Room's starting state: read them from
+`room.participants`.
+
+A participant who was already publishing emits `trackSubscribed` after `connect()` resolves.
+Subscriptions that completed before the listener was attached are not replayed, and appear in
+`participant.tracks` with `isSubscribed` set to `true`.
+
 | Event                     | Handler Signature                                  |
 | ------------------------- | -------------------------------------------------- |
 | `disconnected`            | `(error?: TwilioError) => void`                    |
@@ -148,19 +171,23 @@ conferencing. Key differences:
 | `recordingStopped`        | `() => void`                                       |
 | `dominantSpeakerChanged`  | `(participant: RemoteParticipant \| null) => void` |
 
+The Room re-emits every event in [RemoteParticipant Events](#remoteparticipant-events),
+appending the `RemoteParticipant` that emitted it as the last argument. Handle every
+participant's tracks from one place instead of attaching a listener to each participant.
+
 ### RemoteParticipant Events
 
-| Event                     | Handler Signature                                                          |
-| ------------------------- | -------------------------------------------------------------------------- |
-| `trackSubscribed`         | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
-| `trackUnsubscribed`       | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void` |
-| `trackSubscriptionFailed` | `(error: TwilioError) => void`                                             |
-| `trackPublished`          | `(publication: RemoteTrackPublishEvent) => void`                           |
-| `trackUnpublished`        | `(publication: RemoteTrackPublishEvent) => void`                           |
-| `trackEnabled`            | `(publication: RemoteTrackStateEvent) => void`                             |
-| `trackDisabled`           | `(publication: RemoteTrackStateEvent) => void`                             |
-| `videoTrackSwitchedOff`   | `(track: RemoteVideoTrack) => void`                                        |
-| `videoTrackSwitchedOn`    | `(track: RemoteVideoTrack) => void`                                        |
+| Event                     | Handler Signature                                                               |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `trackSubscribed`         | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
+| `trackUnsubscribed`       | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
+| `trackSubscriptionFailed` | `(error: TwilioError, publication: RemoteTrackSubscriptionFailedEvent) => void` |
+| `trackPublished`          | `(publication: RemoteTrackPublishEvent) => void`                                |
+| `trackUnpublished`        | `(publication: RemoteTrackPublishEvent) => void`                                |
+| `trackEnabled`            | `(publication: RemoteTrackStateEvent) => void`                                  |
+| `trackDisabled`           | `(publication: RemoteTrackStateEvent) => void`                                  |
+| `videoTrackSwitchedOff`   | `(track: RemoteVideoTrack) => void`                                             |
+| `videoTrackSwitchedOn`    | `(track: RemoteVideoTrack) => void`                                             |
 
 ### LocalParticipant Events
 

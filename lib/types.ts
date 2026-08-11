@@ -394,6 +394,15 @@ export interface RemoteTrackStateEvent extends RemoteTrackPublishEvent {
   isSubscribed: boolean;
 }
 
+/**
+ * Payload for the `trackSubscriptionFailed` event, identifying the publication that
+ * could not be subscribed to. Includes `kind` so a listener can route the failure
+ * without looking `trackSid` up in the participant's track collections.
+ */
+export interface RemoteTrackSubscriptionFailedEvent extends RemoteTrackPublishEvent {
+  kind: TrackKind;
+}
+
 /** Width/height in pixels reported in track stats. */
 export interface StatsVideoDimensions {
   width: number;

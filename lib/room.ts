@@ -1,5 +1,5 @@
 import { LocalParticipant } from './local_participant.js';
-import { RemoteParticipant } from './remote_participant.js';
+import { RemoteParticipant, type RemoteParticipantEvents } from './remote_participant.js';
 import { TypedEventEmitter } from './typed_emitter.js';
 import type { LocalTrack } from './track_publication.js';
 import type {
@@ -11,6 +11,7 @@ import type {
   RemoteDataTrack,
   RemoteTrackPublishEvent,
   RemoteTrackStateEvent,
+  RemoteTrackSubscriptionFailedEvent,
   StatsReport,
   Participant,
 } from './types.js';
@@ -38,6 +39,11 @@ export type RoomEvents = {
     track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
     participant: RemoteParticipant,
   ) => void;
+  trackSubscriptionFailed: (
+    error: TwilioError,
+    publication: RemoteTrackSubscriptionFailedEvent,
+    participant: RemoteParticipant,
+  ) => void;
   trackPublished: (publication: RemoteTrackPublishEvent, participant: RemoteParticipant) => void;
   trackUnpublished: (publication: RemoteTrackPublishEvent, participant: RemoteParticipant) => void;
   trackEnabled: (publication: RemoteTrackStateEvent, participant: RemoteParticipant) => void;
@@ -62,6 +68,7 @@ const ROOM_OPTIONAL_ERROR_EVENTS = new Set(['disconnected', 'reconnecting']);
 const BUBBLED_TRACK_EVENTS = [
   'trackSubscribed',
   'trackUnsubscribed',
+  'trackSubscriptionFailed',
   'trackPublished',
   'trackUnpublished',
   'trackEnabled',
@@ -251,9 +258,10 @@ export class Room extends TypedEventEmitter<RoomEvents> {
 
   private _bubbleTrackEvents(participant: RemoteParticipant): void {
     for (const event of BUBBLED_TRACK_EVENTS) {
-      participant.on(event, (trackOrPub: unknown) => {
-        this.emit(event, trackOrPub, participant);
-      });
+      // Variadic forwarding loses the per-event signature, so the handler needs a cast back to it.
+      participant.on(event, ((...args: unknown[]) => {
+        this.emit(event, ...args, participant);
+      }) as RemoteParticipantEvents[typeof event]);
     }
   }
 

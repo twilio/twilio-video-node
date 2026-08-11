@@ -60,7 +60,8 @@
     "prebuilds",
     "scripts/install.js",
     "scripts/common.js",
-    "package.json"
+    "package.json",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=24.0.0"
