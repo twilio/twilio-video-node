@@ -55,7 +55,7 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
           error?: unknown;
           publication?: RemoteTrackSubscriptionFailedEvent;
         };
-        this.emit(event, liftTwilioError(error), publication as RemoteTrackSubscriptionFailedEvent);
+        this.emit(event, liftTwilioError(error), publication);
       } else {
         this.emit(event, data);
       }
