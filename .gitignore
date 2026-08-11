@@ -38,3 +38,6 @@ coverage/
 # Environment
 .env
 .env.local
+
+# Written by the artifactory-oidc action; holds a registry auth token
+.npmrc
