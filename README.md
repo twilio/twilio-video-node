@@ -176,7 +176,7 @@ Subscriptions that completed before the listener was attached are not replayed, 
 | `dominantSpeakerChanged`  | `(participant: RemoteParticipant \| null) => void` |
 | `transcription`           | `(transcriptionJson: string) => void`              |
 
-The Room re-emits every event in [RemoteParticipant Events](#remoteparticipant-events),
+The Room re-emits every track event in [RemoteParticipant Events](#remoteparticipant-events),
 appending the `RemoteParticipant` that emitted it as the last argument. Handle every
 participant's tracks from one place instead of attaching a listener to each participant.
 
