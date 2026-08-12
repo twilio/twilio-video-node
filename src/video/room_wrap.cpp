@@ -173,8 +173,6 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
             }
             std::string n = el.As<Napi::String>().Utf8Value();
             if (n == "opus") audioCodecs.push_back(std::make_shared<twilio::media::OpusCodec>());
-            else if (n == "G722") audioCodecs.push_back(std::make_shared<twilio::media::G722Codec>());
-            else if (n == "PCMA") audioCodecs.push_back(std::make_shared<twilio::media::PcmaCodec>());
             else if (n == "PCMU") audioCodecs.push_back(std::make_shared<twilio::media::PcmuCodec>());
             else {
                 Napi::TypeError::New(env, "Unknown audio codec: " + n).ThrowAsJavaScriptException();
@@ -197,9 +195,7 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
                 return false;
             }
             std::string n = el.As<Napi::String>().Utf8Value();
-            if (n == "H264") videoCodecs.push_back(std::make_shared<twilio::media::H264Codec>());
-            else if (n == "VP8") videoCodecs.push_back(std::make_shared<twilio::media::Vp8Codec>());
-            else if (n == "VP9") videoCodecs.push_back(std::make_shared<twilio::media::Vp9Codec>());
+            if (n == "VP8") videoCodecs.push_back(std::make_shared<twilio::media::Vp8Codec>());
             else {
                 Napi::TypeError::New(env, "Unknown video codec: " + n).ThrowAsJavaScriptException();
                 return false;

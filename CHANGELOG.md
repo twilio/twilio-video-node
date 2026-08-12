@@ -4,6 +4,14 @@ This SDK is currently in beta. See the [README](README.md) for details.
 
 ## Breaking Changes
 
+- `VideoCodec` only accepts `'VP8'`, the only video codec this SDK supports in Group Rooms.
+  `'H264'` and `'VP9'` are removed from the type and now throw
+  `TypeError: Unknown video codec: <name>` from `connect()` instead of being silently accepted.
+
+- `AudioCodec` only accepts `'opus'` and `'PCMU'`, the only audio codecs this SDK supports in
+  Group Rooms. `'PCMA'` and `'G722'` are removed from the type and now throw
+  `TypeError: Unknown audio codec: <name>` from `connect()`.
+
 - `LocalDataTrack.maxPacketLifeTime` and `maxRetransmits` are now `number | null`, reporting
   `null` when unset instead of `65535`. Check for `null`, or use `reliable`. Both now report the
   value passed to `createLocalDataTrack()`, so a limit of `65535` reads back as `65535`.
