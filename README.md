@@ -105,9 +105,11 @@ conferencing. Key differences:
 - **Fixed audio input format.** `LocalAudioTrack.write()` accepts only 48 kHz
   mono S16LE PCM. Received audio may vary in sample rate and channel count.
 
-- **No Bandwidth Profile or adaptive simulcast.** Track priority, render
-  dimensions, and bandwidth limits are not configurable from this SDK. Video
-  encoding is controlled via `encodingParameters` at connect time.
+- **No adaptive simulcast or track priority.** Published video tracks always use
+  standard priority with simulcast disabled; the deprecated `TrackPriority` API
+  is not exposed. Bandwidth and remote render-size hints are configurable
+  instead via `bandwidthProfile`, `encodingParameters`, and
+  `RemoteVideoTrack.setContentPreferences()`.
 
 - **Synchronous track creation.** `createLocalVideoTrack()` returns a track
   immediately (no async device permissions). Tracks can be passed to `connect()`
@@ -167,9 +169,12 @@ Subscriptions that completed before the listener was attached are not replayed, 
 | `reconnected`             | `() => void`                                       |
 | `participantConnected`    | `(participant: RemoteParticipant) => void`         |
 | `participantDisconnected` | `(participant: RemoteParticipant) => void`         |
+| `participantReconnecting` | `(participant: RemoteParticipant) => void`         |
+| `participantReconnected`  | `(participant: RemoteParticipant) => void`         |
 | `recordingStarted`        | `() => void`                                       |
 | `recordingStopped`        | `() => void`                                       |
 | `dominantSpeakerChanged`  | `(participant: RemoteParticipant \| null) => void` |
+| `transcription`           | `(transcriptionJson: string) => void`              |
 
 The Room re-emits every event in [RemoteParticipant Events](#remoteparticipant-events),
 appending the `RemoteParticipant` that emitted it as the last argument. Handle every
@@ -177,17 +182,18 @@ participant's tracks from one place instead of attaching a listener to each part
 
 ### RemoteParticipant Events
 
-| Event                     | Handler Signature                                                               |
-| ------------------------- | ------------------------------------------------------------------------------- |
-| `trackSubscribed`         | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
-| `trackUnsubscribed`       | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
-| `trackSubscriptionFailed` | `(error: TwilioError, publication: RemoteTrackSubscriptionFailedEvent) => void` |
-| `trackPublished`          | `(publication: RemoteTrackPublishEvent) => void`                                |
-| `trackUnpublished`        | `(publication: RemoteTrackPublishEvent) => void`                                |
-| `trackEnabled`            | `(publication: RemoteTrackStateEvent) => void`                                  |
-| `trackDisabled`           | `(publication: RemoteTrackStateEvent) => void`                                  |
-| `videoTrackSwitchedOff`   | `(track: RemoteVideoTrack) => void`                                             |
-| `videoTrackSwitchedOn`    | `(track: RemoteVideoTrack) => void`                                             |
+| Event                        | Handler Signature                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------- |
+| `trackSubscribed`            | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
+| `trackUnsubscribed`          | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
+| `trackSubscriptionFailed`    | `(error: TwilioError, publication: RemoteTrackSubscriptionFailedEvent) => void` |
+| `trackPublished`             | `(publication: RemoteTrackPublishEvent) => void`                                |
+| `trackUnpublished`           | `(publication: RemoteTrackPublishEvent) => void`                                |
+| `trackEnabled`               | `(publication: RemoteTrackStateEvent) => void`                                  |
+| `trackDisabled`              | `(publication: RemoteTrackStateEvent) => void`                                  |
+| `videoTrackSwitchedOff`      | `(track: RemoteVideoTrack) => void`                                             |
+| `videoTrackSwitchedOn`       | `(track: RemoteVideoTrack) => void`                                             |
+| `networkQualityLevelChanged` | `(level: number) => void`                                                       |
 
 ### LocalParticipant Events
 
@@ -380,8 +386,8 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
   enableAutomaticSubscription?: boolean;
   enableDominantSpeaker?: boolean;
   networkQuality?: boolean | { local?: 1; remote?: 0 | 1 };
-  preferredAudioCodecs?: ('opus' | 'PCMA' | 'PCMU' | 'G722')[];
-  preferredVideoCodecs?: ('H264' | 'VP8' | 'VP9')[];
+  preferredAudioCodecs?: ('opus' | 'PCMU')[];
+  preferredVideoCodecs?: 'VP8'[];
   videoEncodingMode?: 'auto';
   bandwidthProfile?: BandwidthProfileOptions;
   receiveTranscriptions?: boolean;

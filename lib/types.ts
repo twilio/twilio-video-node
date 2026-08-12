@@ -132,9 +132,9 @@ export interface EncodingParameters {
 }
 
 /** Audio codecs that may be negotiated, in preference order. */
-export type AudioCodec = 'opus' | 'PCMA' | 'PCMU' | 'G722';
-/** Video codecs that may be negotiated, in preference order. */
-export type VideoCodec = 'H264' | 'VP8' | 'VP9';
+export type AudioCodec = 'opus' | 'PCMU';
+/** Video codec that may be negotiated. */
+export type VideoCodec = 'VP8';
 
 /** Video encoding strategy. Currently only `auto` (server-driven) is supported. */
 export type VideoEncodingMode = 'auto';

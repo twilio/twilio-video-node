@@ -127,6 +127,34 @@ describe('connect() validation', () => {
     );
   });
 
+  it('rejects H264 in preferredVideoCodecs', async () => {
+    // @ts-expect-error testing runtime validation: H264 is not a supported VideoCodec
+    await expect(connect('token', { preferredVideoCodecs: ['H264'] })).rejects.toThrow(
+      /Unknown video codec: H264/,
+    );
+  });
+
+  it('rejects VP9 in preferredVideoCodecs', async () => {
+    // @ts-expect-error testing runtime validation: VP9 is not a supported VideoCodec
+    await expect(connect('token', { preferredVideoCodecs: ['VP9'] })).rejects.toThrow(
+      /Unknown video codec: VP9/,
+    );
+  });
+
+  it('rejects PCMA in preferredAudioCodecs', async () => {
+    // @ts-expect-error testing runtime validation: PCMA is not a supported AudioCodec
+    await expect(connect('token', { preferredAudioCodecs: ['PCMA'] })).rejects.toThrow(
+      /Unknown audio codec: PCMA/,
+    );
+  });
+
+  it('rejects G722 in preferredAudioCodecs', async () => {
+    // @ts-expect-error testing runtime validation: G722 is not a supported AudioCodec
+    await expect(connect('token', { preferredAudioCodecs: ['G722'] })).rejects.toThrow(
+      /Unknown audio codec: G722/,
+    );
+  });
+
   it('rejects a non-object iceOptions option', async () => {
     // @ts-expect-error testing runtime validation
     await expect(connect('token', { iceOptions: 'relay' })).rejects.toThrow(
