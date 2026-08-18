@@ -2,6 +2,10 @@
   "name": "@twilio/video-node-sdk",
   "version": "1.0.0-preview.2",
   "description": "Twilio Video Media Streams SDK for Node.js - Server-side access to decoded video/audio frames",
+  "homepage": "https://github.com/twilio/twilio-video-node#readme",
+  "bugs": {
+    "url": "https://github.com/twilio/twilio-video-node/issues"
+  },
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -78,7 +82,13 @@
     "video",
     "webrtc",
     "media-streams",
-    "real-time"
+    "real-time",
+    "rooms",
+    "nodejs",
+    "media",
+    "audio",
+    "frames",
+    "napi"
   ],
   "lint-staged": {
     "*.{js,mjs,ts}": [
