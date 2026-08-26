@@ -1,3 +1,14 @@
+const path = require('path');
+const envPath = path.join(__dirname, '..', '..', '.env');
+try {
+  process.loadEnvFile(envPath);
+} catch {
+  console.error(
+    `Error: no .env file found at ${envPath}. Copy .env.example to .env and fill in your Twilio credentials.`,
+  );
+  process.exit(1);
+}
+
 const twilio = require('twilio');
 
 function generateToken(identity, roomName) {

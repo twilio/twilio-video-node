@@ -37,4 +37,6 @@ coverage/
 
 # Environment
 .env
-.env.local
+.env.*
+# ...but keep the committed template
+!.env.example

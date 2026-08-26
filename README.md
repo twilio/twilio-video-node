@@ -413,12 +413,16 @@ See the [`examples/`](examples/) directory:
 | [`audio_push.js`](examples/audio_push.js)         | Generates a sine wave tone and pushes PCM audio to a room.            |
 | [`data_channel.js`](examples/data_channel.js)     | Two participants exchange string and binary messages via data tracks. |
 
+The examples load credentials from a `.env` file at the repo root. Copy the
+template, fill in your credentials, and run:
+
 ```bash
-export TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-export TWILIO_API_KEY="SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-export TWILIO_API_SECRET="your_api_secret"
+cp .env.example .env
+# edit .env: set TWILIO_ACCOUNT_SID / TWILIO_API_KEY / TWILIO_API_SECRET
 node examples/virtual_camera.js [room-name]
 ```
+
+`.env` is gitignored, so your real credentials are never committed.
 
 ## License
 

@@ -109,15 +109,18 @@ npm run build:ts
 
 ## 4. Credentials
 
-Required for examples and integration tests:
+The examples load credentials from a `.env` file at the repo root (via the shared
+`examples/helpers/token.js` helper). Copy the committed template and fill in your
+values:
 
 ```sh
-export TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-export TWILIO_API_KEY="SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-export TWILIO_API_SECRET="your_api_secret"
+cp .env.example .env
+# then edit .env and set TWILIO_ACCOUNT_SID / TWILIO_API_KEY / TWILIO_API_SECRET
+node examples/audio_push.js [room-name]
 ```
 
 Get these from the [Twilio Console](https://www.twilio.com/console) under API Keys.
+`.env` is gitignored, so your real credentials are never committed.
 
 ## 5. Troubleshooting
 
@@ -131,7 +134,8 @@ The native addon isn't built and no matching prebuild exists (the underlying cau
 
 ### `TWILIO_ACCOUNT_SID, TWILIO_API_KEY, and TWILIO_API_SECRET are required`
 
-Environment variables not set. See [section 4](#4-credentials).
+Your `.env` is missing or has empty values for these keys. Copy `.env.example`
+to `.env` and fill them in. See [section 4](#4-credentials).
 
 ### Maven auth fails with 401
 
