@@ -132,9 +132,9 @@ export interface EncodingParameters {
 }
 
 /** Audio codecs that may be negotiated, in preference order. */
-export type AudioCodec = 'opus' | 'PCMA' | 'PCMU' | 'G722';
-/** Video codecs that may be negotiated, in preference order. */
-export type VideoCodec = 'H264' | 'VP8' | 'VP9';
+export type AudioCodec = 'opus' | 'PCMU';
+/** Video codec that may be negotiated. */
+export type VideoCodec = 'VP8';
 
 /** Video encoding strategy. Currently only `auto` (server-driven) is supported. */
 export type VideoEncodingMode = 'auto';
@@ -392,6 +392,15 @@ export interface RemoteTrackPublishEvent {
 /** Payload for the `trackEnabled`/`trackDisabled` events. */
 export interface RemoteTrackStateEvent extends RemoteTrackPublishEvent {
   isSubscribed: boolean;
+}
+
+/**
+ * Payload for the `trackSubscriptionFailed` event, identifying the publication that
+ * could not be subscribed to. Includes `kind` so a listener can route the failure
+ * without looking `trackSid` up in the participant's track collections.
+ */
+export interface RemoteTrackSubscriptionFailedEvent extends RemoteTrackPublishEvent {
+  kind: TrackKind;
 }
 
 /** Width/height in pixels reported in track stats. */

@@ -40,9 +40,10 @@ public:
             return RemoteAudioTrackWrap::NewInstance(env, track);
         });
     }
-    void onAudioTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
+    void onAudioTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                         const twilio::video::Error error) override {
-        dispatchErrorEvent("trackSubscriptionFailed", error.getCode(), error.getMessage());
+        dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "audio",
+                                        error.getCode(), error.getMessage());
     }
     void onAudioTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
                                   std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
@@ -74,9 +75,10 @@ public:
             return RemoteVideoTrackWrap::NewInstance(env, track);
         });
     }
-    void onVideoTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
+    void onVideoTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                         const twilio::video::Error error) override {
-        dispatchErrorEvent("trackSubscriptionFailed", error.getCode(), error.getMessage());
+        dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "video",
+                                        error.getCode(), error.getMessage());
     }
     void onVideoTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
                                   std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
@@ -114,9 +116,10 @@ public:
             return RemoteDataTrackWrap::NewInstance(env, track);
         });
     }
-    void onDataTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
+    void onDataTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
                                        const twilio::video::Error error) override {
-        dispatchErrorEvent("trackSubscriptionFailed", error.getCode(), error.getMessage());
+        dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "data",
+                                        error.getCode(), error.getMessage());
     }
     void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
                                  std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
@@ -170,9 +173,21 @@ private:
         });
     }
 
-    void dispatchErrorEvent(const std::string& eventName, uint32_t code, std::string message) {
-        dispatchEvent(eventName, [code, message = std::move(message)](Napi::Env env) {
-            return createTwilioErrorObject(env, code, message);
+    // The JS callback takes a single payload, so the error and publication ship as one object.
+    void dispatchSubscriptionFailedEvent(std::string sid, std::string name, const char* kind,
+                                         uint32_t code, std::string message) {
+        dispatchEvent("trackSubscriptionFailed", [sid = std::move(sid), name = std::move(name),
+                                                  kind, code,
+                                                  message = std::move(message)](Napi::Env env) {
+            auto publication = Napi::Object::New(env);
+            publication.Set("trackSid", Napi::String::New(env, sid));
+            publication.Set("trackName", Napi::String::New(env, name));
+            publication.Set("kind", Napi::String::New(env, kind));
+
+            auto obj = Napi::Object::New(env);
+            obj.Set("error", createTwilioErrorObject(env, code, message));
+            obj.Set("publication", publication);
+            return obj;
         });
     }
 
