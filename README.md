@@ -406,12 +406,13 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
 
 See the [`examples/`](examples/) directory:
 
-| Example                                           | Description                                                           |
-| ------------------------------------------------- | --------------------------------------------------------------------- |
-| [`virtual_camera.js`](examples/virtual_camera.js) | Decodes an MP4 with ffmpeg and pushes I420 frames to a room.          |
-| [`video_mirror.js`](examples/video_mirror.js)     | Receives remote video frames and pushes them back as-is.              |
-| [`audio_push.js`](examples/audio_push.js)         | Generates a sine wave tone and pushes PCM audio to a room.            |
-| [`data_channel.js`](examples/data_channel.js)     | Two participants exchange string and binary messages via data tracks. |
+| Example                                           | Description                                                                                         |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [`virtual_camera.js`](examples/virtual_camera.js) | Decodes an MP4 with ffmpeg and pushes I420 frames to a room.                                        |
+| [`video_mirror.js`](examples/video_mirror.js)     | Receives remote video frames and pushes them back as-is.                                            |
+| [`audio_push.js`](examples/audio_push.js)         | Generates a sine wave tone and pushes PCM audio to a room.                                          |
+| [`data_channel.js`](examples/data_channel.js)     | Two participants exchange string and binary messages via data tracks.                               |
+| [`voice_agent.js`](examples/voice_agent.js)       | Bridges room audio to the OpenAI Realtime API for a spoken voice agent (requires `OPENAI_API_KEY`). |
 
 The examples load credentials from a `.env` file at the repo root. Copy the
 template, fill in your credentials, and run:

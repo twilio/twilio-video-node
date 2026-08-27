@@ -6,6 +6,7 @@
 
 const { connect, createLocalAudioTrack } = require('../dist/index.cjs');
 const { generateToken } = require('./helpers/token');
+const { createPacedWriter } = require('./helpers/paced-audio-writer');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';
 
@@ -40,9 +41,10 @@ async function main() {
   });
 
   console.log('Connected! Room:', room.name, 'SID:', room.sid);
-  startPushingAudio(audioTrack);
+  const pusher = startPushingAudio(audioTrack);
 
   room.on('disconnected', error => {
+    pusher.stop();
     console.log('Disconnected', error ? error.message : '');
     process.exit(0);
   });
@@ -74,25 +76,37 @@ async function main() {
   }, 5000);
 
   process.on('SIGINT', () => {
+    pusher.stop();
     room.disconnect();
     setTimeout(() => process.exit(0), 1000);
   });
 }
 
+// Generate the tone into a drift-compensated paced writer, which drains it to
+// the track at exactly 48 kHz. The writer handles playout timing; this loop
+// only has to keep the queue topped up ahead of it. (Writing frames directly on
+// a setInterval instead drifts and clicks — see helpers/paced-audio-writer.js.)
 function startPushingAudio(audioTrack) {
-  let frameIndex = 0;
+  const writer = createPacedWriter(audioTrack);
+  writer.start();
 
-  setInterval(() => {
-    const samples = generateSineFrame(frameIndex);
-    audioTrack.write({
-      pcm: samples,
-      frames: SAMPLES_PER_FRAME,
-    });
-    frameIndex++;
-    if (frameIndex % 100 === 0) {
-      console.log('Pushed', frameIndex, 'audio frames');
+  let frameIndex = 0;
+  const TARGET_QUEUED_BYTES = 6 * SAMPLES_PER_FRAME * 2; // keep ~60 ms queued ahead
+
+  const filler = setInterval(() => {
+    while (writer.pendingBytes() < TARGET_QUEUED_BYTES) {
+      writer.enqueue(generateSineFrame(frameIndex));
+      frameIndex++;
+      if (frameIndex % 100 === 0) console.log('Generated', frameIndex, 'audio frames');
     }
   }, FRAME_DURATION_MS);
+
+  return {
+    stop() {
+      clearInterval(filler);
+      writer.stop();
+    },
+  };
 }
 
 main().catch(err => {
