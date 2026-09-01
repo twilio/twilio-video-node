@@ -35,6 +35,11 @@ This SDK is currently in beta. See the [README](README.md) for details.
 
 ## Bug Fixes
 
+- Fixed a crash (`SIGSEGV`) during teardown of a Room that ended remotely. A remote track's
+  frame sink was freed while still registered with the underlying WebRTC track, so the next
+  frame delivered on an SDK-internal thread wrote through freed memory. Affected consumers
+  using `RemoteAudioTrack.onFrame` or `RemoteVideoTrack.onFrame`.
+
 - Data track options set to `undefined` are treated as unset. `{ maxRetransmits: undefined }`
   previously failed with `A number was expected`.
 
