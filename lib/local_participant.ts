@@ -21,8 +21,27 @@ import {
 
 /** Listener signatures for every event a {@link LocalParticipant} can emit. */
 export type LocalParticipantEvents = {
+  /**
+   * A local track finished publishing and remote participants can now subscribe
+   * to it.
+   *
+   * @param publication - The resulting publication, including the track's
+   * server-assigned SID.
+   */
   trackPublished: (publication: LocalTrackPublication) => void;
+  /**
+   * Publishing a local track failed. The track is not published, and remote
+   * participants never see it.
+   *
+   * @param error - Why publishing failed.
+   */
   trackPublicationFailed: (error: TwilioError) => void;
+  /**
+   * The local participant's network quality changed. Emitted only when the Room
+   * was joined with network quality enabled for the local participant.
+   *
+   * @param level - Quality from 0 (worst) to 5 (best).
+   */
   networkQualityLevelChanged: (level: number) => void;
 };
 
@@ -37,6 +56,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   private _publishedTracks = new Map<string, LocalTrack>();
   private _unpublishFn = (track: LocalTrack): boolean => this.unpublishTrack(track);
 
+  /** @internal */
   constructor(
     nativeParticipant: NativeLocalParticipant,
     seededTracks: ReadonlyArray<LocalTrack> = [],

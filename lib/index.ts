@@ -1,3 +1,21 @@
+/**
+ * Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame
+ * access.
+ *
+ * {@link connect} joins a Group Room and resolves with a {@link Room}. From
+ * there, {@link Room.localParticipant} publishes tracks and
+ * {@link Room.participants} exposes the remote participants whose tracks can be
+ * subscribed to. Local tracks come from {@link createLocalVideoTrack},
+ * {@link createLocalAudioTrack}, {@link createLocalDataTrack}, and
+ * {@link createLocalTracks}.
+ *
+ * Video frames are I420 planar with `bigint` nanosecond timestamps; audio is
+ * 48kHz mono S16LE PCM on the sending side. Call {@link Room.dispose} when
+ * finished to release native resources.
+ *
+ *
+ * @packageDocumentation
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -424,31 +442,57 @@ export async function createLocalTracks(
  * depending on the error message.
  */
 export const ErrorCode = Object.freeze({
+  /** The Access Token provided to the Twilio API was invalid. */
   ACCESS_TOKEN_INVALID: 20101,
+  /** The Access Token's header is invalid. */
   ACCESS_TOKEN_HEADER_INVALID: 20102,
+  /** The Access Token's issuer or subject is invalid. */
   ACCESS_TOKEN_ISSUER_INVALID: 20103,
+  /** The Access Token has expired, or its expiration date is invalid. */
   ACCESS_TOKEN_EXPIRED: 20104,
+  /** The Access Token's not-before time is in the future. */
   ACCESS_TOKEN_NOT_YET_VALID: 20105,
+  /** The Access Token's grants were invalid, unparseable, or did not permit the requested operation. */
   ACCESS_TOKEN_GRANT_INVALID: 20106,
+  /** The Access Token's signature did not verify. */
   ACCESS_TOKEN_SIGNATURE_INVALID: 20107,
+  /** A signaling connection error not covered by a more specific code. */
   SIGNALING_CONNECTION_ERROR: 53000,
+  /** The signaling connection was unexpectedly disconnected. */
   SIGNALING_CONNECTION_DISCONNECTED: 53001,
+  /** The signaling connection timed out. */
   SIGNALING_CONNECTION_TIMEOUT: 53002,
+  /** The operation was attempted on a Room that does not exist. */
   ROOM_NOT_FOUND: 53106,
+  /** The Room could not be connected to, for a reason not covered by a more specific code. */
   ROOM_CONNECT_FAILED: 53104,
+  /** The Room is already at its participant limit. */
   ROOM_MAX_PARTICIPANTS_EXCEEDED: 53105,
+  /** The Room has been completed, and the requested operation cannot be performed on it. */
   ROOM_COMPLETED: 53118,
+  /** The participant has reached its maximum number of published tracks. */
   PARTICIPANT_MAX_TRACKS_EXCEEDED: 53203,
+  /** The participant was disconnected because another joined with the same identity. */
   PARTICIPANT_DUPLICATE_IDENTITY: 53205,
+  /** The track is invalid, for a reason not covered by a more specific code. */
   TRACK_INVALID: 53300,
+  /** The track name is invalid, for a reason not covered by a more specific code. */
   TRACK_NAME_INVALID: 53301,
+  /** The track name exceeds the maximum length. */
   TRACK_NAME_TOO_LONG: 53302,
+  /** The track's name contains characters that are not allowed. */
   TRACK_NAME_CHARS_INVALID: 53303,
+  /** The client could not create or apply its local media description. */
   MEDIA_CLIENT_LOCAL_DESC_FAILED: 53400,
+  /** The server could not create or apply its local media description. */
   MEDIA_SERVER_LOCAL_DESC_FAILED: 53401,
+  /** The client could not apply the remote media description it received. */
   MEDIA_CLIENT_REMOTE_DESC_FAILED: 53402,
+  /** The server could not apply the client's media description. */
   MEDIA_SERVER_REMOTE_DESC_FAILED: 53403,
+  /** The client and server share no supported codec. */
   MEDIA_NO_SUPPORTED_CODEC: 53404,
+  /** The media connection failed, or media activity ceased. */
   MEDIA_CONNECTION_ERROR: 53405,
 } as const);
 

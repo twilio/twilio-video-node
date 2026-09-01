@@ -19,20 +19,91 @@ import {
   type RemoteTrackPublication,
 } from './track_publication.js';
 
-/** Listener signatures for every event a {@link RemoteParticipant} can emit. */
+/**
+ * Listener signatures for every event a {@link RemoteParticipant} can emit.
+ *
+ * The track events here are also re-emitted by the {@link Room}, with the
+ * participant appended as the last argument. See {@link RoomEvents}.
+ * `networkQualityLevelChanged` is not re-emitted, so it must be listened for on
+ * each participant.
+ */
 export type RemoteParticipantEvents = {
+  /**
+   * One of this participant's tracks was subscribed to and is now delivering
+   * media or messages.
+   *
+   * A participant already publishing when {@link connect} resolved emits this
+   * afterwards. Subscriptions that completed before the listener was attached
+   * are not replayed; they appear in {@link RemoteParticipant.tracks} with
+   * `isSubscribed` set to `true`.
+   *
+   * @param track - The subscribed track.
+   */
   trackSubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  /**
+   * One of this participant's tracks was unsubscribed from and stops delivering
+   * media. Its frame and message callbacks will not fire again.
+   *
+   * @param track - The unsubscribed track.
+   */
   trackUnsubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  /**
+   * This participant published a track. Subscription follows separately, and
+   * `trackSubscribed` reports it.
+   *
+   * @param publication - Metadata for the newly published track.
+   */
   trackPublished: (publication: RemoteTrackPublishEvent) => void;
+  /**
+   * This participant unpublished a track.
+   *
+   * @param publication - Metadata for the unpublished track.
+   */
   trackUnpublished: (publication: RemoteTrackPublishEvent) => void;
+  /**
+   * This participant unmuted a track they publish.
+   *
+   * @param publication - Identifies the track that was enabled.
+   */
   trackEnabled: (publication: RemoteTrackStateEvent) => void;
+  /**
+   * This participant muted a track they publish. The track stays subscribed but
+   * stops delivering media.
+   *
+   * @param publication - Identifies the track that was disabled.
+   */
   trackDisabled: (publication: RemoteTrackStateEvent) => void;
+  /**
+   * Subscribing to one of this participant's tracks failed. The track stays
+   * unsubscribed.
+   *
+   * @param error - Why the subscription failed.
+   * @param publication - Identifies the track that could not be subscribed to.
+   */
   trackSubscriptionFailed: (
     error: TwilioError,
     publication: RemoteTrackSubscriptionFailedEvent,
   ) => void;
+  /**
+   * The server stopped delivering a subscribed video track, typically to stay
+   * within the Room's bandwidth profile. The track stays subscribed and its
+   * `isSwitchedOff` reads `true`.
+   *
+   * @param track - The track that was switched off.
+   */
   videoTrackSwitchedOff: (track: RemoteVideoTrack) => void;
+  /**
+   * The server resumed delivering a video track that was switched off.
+   *
+   * @param track - The track that was switched on.
+   */
   videoTrackSwitchedOn: (track: RemoteVideoTrack) => void;
+  /**
+   * This participant's network quality changed. Emitted only when the Room was
+   * joined with network quality enabled for remote participants.
+   *
+   * @param level - Quality from 0 (worst) to 5 (best).
+   */
   networkQualityLevelChanged: (level: number) => void;
 };
 
@@ -45,6 +116,7 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
   /** @internal */
   readonly _native: NativeRemoteParticipant;
 
+  /** @internal */
   constructor(nativeParticipant: NativeRemoteParticipant) {
     super();
     this._native = nativeParticipant;

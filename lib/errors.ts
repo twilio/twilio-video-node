@@ -47,7 +47,7 @@ export class RoomNotFoundError extends TwilioError {
   }
 }
 
-/** Raised when publishing a track would exceed the Room's maximum number of simultaneously published tracks. Code `53203`. */
+/** Raised when publishing a track would exceed the participant's maximum number of simultaneously published tracks. Code `53203`. */
 export class ParticipantMaxTracksExceededError extends TwilioError {
   /** The fixed Twilio code for this error: `53203`. */
   static readonly code = 53203;

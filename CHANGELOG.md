@@ -2,6 +2,11 @@ This SDK is currently in beta. See the [README](README.md) for details.
 
 # 1.0.0-preview.3 (Unreleased)
 
+## Documentation
+
+- Added an API reference generated with TypeDoc, covering every exported symbol. Build it
+  locally with `npm run docs`.
+
 ## Breaking Changes
 
 - `VideoCodec` only accepts `'VP8'`, the only video codec this SDK supports in Group Rooms.
