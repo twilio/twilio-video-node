@@ -2,6 +2,11 @@ This SDK is currently in beta. See the [README](README.md) for details.
 
 # 1.0.0-preview.3 (Unreleased)
 
+## Documentation
+
+- Added an API reference generated with TypeDoc, covering every exported symbol. Build it
+  locally with `npm run docs`.
+
 ## Breaking Changes
 
 - `VideoCodec` only accepts `'VP8'`, the only video codec this SDK supports in Group Rooms.
@@ -15,6 +20,10 @@ This SDK is currently in beta. See the [README](README.md) for details.
 - `LocalDataTrack.maxPacketLifeTime` and `maxRetransmits` are now `number | null`, reporting
   `null` when unset instead of `65535`. Check for `null`, or use `reliable`. Both now report the
   value passed to `createLocalDataTrack()`, so a limit of `65535` reads back as `65535`.
+
+- `ErrorCode.TRACK_NAME_TOO_LONG` is renamed to `ErrorCode.TRACK_NAME_INVALID`. The code it maps
+  to, `53301`, is Twilio's `TrackNameInvalid`. `ErrorCode.TRACK_NAME_TOO_LONG` now maps to
+  `53302`, the code that condition actually reports.
 
 - `createLocalDataTrack()` validates delivery options. `maxPacketLifeTime` and `maxRetransmits`
   must be integers in `[0, 65535]` (`RangeError`, replacing the plain `Error` for negatives);

@@ -1,5 +1,7 @@
 # @twilio/video-node-sdk
 
+[![CI](https://github.com/twilio/twilio-video-node/actions/workflows/ci.yml/badge.svg)](https://github.com/twilio/twilio-video-node/actions/workflows/ci.yml)
+
 Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access. Built on a native C++ addon over WebRTC, it lets you push and receive decoded video and audio frames from Node.js on realtime.
 
 **Note: this is a beta release of the Twilio Media SDK for Node.js. It is provided for evaluation purposes only and should not be used with production traffic. During the beta period this SDK is not HIPAA eligible.**
@@ -437,14 +439,14 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
 
 ## Examples
 
-See the [`examples/`](examples/) directory:
+See the [`examples/`](https://github.com/twilio/twilio-video-node/tree/main/examples) directory:
 
-| Example                                           | Description                                                           |
-| ------------------------------------------------- | --------------------------------------------------------------------- |
-| [`virtual_camera.js`](examples/virtual_camera.js) | Decodes an MP4 with ffmpeg and pushes I420 frames to a room.          |
-| [`video_mirror.js`](examples/video_mirror.js)     | Receives remote video frames and pushes them back as-is.              |
-| [`audio_push.js`](examples/audio_push.js)         | Generates a sine wave tone and pushes PCM audio to a room.            |
-| [`data_channel.js`](examples/data_channel.js)     | Two participants exchange string and binary messages via data tracks. |
+| Example                                                                                                 | Description                                                           |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [`virtual_camera.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/virtual_camera.js) | Decodes an MP4 with ffmpeg and pushes I420 frames to a room.          |
+| [`video_mirror.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/video_mirror.js)     | Receives remote video frames and pushes them back as-is.              |
+| [`audio_push.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/audio_push.js)         | Generates a sine wave tone and pushes PCM audio to a room.            |
+| [`data_channel.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/data_channel.js)     | Two participants exchange string and binary messages via data tracks. |
 
 ```bash
 export TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

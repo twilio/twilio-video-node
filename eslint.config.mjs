@@ -41,5 +41,5 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'off',
     },
   },
-  globalIgnores(['build/', 'prebuilds/', 'deps/', 'node_modules/', 'coverage/', 'dist/']),
+  globalIgnores(['build/', 'prebuilds/', 'deps/', 'node_modules/', 'coverage/', 'dist/', 'docs/']),
 ]);
