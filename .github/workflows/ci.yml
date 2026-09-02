@@ -33,6 +33,8 @@ jobs:
               npm run lint
               npm run format:check
           - name: build-and-test
+            # The unit tests require the native addon.
+            native: true
             run: |
               npm run build:ts
               npm run test:unit
@@ -51,5 +53,13 @@ jobs:
         uses: ./.github/actions/artifactory-oidc
       - name: Install dependencies
         run: npm ci --ignore-scripts
+      # Not cached: rtc-cpp is not redistributable, and GitHub caches are
+      # readable by any workflow run on the repository.
+      - name: Fetch rtc-cpp
+        if: ${{ matrix.native }}
+        run: npm run fetch-deps
+      - name: Build native addon
+        if: ${{ matrix.native }}
+        run: npm run build
       - name: ${{ matrix.name }}
         run: ${{ matrix.run }}

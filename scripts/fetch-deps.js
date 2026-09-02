@@ -31,44 +31,127 @@ function log(msg) {
 }
 
 const RETRIES = 5;
-const version = process.env.RTC_CPP_VERSION || '7.2.2';
+const VERSION_FILE = path.join(ROOT, '.rtc-cpp-version');
+
+// Kept in its own file so a version bump is a one-line edit to a value that
+// build tooling outside this script can read too.
+function readPinnedVersion() {
+  let contents;
+  try {
+    contents = fs.readFileSync(VERSION_FILE, 'utf8');
+  } catch (err) {
+    console.error(`[fetch-deps] Cannot read the rtc-cpp version pin: ${err.message}`);
+    process.exit(1);
+  }
+  const pinned = contents.trim();
+  if (!pinned) {
+    console.error(`[fetch-deps] The rtc-cpp version pin at ${VERSION_FILE} is empty`);
+    process.exit(1);
+  }
+  return pinned;
+}
+
+// Read only by the code paths that download, so a local RTC_CPP_ARCHIVE still
+// works in a checkout where the pin is missing.
+function resolveVersion() {
+  return process.env.RTC_CPP_VERSION || readPinnedVersion();
+}
+
 const repo = process.env.MAVEN_REPO || 'releases';
-const repoUrl = `https://twilio.jfrog.io/artifactory/${repo}`;
-const artifact = `com.twilio.sdk:twilio-video:${version}:tar.bz2:${platform}`;
+// CI mints its token against ARTIFACTORY_URL, so the download has to address the
+// same host the token was issued for.
+const baseUrl = (process.env.ARTIFACTORY_URL || 'https://twilio.jfrog.io').replace(/\/+$/, '');
+const repoUrl = `${baseUrl}/artifactory/${repo}`;
 const tmpFile = path.join(ROOT, '.tmp-twilio-video.tar.bz2');
 
-log(`Fetching twilio-video via Maven`);
-log(`  artifact: ${artifact}`);
-log(`  repo:     ${repoUrl}`);
-
-function mvnGet() {
+// Runs one fetch attempt up to RETRIES times. Returns the error from the final
+// attempt, so each caller decides how much of it is safe to surface.
+function withRetries(attemptFetch) {
+  let lastErr;
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     log(`Attempt #${attempt} to fetch from Artifactory...`);
     try {
-      execFileSync(
-        'mvn',
-        [
-          'dependency:get',
-          '-Partifactory',
-          '--batch-mode',
-          '-Dhttps.protocols=TLSv1.2',
-          `-DrepoUrl=${repoUrl}`,
-          '-Dtransitive=false',
-          `-Dartifact=${artifact}`,
-          `-Ddest=${tmpFile}`,
-        ],
-        { stdio: 'inherit' },
-      );
-      return;
+      attemptFetch();
+      return null;
     } catch (err) {
-      if (attempt === RETRIES) {
-        console.error(
-          `[fetch-deps] Tip: you can bypass Maven by setting RTC_CPP_ARCHIVE=/path/to/twilio-video-${platform}.tar.bz2`,
-        );
-        throw new Error(`Maven fetch failed after ${RETRIES} attempts`, { cause: err });
-      }
+      lastErr = err;
     }
   }
+  return lastErr;
+}
+
+// Fetch with an Artifactory access token instead of Maven credentials. CI mints
+// a short-lived one via OIDC; locally a personal token works.
+function curlGet(token) {
+  const version = resolveVersion();
+  // The artifact the Maven coordinates in mvnGet resolve to, addressed directly.
+  const downloadUrl = `${repoUrl}/com/twilio/sdk/twilio-video/${version}/twilio-video-${version}-${platform}.tar.bz2`;
+  log(`Fetching twilio-video from Artifactory`);
+  log(`  url: ${downloadUrl}`);
+  const err = withRetries(() =>
+    // Token goes in as a curl config file on stdin, never argv: workflow logs
+    // and process listings for this repo are public.
+    // Timeouts are required: without them a stalled response hangs the process
+    // and the retries below never get a turn.
+    execFileSync(
+      'curl',
+      [
+        '-fsSL',
+        '--connect-timeout',
+        '30',
+        '--max-time',
+        '900',
+        '-K',
+        '-',
+        '-o',
+        tmpFile,
+        downloadUrl,
+      ],
+      {
+        input: `header = "Authorization: Bearer ${token}"\n`,
+        stdio: ['pipe', 'inherit', 'inherit'],
+      },
+    ),
+  );
+  if (!err) {
+    return;
+  }
+  // Exit status only, with no error chained on: nothing curl saw of the request
+  // or the response reaches the log.
+  throw new Error(
+    `Artifactory download failed after ${RETRIES} attempts (curl exit ${err.status ?? 'unknown'})`,
+  );
+}
+
+function mvnGet() {
+  const artifact = `com.twilio.sdk:twilio-video:${resolveVersion()}:tar.bz2:${platform}`;
+  log(`Fetching twilio-video via Maven`);
+  log(`  artifact: ${artifact}`);
+  log(`  repo:     ${repoUrl}`);
+  const err = withRetries(() =>
+    execFileSync(
+      'mvn',
+      [
+        'dependency:get',
+        '-Partifactory',
+        '--batch-mode',
+        '-Dhttps.protocols=TLSv1.2',
+        `-DrepoUrl=${repoUrl}`,
+        '-Dtransitive=false',
+        `-Dartifact=${artifact}`,
+        `-Ddest=${tmpFile}`,
+      ],
+      { stdio: 'inherit' },
+    ),
+  );
+  if (!err) {
+    return;
+  }
+  console.error(
+    `[fetch-deps] Tip: you can bypass Maven by setting ARTIFACTORY_TOKEN, or ` +
+      `RTC_CPP_ARCHIVE=/path/to/twilio-video-${platform}.tar.bz2`,
+  );
+  throw new Error(`Maven fetch failed after ${RETRIES} attempts`, { cause: err });
 }
 
 function main() {
@@ -84,6 +167,8 @@ function main() {
       }
       log(`Using local archive: ${resolved}`);
       fs.copyFileSync(resolved, tmpFile);
+    } else if (process.env.ARTIFACTORY_TOKEN) {
+      curlGet(process.env.ARTIFACTORY_TOKEN);
     } else {
       mvnGet();
     }

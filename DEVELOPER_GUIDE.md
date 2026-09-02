@@ -37,7 +37,17 @@ The native addon links against rtc-cpp (Twilio's C++ Video library).
 
 ### Download from Artifactory
 
-Configure Maven with your Artifactory credentials by creating `~/.m2/settings.xml`:
+The simplest option is an access token. Get one from [twilio.jfrog.io](https://twilio.jfrog.io) under your user profile, then:
+
+```sh
+ARTIFACTORY_TOKEN=YOUR_ARTIFACTORY_TOKEN npm run fetch-deps
+```
+
+This downloads the artifact directly, with no Maven setup. CI uses the same path, with a short-lived token from OIDC.
+
+#### Via Maven
+
+Alternatively, configure Maven with your Artifactory credentials by creating `~/.m2/settings.xml`:
 
 ```xml
 <settings>
@@ -62,23 +72,24 @@ Configure Maven with your Artifactory credentials by creating `~/.m2/settings.xm
 </settings>
 ```
 
-Get your Artifactory token from [twilio.jfrog.io](https://twilio.jfrog.io) under your user profile.
-
 Then fetch the deps:
 
 ```sh
 npm run fetch-deps
 ```
 
-Optional vars: `RTC_CPP_VERSION` (default: `7.2.2`), `RTC_CPP_BUILD_TYPE` (default: `release`), `MAVEN_REPO` (default: `releases`).
+The rtc-cpp version is pinned in `.rtc-cpp-version`; bump that file to move to a new release.
+
+Optional vars: `RTC_CPP_VERSION` (overrides the pin), `RTC_CPP_BUILD_TYPE` (default: `release`), `MAVEN_REPO` (default: `releases`).
 
 #### Maven auth troubleshooting
 
-If Maven authentication fails, you can bypass it by downloading the artifact manually and passing it via `RTC_CPP_ARCHIVE`:
+If Maven authentication fails, set `ARTIFACTORY_TOKEN` as shown above. To download the artifact by hand instead and pass it via `RTC_CPP_ARCHIVE`:
 
 ```sh
+VERSION=$(cat .rtc-cpp-version)
 curl -L -H "Authorization: Bearer $ARTIFACTORY_TOKEN" \
-  "https://twilio.jfrog.io/artifactory/releases/com/twilio/sdk/twilio-video/7.2.2/twilio-video-7.2.2-darwin.tar.bz2" \
+  "https://twilio.jfrog.io/artifactory/releases/com/twilio/sdk/twilio-video/$VERSION/twilio-video-$VERSION-darwin.tar.bz2" \
   -o /tmp/twilio-video-darwin.tar.bz2
 
 RTC_CPP_ARCHIVE=/tmp/twilio-video-darwin.tar.bz2 npm run fetch-deps
