@@ -36,7 +36,7 @@ function getGitHubInfo(pkg) {
     host: match[1],
     repo: match[2],
     version: pkg.version,
-    tag: `v${pkg.version}`,
+    tag: pkg.version,
   };
 }
 
