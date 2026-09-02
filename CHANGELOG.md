@@ -1,6 +1,6 @@
 This SDK is currently in beta. See the [README](README.md) for details.
 
-# 1.0.0-preview.3 (Unreleased)
+# 1.0.0-preview.3 (September 2, 2026)
 
 ## Documentation
 
