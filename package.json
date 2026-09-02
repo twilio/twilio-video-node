@@ -35,7 +35,6 @@
     "fetch-deps": "node scripts/fetch-deps.js",
     "build:ts": "tsdown",
     "docs": "typedoc",
-    "docs:json": "typedoc --json docs/raw.json",
     "test": "vitest run",
     "test:unit": "vitest run test/unit.test.ts",
     "test:integration": "vitest run test/integration.test.ts",
