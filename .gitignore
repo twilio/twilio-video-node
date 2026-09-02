@@ -41,7 +41,9 @@ coverage/
 
 # Environment
 .env
-.env.local
+.env.*
+# ...but keep the committed template
+!.env.example
 
 # Written by the artifactory-oidc action; holds a registry auth token
 .npmrc
