@@ -3,6 +3,10 @@ node_modules
 # Build artifacts
 build/
 dist/
+
+# Generated API reference (npm run docs)
+docs/
+
 *.node
 *.o
 *.a

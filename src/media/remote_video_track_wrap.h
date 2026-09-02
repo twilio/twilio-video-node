@@ -28,6 +28,8 @@ private:
     Napi::Value RemoveFrameCallback(const Napi::CallbackInfo& info);
     Napi::Value SetContentPreferences(const Napi::CallbackInfo& info);
 
+    void detachSink();
+
     std::shared_ptr<twilio::media::RemoteVideoTrack> track_;
     std::unique_ptr<VideoFrameSink> frameSink_;
 };

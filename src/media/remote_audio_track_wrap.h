@@ -26,6 +26,8 @@ private:
     Napi::Value OnFrame(const Napi::CallbackInfo& info);
     Napi::Value RemoveFrameCallback(const Napi::CallbackInfo& info);
 
+    void detachSink();
+
     std::shared_ptr<twilio::media::RemoteAudioTrack> track_;
     std::unique_ptr<AudioFrameSink> audioSink_;
 };

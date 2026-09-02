@@ -34,6 +34,8 @@
     "upload:linux": "node scripts/upload.js linux-x64",
     "fetch-deps": "node scripts/fetch-deps.js",
     "build:ts": "tsdown",
+    "docs": "typedoc",
+    "docs:json": "typedoc --json docs/raw.json",
     "test": "vitest run",
     "test:unit": "vitest run test/unit.test.ts",
     "test:integration": "vitest run test/integration.test.ts",
@@ -55,6 +57,7 @@
     "prettier": "^3.8.1",
     "tsdown": "^0.21.1",
     "twilio": "^5.12.1",
+    "typedoc": "^0.28.20",
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.57.0",
     "vitest": "^4.0.18"

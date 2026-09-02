@@ -34,13 +34,24 @@ RemoteAudioTrackWrap::RemoteAudioTrackWrap(const Napi::CallbackInfo& info)
 }
 
 RemoteAudioTrackWrap::~RemoteAudioTrackWrap() {
-    if (audioSink_ && track_) {
-        auto webrtcTrack = track_->getWebRtcTrack();
-        if (webrtcTrack) {
-            webrtcTrack->RemoveSink(audioSink_.get());
-        }
+    detachSink();
+}
+
+void RemoteAudioTrackWrap::detachSink() {
+    if (!audioSink_) return;
+
+    auto webrtcTrack = track_ ? track_->getWebRtcTrack() : nullptr;
+    if (webrtcTrack) {
+        webrtcTrack->RemoveSink(audioSink_.get());
         audioSink_->close();
+        audioSink_.reset();
+        return;
     }
+
+    // No track to unregister from, which happens once the Room has ended
+    // remotely. Freeing the sink now would leave WebRTC's sink list dangling.
+    audioSink_->close();
+    (void)audioSink_.release();
 }
 
 Napi::Value RemoteAudioTrackWrap::GetKind(const Napi::CallbackInfo& info) {
@@ -70,13 +81,7 @@ Napi::Value RemoteAudioTrackWrap::OnFrame(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    if (audioSink_ && track_) {
-        auto webrtcTrack = track_->getWebRtcTrack();
-        if (webrtcTrack) {
-            webrtcTrack->RemoveSink(audioSink_.get());
-        }
-        audioSink_->close();
-    }
+    detachSink();
 
     auto callback = info[0].As<Napi::Function>();
     audioSink_ = std::make_unique<AudioFrameSink>(env, callback);
@@ -92,14 +97,7 @@ Napi::Value RemoteAudioTrackWrap::OnFrame(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value RemoteAudioTrackWrap::RemoveFrameCallback(const Napi::CallbackInfo& info) {
-    if (audioSink_ && track_) {
-        auto webrtcTrack = track_->getWebRtcTrack();
-        if (webrtcTrack) {
-            webrtcTrack->RemoveSink(audioSink_.get());
-        }
-        audioSink_->close();
-        audioSink_.reset();
-    }
+    detachSink();
     return info.Env().Undefined();
 }
 
