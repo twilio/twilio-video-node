@@ -19,7 +19,28 @@ class RemoteParticipantObserverImpl;
 class RemoteParticipantWrap : public Napi::ObjectWrap<RemoteParticipantWrap> {
 public:
     static void Init(Napi::Env env, Napi::Object exports);
-    static Napi::Object NewInstance(Napi::Env env, std::shared_ptr<twilio::video::RemoteParticipant> participant);
+
+    /**
+     * Creates the rtc-cpp observer for `participant` and installs it immediately.
+     *
+     * Safe to call from any thread: it touches no JS state. Events raised before
+     * the matching NewInstance() call are buffered by the observer and flushed
+     * when the wrap binds to it. rtc-cpp raises track subscriptions within a
+     * millisecond of onParticipantConnected, so installing the observer only
+     * once the JS thread has built the wrap loses those events outright.
+     */
+    static std::shared_ptr<RemoteParticipantObserverImpl> CreateObserver(
+        std::shared_ptr<twilio::video::RemoteParticipant> participant);
+
+    /**
+     * Builds the JS wrap. Must run on the JS thread.
+     *
+     * Pass the observer returned by CreateObserver() to adopt it along with any
+     * events it buffered; pass nullptr to create and install one here, which is
+     * only correct when the participant is already known to the room.
+     */
+    static Napi::Object NewInstance(Napi::Env env, std::shared_ptr<twilio::video::RemoteParticipant> participant,
+                                    std::shared_ptr<RemoteParticipantObserverImpl> observer = nullptr);
 
     RemoteParticipantWrap(const Napi::CallbackInfo& info);
     ~RemoteParticipantWrap();

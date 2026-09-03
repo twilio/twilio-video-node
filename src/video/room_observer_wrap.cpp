@@ -74,8 +74,13 @@ void RoomObserverWrap::onReconnected(const twilio::video::Room* room) {
 }
 
 void RoomObserverWrap::onParticipantConnected(twilio::video::Room* room, std::shared_ptr<twilio::video::RemoteParticipant> participant) {
-    dispatchEvent("participantConnected", [participant](Napi::Env env) -> Napi::Value {
-        return RemoteParticipantWrap::NewInstance(env, participant);
+    // Install the observer here, on the signaling thread, rather than inside the
+    // dispatched lambda: rtc-cpp subscribes to the participant's tracks about a
+    // millisecond after this callback, which is well inside the hop to the JS
+    // thread. Events raised in that window are buffered and replayed by bind().
+    auto observer = RemoteParticipantWrap::CreateObserver(participant);
+    dispatchEvent("participantConnected", [participant, observer](Napi::Env env) -> Napi::Value {
+        return RemoteParticipantWrap::NewInstance(env, participant, observer);
     });
 }
 

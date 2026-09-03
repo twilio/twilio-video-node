@@ -3,20 +3,39 @@
 #include "../media/remote_audio_track_wrap.h"
 #include "../media/remote_data_track_wrap.h"
 #include "../common/error.h"
+#include <vector>
 
 namespace twilio_video_node {
 
 class RemoteParticipantObserverImpl : public twilio::video::RemoteParticipantObserver {
 public:
-    RemoteParticipantObserverImpl(RemoteParticipantWrap* wrap, AsyncContext* ctx,
-                                   std::shared_ptr<std::atomic<bool>> alive)
-        : wrap_(wrap), ctx_(ctx), alive_(alive) {}
+    RemoteParticipantObserverImpl() = default;
+
+    // Adopts the JS wrap and replays whatever arrived before it existed, in order.
+    // Runs on the JS thread; the replayed events go through the same queue as live
+    // ones, so ordering relative to later events is preserved.
+    void bind(RemoteParticipantWrap* wrap, AsyncContext* ctx, std::shared_ptr<std::atomic<bool>> alive) {
+        std::vector<PendingEvent> replay;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (closed_.load(std::memory_order_acquire)) return;
+            wrap_ = wrap;
+            ctx_ = ctx;
+            alive_ = std::move(alive);
+            replay.swap(pending_);
+        }
+        for (auto& event : replay) {
+            dispatchEvent(event.name, std::move(event.createArgs));
+        }
+    }
 
     void close() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_.load(std::memory_order_acquire)) return;
         closed_.store(true, std::memory_order_release);
         wrap_ = nullptr;
+        ctx_ = nullptr;
+        pending_.clear();
     }
 
     // Audio track events
@@ -143,7 +162,14 @@ private:
         if (closed_.load(std::memory_order_acquire)) return;
 
         std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire)) return;
+
+        // Buffer until bind() supplies the wrap. The createArgs lambdas only touch
+        // Napi when invoked, so holding them off the JS thread is safe.
+        if (!wrap_ || !ctx_) {
+            pending_.push_back({eventName, std::move(createArgs)});
+            return;
+        }
 
         auto alive = alive_;
         ctx_->dispatch([this, alive, eventName, createArgs](Napi::Env env) {
@@ -191,9 +217,15 @@ private:
         });
     }
 
-    RemoteParticipantWrap* wrap_;
-    AsyncContext* ctx_;
+    struct PendingEvent {
+        std::string name;
+        std::function<Napi::Value(Napi::Env)> createArgs;
+    };
+
+    RemoteParticipantWrap* wrap_ = nullptr;
+    AsyncContext* ctx_ = nullptr;
     std::shared_ptr<std::atomic<bool>> alive_;
+    std::vector<PendingEvent> pending_;
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
 };
@@ -217,15 +249,23 @@ void RemoteParticipantWrap::Init(Napi::Env env, Napi::Object exports) {
     exports.Set("RemoteParticipant", func);
 }
 
-Napi::Object RemoteParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<twilio::video::RemoteParticipant> participant) {
+std::shared_ptr<RemoteParticipantObserverImpl> RemoteParticipantWrap::CreateObserver(
+    std::shared_ptr<twilio::video::RemoteParticipant> participant) {
+    auto observer = std::make_shared<RemoteParticipantObserverImpl>();
+    participant->setObserver(observer);
+    return observer;
+}
+
+Napi::Object RemoteParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<twilio::video::RemoteParticipant> participant,
+                                               std::shared_ptr<RemoteParticipantObserverImpl> observer) {
     Napi::EscapableHandleScope scope(env);
 
     Napi::Object obj = constructor_.New({});
     RemoteParticipantWrap* wrap = Napi::ObjectWrap<RemoteParticipantWrap>::Unwrap(obj);
     wrap->participant_ = participant;
     wrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
-    wrap->observer_ = std::make_shared<RemoteParticipantObserverImpl>(wrap, wrap->asyncContext_.get(), wrap->alive_);
-    participant->setObserver(wrap->observer_);
+    wrap->observer_ = observer ? std::move(observer) : CreateObserver(participant);
+    wrap->observer_->bind(wrap, wrap->asyncContext_.get(), wrap->alive_);
 
     return scope.Escape(obj).ToObject();
 }
