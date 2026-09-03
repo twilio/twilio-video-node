@@ -720,7 +720,7 @@ describe('Room-level track event bubbling', () => {
         () => reject(new Error('Timeout waiting for room trackSubscribed')),
         TIMEOUT.subscribe,
       );
-      connB.room.on('trackSubscribed', (track, participant) => {
+      connB.room.on('trackSubscribed', (track, _publication, participant) => {
         clearTimeout(timeout);
         resolve({ track, participant });
       });
@@ -762,7 +762,7 @@ describe('Late joiner into a populated room', () => {
         () => reject(new Error(`Timeout waiting for trackSubscribed x2, got: [${kinds}]`)),
         TIMEOUT.subscribe,
       );
-      connB.room.on('trackSubscribed', (track: RemoteTrack, participant: RemoteParticipant) => {
+      connB.room.on('trackSubscribed', (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
         kinds.push(track.kind);
         publishers.push(participant.identity);
         if (kinds.length === 2) {
@@ -1217,5 +1217,48 @@ describe('Subscription to tracks published before joining', () => {
     } finally {
       await incumbent.cleanup();
     }
+  });
+
+  // trackUnsubscribed for a disconnecting participant's tracks and the
+  // participantDisconnected event it precedes are dispatched through two
+  // independent native queues (the participant's and the Room's) with no
+  // ordering guarantee between them. A participant that unpublishes and then
+  // disconnects on every rejoin exercises exactly the teardown path where
+  // that race showed up.
+  it('emits trackUnsubscribed for every remaining track on every rejoin', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const rejoins = 3;
+    const unsubscribedKinds: string[][] = [];
+
+    try {
+      for (let i = 0; i < rejoins; i++) {
+        const joined = waitForEvent<RemoteParticipant>(
+          incumbent.room,
+          'participantConnected',
+          TIMEOUT.subscribe,
+        );
+        const peer = await connectToRoom('bob', roomName, {
+          videoTracks: [createLocalVideoTrack(`video-${i}`)],
+          audioTracks: [createLocalAudioTrack(`audio-${i}`)],
+        });
+        const remotePeer = await joined;
+        await waitForEvents<RemoteTrack>(remotePeer, 'trackSubscribed', 2, TIMEOUT.subscribe);
+
+        const unsubscribed = waitForEvents<RemoteTrack>(
+          remotePeer,
+          'trackUnsubscribed',
+          2,
+          TIMEOUT.subscribe,
+        );
+        await peer.cleanup();
+        const tracks = await unsubscribed;
+        unsubscribedKinds.push(tracks.map(track => track.kind).sort());
+      }
+    } finally {
+      await incumbent.cleanup();
+    }
+
+    expect(unsubscribedKinds).toEqual(Array.from({ length: rejoins }, () => ['audio', 'video']));
   });
 });
