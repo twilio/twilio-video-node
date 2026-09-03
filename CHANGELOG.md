@@ -1,6 +1,6 @@
 This SDK is currently in beta. See the [README](README.md) for details.
 
-# Unreleased (breaking)
+# 1.0.0-beta.1 (In Progress)
 
 Reworks the frame contract. The receive API,
 the frame shapes and the timestamp type all change, so this warrants a new
