@@ -2,12 +2,6 @@ This SDK is currently in beta. See the [README](README.md) for details.
 
 # 1.0.0-beta.1 (In Progress)
 
-Reworks the frame contract. The receive API,
-the frame shapes and the timestamp type all change, so this warrants a new
-preview version rather than folding into `1.0.0-preview.3` below - the exact
-number is a release-planning call. Every change is mechanical, and the migration
-for each is given here.
-
 ## Breaking Changes
 
 ### `frameId` is no longer accepted on published frames
