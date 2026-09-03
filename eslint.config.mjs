@@ -3,6 +3,19 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig([
+  {
+    // Flat config does not read .gitignore, so linting would otherwise reach
+    // generated output and gitignored scratch directories.
+    ignores: [
+      'dist/**',
+      'build/**',
+      'docs/**',
+      'coverage/**',
+      'deps/**',
+      'prebuilds/**',
+      'resources/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

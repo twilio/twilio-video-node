@@ -141,7 +141,7 @@ conferencing. Key differences:
 | `LocalParticipant`       | The local participant. Publish/unpublish tracks.                                                                                                                 |
 | `RemoteParticipant`      | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`.                                                                                               |
 | `LocalVideoTrack`        | Pushable video track (`write(frame)`).                                                                                                                           |
-| `LocalAudioTrack`        | Pushable audio track (`write(frame)`).                                                                                                                           |
+| `LocalAudioTrack`        | Pushable audio track (`write(frame)`, `clearBuffer()`).                                                                                                          |
 | `LocalDataTrack`         | Send arbitrary data (`send`). Create via `createLocalDataTrack(name \| options?)`.                                                                               |
 | `RemoteVideoTrack`       | Receive video frames (`frames()`), `getStats()`, `frameDropped` event.                                                                                           |
 | `RemoteAudioTrack`       | Receive audio frames (`frames()`), `getStats()`, `frameDropped` event.                                                                                           |
@@ -302,6 +302,15 @@ const { framesWritten, framesDropped, sendQueueDepth, maxQueue } = track.getWrit
 Publishing at real-time cadence should never drop. A non-zero `framesDropped`
 means the producer is outrunning the wire.
 
+`clearBuffer()` discards whatever is still queued and not yet sent. Use it when
+the queued audio has become stale rather than merely late - barge-in, where the
+speaker is interrupted and the rest of the utterance should never play, is the
+usual case. Writes after it resume from an empty queue.
+
+```js
+track.clearBuffer();
+```
+
 ### LocalDataTrack
 
 Send arbitrary string or binary messages. Delivery is reliable and ordered by default.
@@ -446,6 +455,7 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
   region?: string;                      // e.g. 'us1', 'au1'
   iceOptions?: IceOptions;
   encodingParameters?: EncodingParameters;
+  connectionTimeout?: number;           // ms; default 30000, 0 waits indefinitely
 }
 ```
 

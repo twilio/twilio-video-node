@@ -45,6 +45,13 @@ jobs:
             run: |
               npm run build:ts
               npm run test:unit:pure
+          - name: examples
+            # Examples are shipped code and the documented reproduction path in
+            # CONTRIBUTING.md. They import the built .d.cts, so a removed or
+            # renamed SDK method fails here instead of silently at runtime.
+            run: |
+              npm run build:ts
+              npm run check:examples
           - name: docs
             run: npm run docs
     steps:

@@ -79,7 +79,6 @@ class VoiceAgent {
 
     this.audioFrameCount_ = 0;
     this.warnedNonStandardInput_ = false;
-    this.lastFrameAt_ = 0;
 
     this.intentionalClose_ = false;
     this.reconnectAttempts_ = 0;
@@ -90,21 +89,12 @@ class VoiceAgent {
     this.connectWebSocket_();
   }
 
-  frameCount() {
-    return this.audioFrameCount_;
-  }
-
-  lastFrameAt() {
-    return this.lastFrameAt_;
-  }
-
   // --- Incoming room audio -> OpenAI --------------------------------------
 
   onRoomAudio(frame) {
     if (!this.ws_ || this.ws_.readyState !== WebSocket.OPEN) return;
 
     this.audioFrameCount_++;
-    this.lastFrameAt_ = Date.now();
     if (this.audioFrameCount_ === 1) console.log('[agent] Receiving audio from the room');
 
     let pcm = frame.pcm;
@@ -161,7 +151,7 @@ class VoiceAgent {
       try {
         this.handleRealtimeEvent_(JSON.parse(ev.data.toString()));
       } catch (err) {
-        console.error('[agent] WS parse error:', err.message);
+        console.error('[agent] WS parse error:', err instanceof Error ? err.message : err);
       }
     });
 
@@ -337,50 +327,39 @@ async function main() {
   const agent = new VoiceAgent(audioTrack);
   agent.start();
 
-  // Subscribe to the first remote audio track we see.
-  let audioTrackRef = null;
+  // Subscribe to the first remote audio track we see. A track supports a single
+  // receiver, so this binds once and the loop runs until the track is
+  // unsubscribed or the Room disconnects.
   let boundAudio = false;
 
-  // A single onFrame registration can fail to start (or can stall) with this
-  // SDK, so we (re)register the sink and re-arm it a few times, plus a watchdog
-  // below re-registers if frames stop arriving.
-  function registerFrameSink(track) {
-    track.onFrame(frame => agent.onRoomAudio(frame));
-  }
-
-  function bindAudio(track) {
-    if (!track.onFrame) return;
-    audioTrackRef = track;
-    if (!boundAudio) {
-      boundAudio = true;
-      console.log('[agent] Subscribed to remote audio');
+  /** @param {import('../dist/index.cjs').RemoteAudioTrack} track */
+  async function bindAudio(track) {
+    if (boundAudio) return;
+    boundAudio = true;
+    console.log('[agent] Subscribed to remote audio');
+    // Audio defaults to mode 'queue' with maxQueue 10 (~100 ms), which smooths
+    // jitter without accumulating latency.
+    for await (const frame of track.frames()) {
+      agent.onRoomAudio(frame);
+      frame.close?.();
     }
-    registerFrameSink(track);
-    setTimeout(() => registerFrameSink(track), 1000);
-    setTimeout(() => registerFrameSink(track), 3000);
+    console.log('[agent] Remote audio ended');
+    boundAudio = false;
   }
 
+  /** @param {import('../dist/index.cjs').RemoteParticipant} participant */
   function handleParticipant(participant) {
     console.log('Participant connected:', participant.identity);
     participant.on('trackSubscribed', track => {
-      if (track.kind === 'audio') bindAudio(track);
+      if (track.kind === 'audio') void bindAudio(track);
     });
     for (const pub of participant.audioTracks.values()) {
-      if (pub.isSubscribed && pub.track) bindAudio(pub.track);
+      if (pub.isSubscribed && pub.track) void bindAudio(pub.track);
     }
   }
 
   room.participants.forEach(handleParticipant);
   room.on('participantConnected', handleParticipant);
-
-  // Watchdog: if we've received frames but they stopped for >2s, re-register.
-  setInterval(() => {
-    if (!audioTrackRef || agent.frameCount() === 0) return;
-    if (Date.now() - agent.lastFrameAt() > 2000) {
-      console.log('[agent] Audio stalled — re-registering frame sink');
-      registerFrameSink(audioTrackRef);
-    }
-  }, 2000);
 
   room.on('disconnected', error => {
     console.log('Disconnected', error ? error.message : '');

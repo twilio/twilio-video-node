@@ -605,8 +605,8 @@ describe('Track source option validation', () => {
   });
 
   it('sheds a burst that exceeds the audio publish queue, and says so', () => {
-    // Documents a real tradeoff rather than asserting it is fine. The
-    // blueprint's default of 10 chunks is ~100ms, so a producer that emits a
+    // Documents a real tradeoff rather than asserting it is fine. The audio
+    // default of 10 chunks is ~100ms, so a producer that emits a
     // whole utterance at once - a common TTS integration - loses most of it
     // unless it paces its writes or raises maxQueue.
     const track = createLocalAudioTrack({

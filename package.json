@@ -36,16 +36,18 @@
     "build:ts": "tsdown",
     "docs": "typedoc",
     "test": "vitest run",
-    "test:unit": "vitest run test/unit.test.ts test/bundle.test.ts test/blueprint_conformance.test.ts test/module_load.test.ts test/frame_stream.test.ts test/remote_track.test.ts test/errors.test.ts test/room.test.ts test/participant.test.ts",
+    "test:unit": "vitest run --exclude '**/integration.test.ts' --exclude '**/node_modules/**'",
     "test:integration": "vitest run test/integration.test.ts",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage --exclude '**/integration.test.ts' --exclude '**/node_modules/**'",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
     "test:unit:pure": "vitest run test/frame_stream.test.ts test/remote_track.test.ts test/errors.test.ts test/room.test.ts test/participant.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test:soak": "node test/soak.mjs"
+    "test:soak": "node test/soak.mjs",
+    "typecheck:examples": "tsc --noEmit -p examples/tsconfig.json",
+    "check:examples": "node --check examples/audio_push.js && node --check examples/data_channel.js && node --check examples/video_mirror.js && node --check examples/virtual_camera.js && node --check examples/voice_agent.js && npm run typecheck:examples"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

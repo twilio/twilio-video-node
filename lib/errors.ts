@@ -26,9 +26,14 @@ export class TwilioError extends Error {
  */
 export const SDK_LOCAL_CODE = 0;
 
-/** Constructor shape shared by every generated subclass. */
-interface TwilioErrorClass {
+/**
+ * Constructor shape shared by every generated {@link TwilioError} subclass:
+ * constructible with an optional message override, and carrying the Twilio
+ * numeric `code` as a static.
+ */
+export interface TwilioErrorClass {
   new (message?: string): TwilioError;
+  /** The Twilio numeric error code every instance of this class carries. */
   readonly code: number;
 }
 

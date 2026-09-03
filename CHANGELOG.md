@@ -2,13 +2,43 @@ This SDK is currently in beta. See the [README](README.md) for details.
 
 # Unreleased (breaking)
 
-Aligns the frame contract with the Video Node RTC SDK blueprint. The receive API,
+Reworks the frame contract. The receive API,
 the frame shapes and the timestamp type all change, so this warrants a new
 preview version rather than folding into `1.0.0-preview.3` below - the exact
 number is a release-planning call. Every change is mechanical, and the migration
 for each is given here.
 
 ## Breaking Changes
+
+### `frameId` is no longer accepted on published frames
+
+`VideoFrameInput.frameId` and `AudioFrameInput.frameId` are removed. They were
+typed and documented as "carried for tracing", but the publish path never read
+them, so the value was silently discarded. `frameId` on _received_ frames is
+unaffected: it is SDK-generated and monotonic per track.
+
+```js
+// Before - frameId was accepted and dropped
+track.write({ ...frame, frameId: n });
+
+// After - carry your own correlation outside the frame
+track.write(frame);
+```
+
+### `FrameStream` is no longer exported
+
+It is the internal queue behind `frames()`. `frames()` returns an
+`AsyncIterableIterator`, which is the whole contract; exporting the class made
+its internal constructor part of the public API. `MAX_QUEUE_CEILING` is still
+exported.
+
+### `UnsupportedPlatformError` is now thrown
+
+Importing the SDK on a platform the addon is not built for throws
+`UnsupportedPlatformError` naming the platform, instead of a
+`NativeBindingLoadError` advising a build that cannot succeed. `TwilioErrorClass`,
+the constructor shape shared by every generated error subclass, is now exported
+as a type.
 
 ### `frames()` replaces `onFrame()`
 

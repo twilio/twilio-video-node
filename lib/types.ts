@@ -56,13 +56,11 @@ export interface VideoFrameInput {
    * time when omitted, which is correct for an application-paced live source.
    */
   timestamp?: number;
-  /** Application-defined counter carried for tracing. Not interpreted by the SDK. */
-  frameId?: number;
   /** Clockwise rotation to apply on display, in degrees. Defaults to `0`. */
   rotation?: 0 | 90 | 180 | 270;
 }
 
-/** A decoded I420 video frame delivered to a {@link RemoteVideoTrack}'s frame callback. `frameId` increments per frame. */
+/** A decoded I420 video frame delivered by {@link RemoteVideoTrack.frames}. `frameId` increments per frame. */
 export interface VideoFrame {
   /** Always `'I420'`. The only pixel format this SDK delivers. */
   format: 'I420';
@@ -103,11 +101,9 @@ export interface AudioFrameInput {
   frames: number;
   /** Presentation time in **microseconds**. Defaults to "now" when omitted. */
   timestamp?: number;
-  /** Application-defined counter carried for tracing. Not interpreted by the SDK. */
-  frameId?: number;
 }
 
-/** A PCM audio frame delivered to a {@link RemoteAudioTrack}'s frame callback. Always `PCM_S16LE`; `frameId` increments per frame. */
+/** A PCM audio frame delivered by {@link RemoteAudioTrack.frames}. Always `PCM_S16LE`; `frameId` increments per frame. */
 export interface AudioFrame {
   /** Always `'PCM_S16LE'`. The only sample format this SDK delivers. */
   format: 'PCM_S16LE';

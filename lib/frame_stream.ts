@@ -7,7 +7,7 @@ import type { BackpressureMode, DeliveryStats, FrameDeliveryOptions } from './ty
  */
 export const MAX_QUEUE_CEILING = 1024;
 
-/** Blueprint defaults: video keeps only the newest frame, audio smooths a little jitter. */
+/** Per-kind defaults: video keeps only the newest frame, audio smooths a little jitter. */
 export const DEFAULTS: Record<
   'video' | 'audio',
   Required<Omit<FrameDeliveryOptions, 'drop'>> & { drop: 'oldest' | 'newest' }

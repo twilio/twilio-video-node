@@ -24,12 +24,33 @@ arch -x86_64 bash -c 'source ~/.nvm/nvm.sh && nvm use 24 && npm run fetch-deps'
 
 ## 1. Prerequisites
 
-| Tool          | Version                                | Install (macOS)          |
-| ------------- | -------------------------------------- | ------------------------ |
-| Node.js       | >= 24.0.0                              | `nvm install 24`         |
-| CMake         | >= 3.15                                | `brew install cmake`     |
-| Maven         | >= 3.8                                 | `brew install maven`     |
-| C++ toolchain | C++17 (clang++ on macOS, g++ on Linux) | Xcode Command Line Tools |
+| Tool          | Version                                | Install (macOS)          | Install (Debian/Ubuntu)           |
+| ------------- | -------------------------------------- | ------------------------ | --------------------------------- |
+| Node.js       | >= 24.0.0                              | `nvm install 24`         | `nvm install 24`                  |
+| CMake         | >= 3.15                                | `brew install cmake`     | `apt-get install cmake`           |
+| Maven         | >= 3.8                                 | `brew install maven`     | `apt-get install maven`           |
+| C++ toolchain | C++17 (clang++ on macOS, g++ on Linux) | Xcode Command Line Tools | `apt-get install build-essential` |
+
+### Linux: X11 development libraries
+
+The link step needs them even though this SDK never captures a screen: libwebrtc's
+Linux build pulls in desktop capture, which links X11. Without them the build
+fails at link time with `cannot find -lX11` and six similar errors.
+
+```bash
+sudo apt-get install -y --no-install-recommends \
+  libx11-dev libxext-dev libxdamage-dev libxfixes-dev \
+  libxcomposite-dev libxrandr-dev libxtst-dev
+```
+
+`docker/Dockerfile` installs the same set, so a container build needs no extra step.
+
+### macOS: Apple Silicon
+
+The native binary is x64-only. Install Rosetta once
+(`softwareupdate --install-rosetta`) and run an x64 Node so `process.arch` reports
+`x64`. Under a native arm64 Node, `npm install` fails with `EBADPLATFORM` and the
+SDK throws `UnsupportedPlatformError` at import.
 
 ## 2. Get rtc-cpp
 

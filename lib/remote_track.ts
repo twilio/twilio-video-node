@@ -73,6 +73,7 @@ abstract class RemoteMediaTrack<
   protected abstract readonly frameKind: 'video' | 'audio';
   protected abstract readonly planeKeys: readonly string[];
 
+  /** @internal Wraps a native track handle; applications never construct these. */
   constructor(native: N) {
     super();
     this._native = native;
@@ -176,6 +177,7 @@ abstract class RemoteMediaTrack<
 
 /** A remote participant's video track. Read frames with {@link RemoteVideoTrack.frames}. */
 export class RemoteVideoTrack extends RemoteMediaTrack<NativeRemoteVideoTrack, VideoFrame> {
+  /** Discriminant for narrowing a {@link RemoteTrack} union. */
   readonly kind = 'video' as const;
   protected readonly frameKind = 'video' as const;
   protected readonly planeKeys = ['y', 'u', 'v'] as const;
@@ -196,6 +198,7 @@ export class RemoteVideoTrack extends RemoteMediaTrack<NativeRemoteVideoTrack, V
 
 /** A remote participant's audio track. Read frames with {@link RemoteAudioTrack.frames}. */
 export class RemoteAudioTrack extends RemoteMediaTrack<NativeRemoteAudioTrack, AudioFrame> {
+  /** Discriminant for narrowing a {@link RemoteTrack} union. */
   readonly kind = 'audio' as const;
   protected readonly frameKind = 'audio' as const;
   protected readonly planeKeys = ['pcm'] as const;
@@ -203,6 +206,7 @@ export class RemoteAudioTrack extends RemoteMediaTrack<NativeRemoteAudioTrack, A
 
 /** Events emitted by {@link RemoteDataTrack}. */
 export type RemoteDataTrackEvents = {
+  /** A message from the publisher. `string` for text, `Buffer` for binary. */
   message: (data: string | Buffer) => void;
 };
 
@@ -212,34 +216,48 @@ export type RemoteDataTrackEvents = {
 export class RemoteDataTrack extends TypedEventEmitter<RemoteDataTrackEvents> {
   /** @internal */
   readonly _native: NativeRemoteDataTrack;
+  /** Discriminant for narrowing a {@link RemoteTrack} union. */
   readonly kind = 'data' as const;
   private attached = false;
 
+  /** @internal Wraps a native track handle; applications never construct these. */
   constructor(native: NativeRemoteDataTrack) {
     super();
     this._native = native;
   }
 
+  /** Track name, as set by the publisher. */
   get name(): string {
     return this._native.name;
   }
 
+  /** This track's SID (`MT...`). */
   get sid(): Track.SID {
     return this._native.sid;
   }
 
+  /**
+   * How long the publisher retries an undelivered message, in milliseconds, or
+   * `null` when unset. A publisher's `65535` reads back as `null`.
+   */
   get maxPacketLifeTime(): number | null {
     return this._native.maxPacketLifeTime;
   }
 
+  /**
+   * How many times the publisher retransmits before giving up, or `null` when
+   * unset. A publisher's `65535` reads back as `null`.
+   */
   get maxRetransmits(): number | null {
     return this._native.maxRetransmits;
   }
 
+  /** Whether delivery is reliable: the publisher set neither retransmit limit. */
   get reliable(): boolean {
     return this._native.reliable;
   }
 
+  /** Whether the publisher sends messages in order. */
   get ordered(): boolean {
     return this._native.ordered;
   }

@@ -101,11 +101,35 @@ describe('module loading in a clean process', () => {
          throw new Error('expected a load failure');
        } catch (err) {
          const msg = String(err && err.message);
-         if (!/No prebuilt binary found for/.test(msg)) throw new Error('wrong error: ' + msg);
-         if (!/npm run build/.test(msg)) throw new Error('error is not actionable: ' + msg);
+         // Assert the properties that matter, not the exact prose: it must name
+         // the platform and give a command to run.
+         if (!msg.includes(process.platform + '-' + process.arch)) throw new Error('does not name the platform: ' + msg);
+         if (!/npm run (build|fetch-deps)/.test(msg)) throw new Error('error is not actionable: ' + msg);
          console.log('missing-addon-ok');
        }`,
     ]);
     expect(out).toBe('missing-addon-ok');
+  });
+
+  it('rejects an unsupported platform by name instead of advising a build that cannot work', () => {
+    // process.arch is a plain value property, so it can be redefined before the
+    // module under test reads it. Apple Silicon is the real-world case: npm
+    // refuses to install under arm64 because package.json declares cpu x64.
+    const out = runNode([
+      '--input-type=module',
+      '-e',
+      `Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+       try {
+         await import('./dist/index.mjs');
+         throw new Error('expected an unsupported-platform failure');
+       } catch (err) {
+         const msg = String(err && err.message);
+         if (!/darwin-arm64|linux-arm64/.test(msg)) throw new Error('does not name the platform: ' + msg);
+         if (!/not a supported platform/.test(msg)) throw new Error('wrong error: ' + msg);
+         if (/npm run build/.test(msg)) throw new Error('advises a build that cannot succeed: ' + msg);
+         console.log('unsupported-platform-ok');
+       }`,
+    ]);
+    expect(out).toBe('unsupported-platform-ok');
   });
 });

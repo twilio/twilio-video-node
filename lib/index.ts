@@ -24,7 +24,11 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { Room } from './room.js';
 import { MAX_QUEUE_CEILING } from './frame_stream.js';
-import { NativeBindingLoadError, RoomConnectTimeoutError } from './errors.js';
+import {
+  NativeBindingLoadError,
+  RoomConnectTimeoutError,
+  UnsupportedPlatformError,
+} from './errors.js';
 import type {
   NativeAddon,
   NativeMediaFactory,
@@ -52,7 +56,7 @@ export type { RemoteParticipantEvents } from './remote_participant.js';
 export { TypedEventEmitter } from './typed_emitter.js';
 export { RemoteVideoTrack, RemoteAudioTrack, RemoteDataTrack } from './remote_track.js';
 export type { RemoteMediaTrackEvents, RemoteDataTrackEvents } from './remote_track.js';
-export { FrameStream, MAX_QUEUE_CEILING } from './frame_stream.js';
+export { MAX_QUEUE_CEILING } from './frame_stream.js';
 export {
   TrackPublication,
   LocalTrackPublication,
@@ -164,6 +168,7 @@ export {
   DataTrackSendError,
   twilioErrorFromCode,
 } from './errors.js';
+export type { TwilioErrorClass } from './errors.js';
 
 // --- Addon loading ---
 
@@ -176,9 +181,10 @@ const ROOT = fs.existsSync(path.join(__dirname_, '..', 'package.json'))
   ? path.join(__dirname_, '..')
   : path.join(__dirname_, '..', '..');
 
-const { version: SDK_VERSION } = JSON.parse(
+const PKG: { version: string; os?: string[]; cpu?: string[] } = JSON.parse(
   fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'),
 );
+const SDK_VERSION = PKG.version;
 
 function getPlatformDir(): string {
   return `${process.platform}-${process.arch}`;
@@ -189,12 +195,48 @@ function getPrebuiltPath(platformDir: string): string {
   return path.join(ROOT, 'prebuilds', platformDir, `${addonName}-${platformDir}.node`);
 }
 
+/**
+ * Platforms the native addon is built for, derived from the `os` and `cpu`
+ * fields npm itself enforces at install time. Deriving rather than restating
+ * them means the runtime check cannot drift from what the package declares.
+ */
+const SUPPORTED_PLATFORMS: string[] = (PKG.os ?? ['darwin', 'linux']).flatMap(o =>
+  (PKG.cpu ?? ['x64']).map(c => `${o}-${c}`),
+);
+
 function loadAddon(): NativeAddon {
   const platformDir = getPlatformDir();
   const prebuiltPath = getPrebuiltPath(platformDir);
 
+  // Fail with the real reason rather than advising a build that cannot succeed.
+  // Apple Silicon is the common case: package.json declares cpu x64, so npm
+  // refuses to install under an arm64 Node in the first place.
+  if (!SUPPORTED_PLATFORMS.includes(platformDir)) {
+    throw new UnsupportedPlatformError(
+      `${platformDir} is not a supported platform. The native addon is built for ` +
+        `${SUPPORTED_PLATFORMS.join(' and ')}. ` +
+        (process.platform === 'darwin' && process.arch === 'arm64'
+          ? 'On Apple Silicon, run Node under Rosetta so process.arch reports x64 ' +
+            '(install once with `softwareupdate --install-rosetta`, then use an x64 Node).'
+          : 'Contact the Twilio Video team for access to other platforms.'),
+    );
+  }
+
   if (fs.existsSync(prebuiltPath)) {
-    return nativeRequire(prebuiltPath);
+    // A prebuilt that exists but will not load is a different failure from one
+    // that is absent: an ABI mismatch or a missing shared library, not a
+    // missing build.
+    try {
+      return nativeRequire(prebuiltPath);
+    } catch (cause) {
+      throw new NativeBindingLoadError(
+        `The prebuilt binary at ${prebuiltPath} failed to load. This usually means it was ` +
+          `built for a different Node ABI (this is Node ${process.version}, modules ` +
+          `${process.versions.modules}) or a required system library is missing. ` +
+          'Rebuild from source with `npm run build`.',
+        { cause },
+      );
+    }
   }
 
   try {
@@ -203,9 +245,15 @@ function loadAddon(): NativeAddon {
     try {
       return nativeRequire(path.join(ROOT, 'build/Debug/twilio_video_sdk_node.node'));
     } catch (cause) {
+      const depsPresent = fs.existsSync(path.join(ROOT, 'deps', 'twilio-video'));
       throw new NativeBindingLoadError(
-        `No prebuilt binary found for ${platformDir}. ` +
-          'Run npm run build to compile from source.',
+        `No prebuilt binary for ${platformDir}, and no local build in build/Release or ` +
+          'build/Debug. ' +
+          (depsPresent
+            ? 'Build it with `npm run build`.'
+            : 'Fetch the native dependencies first with `npm run fetch-deps`, then build with ' +
+              '`npm run build`. On Linux the build also needs the X11 development packages ' +
+              '(see DEVELOPER_GUIDE.md).'),
         { cause },
       );
     }

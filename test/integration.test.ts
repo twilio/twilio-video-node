@@ -25,7 +25,10 @@ import {
 import type { EventEmitter } from 'node:events';
 
 const TIMEOUT = {
-  subscribe: 15_000,
+  // 15s was tight enough to flake late in a full suite run, where the late-joiner
+  // case timed out at 15s but passes in isolation. vitest's testTimeout is 60s,
+  // so 30s still fails a genuinely broken subscribe rather than hanging.
+  subscribe: 30_000,
   mediaFlow: 10_000,
   // SDP renegotiation after publishTrack + trackSubscribed needs time to complete
   // before the encoder sink attaches and frames actually flow
@@ -401,7 +404,7 @@ describe('Video publish + receive', () => {
     await sleep(TIMEOUT.negotiate);
 
     // Register frame callback, then start pushing
-    // Read through the blueprint's receive API: awaiting each frame is the
+    // Read through the receive API: awaiting each frame is the
     // backpressure. 'queue' mode so a slow assertion loop does not shed the
     // frames this test is trying to count.
     const receivedFrames: VideoFrame[] = [];

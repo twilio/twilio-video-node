@@ -12,6 +12,15 @@ export default defineConfig({
       include: ['lib/**/*.ts'],
       exclude: ['lib/types.ts'],
       reporter: ['text', 'lcov'],
+      // A deleted or silently-skipped test file shows up here as a coverage
+      // drop. Nothing else catches that: vitest exits 0 both when a named test
+      // file is missing and when one is simply removed.
+      thresholds: {
+        statements: 90,
+        branches: 90,
+        functions: 90,
+        lines: 90,
+      },
     },
   },
 });

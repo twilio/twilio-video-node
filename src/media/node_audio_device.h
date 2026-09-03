@@ -28,8 +28,8 @@ public:
     static rtc::scoped_refptr<NodeAudioDevice> Create(
         webrtc::TaskQueueFactory* task_queue_factory);
 
-    // Default publish-queue bound, in 10 ms chunks. Matches the blueprint's
-    // audio default of mode 'queue' / maxQueue 10, i.e. ~100 ms of smoothing.
+    // Default publish-queue bound, in 10 ms chunks. Matches the audio default
+    // of mode 'queue' / maxQueue 10, i.e. ~100 ms of smoothing.
     static constexpr size_t kDefaultMaxQueueChunks = 10;
 
     // Feed 48kHz mono audio data into the ADM recording path. Called from
