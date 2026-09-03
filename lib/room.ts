@@ -252,8 +252,8 @@ export class Room extends TypedEventEmitter<RoomEvents> {
         const wrapped = data ? this._wrapRemoteParticipant(data as NativeRemoteParticipant) : null;
         this.emit(event, wrapped);
         if (event === 'participantDisconnected' && wrapped) {
-          wrapped.dispose();
           this._remoteParticipantCache.delete(wrapped.sid);
+          setImmediate(() => wrapped.dispose());
         }
       } else if (ROOM_ERROR_EVENTS.has(event)) {
         this.emit(event, liftTwilioError(data));

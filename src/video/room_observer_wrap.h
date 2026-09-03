@@ -7,10 +7,13 @@
 #include "../common/async_context.h"
 #include <functional>
 #include <atomic>
+#include <unordered_map>
+#include <string>
 
 namespace twilio_video_node {
 
 class RoomWrap;
+class RemoteParticipantObserverImpl;
 
 class RoomObserverWrap : public twilio::video::RoomObserver,
                          public std::enable_shared_from_this<RoomObserverWrap> {
@@ -41,6 +44,14 @@ private:
     std::unique_ptr<AsyncContext> asyncContext_;
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
+
+    // Keyed by participant SID. onParticipantConnected creates the observer and
+    // registers it here; onParticipantDisconnected must reuse the same one
+    // rather than installing a second, unbound observer on the same native
+    // participant, which would steal events (including trackUnsubscribed raised
+    // during teardown) away from the observer the live JS wrap is bound to.
+    std::mutex participantObserversMutex_;
+    std::unordered_map<std::string, std::shared_ptr<RemoteParticipantObserverImpl>> participantObservers_;
 };
 
 }
