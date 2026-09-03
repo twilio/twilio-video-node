@@ -33,7 +33,11 @@ jobs:
               npm run lint
               npm run format:check
           - name: typecheck
-            run: npm run typecheck
+            # test/bundle.test.ts imports ../dist/index.mjs, so the bundle has to
+            # exist before tsc runs.
+            run: |
+              npm run build:ts
+              npm run typecheck
           - name: build-and-test
             # The unit tests require the native addon.
             native: true
