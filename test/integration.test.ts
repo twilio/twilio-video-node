@@ -1139,3 +1139,83 @@ describe('Error paths', () => {
     await expect(connect('invalid-token', { name: uniqueRoom() })).rejects.toThrow();
   });
 });
+
+describe('Subscription to tracks published before joining', () => {
+  // The observer rtc-cpp calls is installed on the signaling thread, because
+  // subscription lands about a millisecond after the participant-connected
+  // callback. Attaching it on the JS thread instead loses these events, and
+  // loses them more often on later joins, so one join is not enough coverage.
+  it('emits trackSubscribed on every rejoin, not just the first', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const rejoins = 3;
+    const subscribedKinds: string[][] = [];
+
+    try {
+      for (let i = 0; i < rejoins; i++) {
+        const joined = waitForEvent<RemoteParticipant>(
+          incumbent.room,
+          'participantConnected',
+          TIMEOUT.subscribe,
+        );
+        const peer = await connectToRoom('bob', roomName, {
+          videoTracks: [createLocalVideoTrack(`video-${i}`)],
+          audioTracks: [createLocalAudioTrack(`audio-${i}`)],
+        });
+
+        const remotePeer = await joined;
+        const tracks = await waitForEvents<RemoteTrack>(
+          remotePeer,
+          'trackSubscribed',
+          2,
+          TIMEOUT.subscribe,
+        );
+        subscribedKinds.push(tracks.map(track => track.kind).sort());
+
+        const left = waitForEvent(incumbent.room, 'participantDisconnected', TIMEOUT.subscribe);
+        await peer.cleanup();
+        await left;
+      }
+    } finally {
+      await incumbent.cleanup();
+    }
+
+    expect(subscribedKinds).toEqual(Array.from({ length: rejoins }, () => ['audio', 'video']));
+  });
+
+  it("passes the track's publication and participant to the Room's trackSubscribed", async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+
+    try {
+      const subscribed = waitForEvents<unknown>(
+        incumbent.room,
+        'trackSubscribed',
+        1,
+        TIMEOUT.subscribe,
+      );
+      const args: unknown[] = [];
+      incumbent.room.once('trackSubscribed', (...received: unknown[]) => args.push(...received));
+
+      const peer = await connectToRoom('bob', roomName, {
+        videoTracks: [createLocalVideoTrack('video')],
+      });
+      await subscribed;
+
+      const [track, publication, participant] = args as [
+        RemoteVideoTrack,
+        { trackSid: string; kind: string; isSubscribed: boolean },
+        RemoteParticipant,
+      ];
+      expect(track.kind).toBe('video');
+      expect(publication.kind).toBe('video');
+      expect(publication.isSubscribed).toBe(true);
+      expect(publication.trackSid).toBe(track.sid);
+      expect(participant.identity).toBe('bob');
+
+      await peer.cleanup();
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
+});

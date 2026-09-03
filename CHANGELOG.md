@@ -1,5 +1,28 @@
 This SDK is currently in beta. See the [README](README.md) for details.
 
+# Unreleased
+
+## Bug Fixes
+
+- `trackSubscribed` is now emitted for tracks a remote participant was already publishing when
+  they joined. The observer the media engine calls is installed as soon as the participant
+  connects, rather than one thread hop later, which is after the subscription has already
+  completed. Rejoining participants were the most affected: the first join often reported its
+  tracks and later ones silently did not.
+- An exception thrown by an event listener is no longer swallowed. It is reported as an
+  `uncaughtException`, and events queued behind it are retained so an application that handles
+  `uncaughtException` still receives them. Previously such an error produced no output at all,
+  which was indistinguishable from an event that was never emitted.
+
+## Breaking Changes
+
+- `trackSubscribed` and `trackUnsubscribed` now pass the track's `RemoteTrackPublication`.
+  Listeners receive `(track, publication)` on a `RemoteParticipant` and
+  `(track, publication, participant)` on a `Room`, matching twilio-video.js. Update any
+  listener that took `(track, participant)` on a Room.
+- An event listener that throws now surfaces the error instead of being silently ignored. An
+  application relying on the previous behavior will start seeing `uncaughtException`.
+
 # 1.0.0-preview.3 (September 2, 2026)
 
 ## Documentation
