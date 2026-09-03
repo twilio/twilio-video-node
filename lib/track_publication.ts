@@ -5,11 +5,15 @@ import type {
   LocalVideoTrack,
   LocalAudioTrack,
   LocalDataTrack,
+  Track,
+} from './types.js';
+import type {
   RemoteVideoTrack,
   RemoteAudioTrack,
   RemoteDataTrack,
-  Track,
-} from './types.js';
+  RemoteTrack,
+} from './remote_track.js';
+import { wrapRemoteTrack } from './track_registry.js';
 
 /**
  * A snapshot of a published track's metadata. Base class for the local and
@@ -95,7 +99,7 @@ export class LocalDataTrackPublication extends LocalTrackPublication {
 }
 
 /** Any kind of remote track the SDK can subscribe to. */
-export type RemoteTrack = RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack;
+export type { RemoteTrack };
 
 /** A publication of a remote participant's track, returned by {@link RemoteParticipant}'s track collections. */
 export class RemoteTrackPublication extends TrackPublication {
@@ -108,7 +112,9 @@ export class RemoteTrackPublication extends TrackPublication {
   constructor(raw: RawRemoteTrackPublication) {
     super(raw);
     this.isSubscribed = raw.isSubscribed;
-    this.track = raw.track;
+    // Resolve through the registry so this publication hands back the same
+    // wrapper any frames() consumer is already iterating.
+    this.track = raw.track ? wrapRemoteTrack(raw.track) : undefined;
   }
 }
 

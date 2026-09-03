@@ -24,38 +24,43 @@ async function main() {
   const subscribedTracks = [];
   const handledTrackSids = new Set();
 
-  function handleTrack(track, participant) {
-    if (!track.onFrame) return;
+  async function handleTrack(track, participant) {
+    if (track.kind !== 'video') return;
     if (handledTrackSids.has(track.sid)) return;
     handledTrackSids.add(track.sid);
     subscribedTracks.push(track);
     console.log('Subscribed to video from', participant.identity);
 
-    track.onFrame(frame => {
+    // Receive and re-publish. The delivered VideoFrame and VideoFrameInput use
+    // the same planar shape, so a mirror needs no reshaping at all.
+    for await (const frame of track.frames({ mode: 'latest', maxQueue: 1 })) {
       frameCount++;
       videoTrack.write({
-        y: frame.y.data,
-        u: frame.u.data,
-        v: frame.v.data,
+        format: 'I420',
         width: frame.width,
         height: frame.height,
-        yStride: frame.y.stride,
-        uStride: frame.u.stride,
-        vStride: frame.v.stride,
-        timestampNs: frame.timestampNs,
+        y: frame.y,
+        u: frame.u,
+        v: frame.v,
+        timestamp: frame.timestamp,
         rotation: frame.rotation,
       });
-    });
+      // Release the planes now rather than waiting for GC.
+      frame.close?.();
+    }
+    console.log('Video stream ended for', participant.identity);
   }
 
   function handleParticipant(participant) {
     console.log('Participant:', participant.identity);
-    participant.on('trackSubscribed', track => handleTrack(track, participant));
+    participant.on('trackSubscribed', track => {
+      handleTrack(track, participant).catch(err => console.error('mirror failed:', err));
+    });
 
     const poll = setInterval(() => {
       for (const pub of participant.videoTracks.values()) {
         if (pub.isSubscribed && pub.track) {
-          handleTrack(pub.track, participant);
+          handleTrack(pub.track, participant).catch(err => console.error('mirror failed:', err));
           clearInterval(poll);
           return;
         }

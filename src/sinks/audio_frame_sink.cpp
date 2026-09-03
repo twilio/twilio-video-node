@@ -3,10 +3,10 @@
 
 namespace twilio_video_node {
 
-AudioFrameSink::AudioFrameSink(Napi::Env env, Napi::Function callback)
+AudioFrameSink::AudioFrameSink(Napi::Env env, Napi::Function callback, size_t maxQueueDepth)
     : env_(env)
     , callback_(Napi::Persistent(callback))
-    , asyncContext_(std::make_unique<AsyncContext>(env)) {
+    , asyncContext_(std::make_unique<AsyncContext>(env, maxQueueDepth)) {
 }
 
 AudioFrameSink::~AudioFrameSink() {
@@ -18,6 +18,7 @@ void AudioFrameSink::close() {
     if (closed_) return;
     closed_ = true;
     if (asyncContext_) {
+        nativeDropped_ = asyncContext_->droppedCount();
         asyncContext_->close();
         asyncContext_.reset();
     }
@@ -75,7 +76,8 @@ void AudioFrameSink::deliverFrame(AudioFrameData frameData) {
         audioFrame.Set("channels", Napi::Number::New(env, static_cast<uint32_t>(frameData.numberOfChannels)));
         audioFrame.Set("frames", Napi::Number::New(env, static_cast<uint32_t>(frameData.numberOfFrames)));
         audioFrame.Set("pcm", pcmBuffer);
-        audioFrame.Set("timestampNs", Napi::BigInt::New(env, frameData.timestampUs * 1000));
+        audioFrame.Set("timestamp",
+                       Napi::Number::New(env, static_cast<double>(frameData.timestampUs)));
         audioFrame.Set("frameId", Napi::Number::New(env, frameData.frameId));
 
         callback_.Call({audioFrame});

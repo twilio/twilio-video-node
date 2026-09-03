@@ -3,7 +3,8 @@
   "compilerOptions": {
     "rootDir": ".",
     "declaration": false,
-    "noEmit": true
+    "noEmit": true,
+    "lib": ["ES2023"]
   },
   "include": ["lib/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
 }

@@ -23,10 +23,16 @@ void AsyncContext::dispatch(std::function<void(Napi::Env)> fn) {
     // maxQueueDepth_ == 0 means unlimited (no dropping)
     while (maxQueueDepth_ > 0 && queue_.size() >= maxQueueDepth_) {
         queue_.pop();
+        dropped_.fetch_add(1, std::memory_order_relaxed);
     }
     queue_.push(std::move(fn));
 
     if (async_) uv_async_send(async_);
+}
+
+size_t AsyncContext::queueDepth() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return queue_.size();
 }
 
 void AsyncContext::close() {

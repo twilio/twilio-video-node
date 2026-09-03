@@ -87,15 +87,13 @@ function startPublishing(videoTrack) {
     const u = frame.subarray(ySize, ySize + uvSize);
     const v = frame.subarray(ySize + uvSize, ySize + uvSize + uvSize);
     videoTrack.write({
-      y,
-      u,
-      v,
+      format: 'I420',
       width: WIDTH,
       height: HEIGHT,
-      yStride: WIDTH,
-      uStride: WIDTH / 2,
-      vStride: WIDTH / 2,
-      timestampNs: process.hrtime.bigint(),
+      y: { data: y, stride: WIDTH, width: WIDTH, height: HEIGHT },
+      u: { data: u, stride: WIDTH / 2, width: WIDTH / 2, height: HEIGHT / 2 },
+      v: { data: v, stride: WIDTH / 2, width: WIDTH / 2, height: HEIGHT / 2 },
+      // timestamp omitted: an application-paced live source is stamped "now".
     });
     frameCount++;
     if (frameCount % FPS === 0) console.log('Pushed frame', frameCount);

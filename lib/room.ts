@@ -1,14 +1,13 @@
 import { LocalParticipant } from './local_participant.js';
 import { RemoteParticipant, type RemoteParticipantEvents } from './remote_participant.js';
 import { TypedEventEmitter } from './typed_emitter.js';
+import type { RemoteVideoTrack, RemoteAudioTrack, RemoteDataTrack } from './remote_track.js';
+import { releaseAllRemoteTracks } from './track_registry.js';
 import type { LocalTrack } from './track_publication.js';
 import type {
   NativeRoom,
   NativeRemoteParticipant,
   RoomState,
-  RemoteVideoTrack,
-  RemoteAudioTrack,
-  RemoteDataTrack,
   RemoteTrackPublishEvent,
   RemoteTrackStateEvent,
   RemoteTrackSubscriptionFailedEvent,
@@ -251,6 +250,11 @@ export class Room extends TypedEventEmitter<RoomEvents> {
           wrapped.dispose();
           this._remoteParticipantCache.delete(wrapped.sid);
         }
+      } else if (event === 'disconnected') {
+        // End every active frames() iterator before surfacing the event, so a
+        // `for await` loop completes rather than hanging on a dead Room.
+        releaseAllRemoteTracks();
+        this.emit(event, data ? liftTwilioError(data) : undefined);
       } else if (ROOM_ERROR_EVENTS.has(event)) {
         this.emit(event, liftTwilioError(data));
       } else if (ROOM_OPTIONAL_ERROR_EVENTS.has(event)) {
@@ -378,6 +382,9 @@ export class Room extends TypedEventEmitter<RoomEvents> {
       participant.dispose();
     }
     this._remoteParticipantCache.clear();
+    // Ends every active frames() iterator; without this a `for await` loop on a
+    // subscribed track would hang after the Room goes away.
+    releaseAllRemoteTracks();
     this._native.dispose();
     this.removeAllListeners();
   }

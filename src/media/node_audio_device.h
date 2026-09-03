@@ -2,6 +2,7 @@
 
 #include <mutex>
 #include <deque>
+#include <atomic>
 #include <webrtc/modules/audio_device/include/audio_device.h>
 #include <webrtc/api/task_queue/task_queue_factory.h>
 #include <webrtc/api/task_queue/task_queue_base.h>
@@ -27,8 +28,23 @@ public:
     static rtc::scoped_refptr<NodeAudioDevice> Create(
         webrtc::TaskQueueFactory* task_queue_factory);
 
-    // Feed 48kHz mono audio data into the ADM recording path. Called from PushableAudioSource.
-    void PushRecordingData(const int16_t* data, size_t num_frames);
+    // Default publish-queue bound, in 10 ms chunks. Matches the audio default
+    // of mode 'queue' / maxQueue 10, i.e. ~100 ms of smoothing.
+    static constexpr size_t kDefaultMaxQueueChunks = 10;
+
+    // Feed 48kHz mono audio data into the ADM recording path. Called from
+    // PushableAudioSource. Returns false when the bounded queue had to shed
+    // samples to make room, so write() can report the drop to the caller.
+    bool PushRecordingData(const int16_t* data, size_t num_frames);
+
+    // Bound the publish queue, in 10 ms chunks. Applied on the next push.
+    void SetMaxQueueChunks(size_t chunks);
+
+    // Publish-queue observability. Counters are per-ADM; because the ADM is
+    // shared by every local audio track, these aggregate across them.
+    uint64_t droppedChunks() const { return dropped_chunks_.load(std::memory_order_relaxed); }
+    size_t queueDepthChunks() const;
+    size_t maxQueueChunks() const { return max_queue_chunks_.load(std::memory_order_relaxed); }
 
     // Clear the recording buffer (used for interruption).
     void ClearRecordingBuffer();
@@ -116,8 +132,10 @@ private:
     static constexpr int kBytesPerSample = sizeof(int16_t);
     // Recording buffer: filled by PushRecordingData, drained 480 samples per 10ms tick.
     // Growable deque so burst audio doesn't overflow.
-    std::mutex rec_mutex_;
+    mutable std::mutex rec_mutex_;
     std::deque<int16_t> rec_buffer_;
+    std::atomic<size_t> max_queue_chunks_{kDefaultMaxQueueChunks};
+    std::atomic<uint64_t> dropped_chunks_{0};
 };
 
 }  // namespace twilio_video_node

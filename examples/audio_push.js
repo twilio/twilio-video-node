@@ -53,17 +53,24 @@ async function main() {
   function handleParticipant(participant) {
     console.log('Participant connected:', participant.identity);
     let remoteFrames = 0;
-    participant.on('trackSubscribed', track => {
-      if (track.onFrame && track.kind === 'audio') {
-        console.log('Subscribed to remote audio from', participant.identity);
-        track.onFrame(frame => {
-          remoteFrames++;
-          if (remoteFrames % 100 === 0) {
-            console.log(
-              `Remote audio: ${remoteFrames} callbacks, ${frame.sampleRate}Hz ${frame.channels}ch ${frame.frames} frames`,
-            );
-          }
-        });
+    participant.on('trackSubscribed', async track => {
+      if (track.kind !== 'audio') return;
+      console.log('Subscribed to remote audio from', participant.identity);
+
+      // Report loss rather than letting it pass unnoticed.
+      track.on('frameDropped', (count, sinceLastUs) => {
+        console.warn(`Dropped ${count} audio frames in the last ${sinceLastUs}us`);
+      });
+
+      for await (const frame of track.frames()) {
+        remoteFrames++;
+        if (remoteFrames % 100 === 0) {
+          const stats = track.getStats();
+          console.log(
+            `Remote audio: ${remoteFrames} frames, ${frame.sampleRate}Hz ${frame.channels}ch ` +
+              `${frame.frames} samples, dropped=${stats.framesDropped} depth=${stats.queueDepth}`,
+          );
+        }
       }
     });
   }

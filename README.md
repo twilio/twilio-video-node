@@ -46,24 +46,24 @@ async function main() {
 
   console.log('Connected:', room.name, room.sid);
 
-  // Push I420 video frames (connect() only resolves once the room is connected;
-  // frames pushed before that point would be silently dropped)
+  // Push I420 video frames. connect() resolves only once the Room is connected;
+  // frames written before that are dropped and counted in getWriteStats().
   videoTrack.write({
-    y: yPlane,
-    u: uPlane,
-    v: vPlane,
-    yStride: 1280,
-    uStride: 640,
-    vStride: 640,
+    format: 'I420',
     width: 1280,
     height: 720,
+    y: { data: yPlane, stride: 1280, width: 1280, height: 720 },
+    u: { data: uPlane, stride: 640, width: 640, height: 360 },
+    v: { data: vPlane, stride: 640, width: 640, height: 360 },
   });
 
-  function trackSubscribed(track) {
-    if (track.kind === 'video') {
-      track.onFrame(frame => {
-        console.log(`${frame.width}x${frame.height}`);
-      });
+  async function trackSubscribed(track) {
+    if (track.kind !== 'video') return;
+    // Awaiting each frame is the backpressure. The loop ends by itself when the
+    // track is unsubscribed or the Room disconnects.
+    for await (const frame of track.frames()) {
+      console.log(`${frame.width}x${frame.height} @ ${frame.timestamp}us`);
+      frame.close?.();
     }
   }
 
@@ -102,7 +102,8 @@ conferencing. Key differences:
   `track.write()` instead of capturing from a camera or microphone.
 
 - **No rendering.** There is no `track.attach(element)`. Remote media arrives as
-  raw decoded frames (I420 video, PCM audio) via `track.onFrame(callback)`.
+  raw decoded frames (I420 video, PCM audio) through
+  `for await (const frame of track.frames())`.
 
 - **Fixed audio input format.** `LocalAudioTrack.write()` accepts only 48 kHz
   mono S16LE PCM. Received audio may vary in sample rate and channel count.
@@ -134,22 +135,22 @@ conferencing. Key differences:
 
 ### Key Classes
 
-| Export                   | Description                                                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Room`                   | A connected video room. Emits events, exposes participants.                                                                                                            |
-| `LocalParticipant`       | The local participant. Publish/unpublish tracks.                                                                                                                       |
-| `RemoteParticipant`      | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`.                                                                                                     |
-| `LocalVideoTrack`        | Pushable video track (`write(frame)`).                                                                                                                                 |
-| `LocalAudioTrack`        | Pushable audio track (`write(frame)`).                                                                                                                                 |
-| `LocalDataTrack`         | Send arbitrary data (`send`). Create via `createLocalDataTrack(name \| options?)`.                                                                                     |
-| `RemoteVideoTrack`       | Receive video frames (`onFrame`).                                                                                                                                      |
-| `RemoteAudioTrack`       | Receive audio frames (`onFrame`).                                                                                                                                      |
-| `RemoteDataTrack`        | Receive data messages (`onMessage`).                                                                                                                                   |
-| `TrackPublication`       | Base class for published tracks (`trackSid`, `trackName`, `kind`, `isTrackEnabled`).                                                                                   |
-| `LocalTrackPublication`  | Local publication. Exposes `track` and `unpublish()`. Subclassed per kind (`LocalVideoTrackPublication`, …).                                                           |
-| `RemoteTrackPublication` | Remote publication. Exposes `track` and `isSubscribed`. Subclassed per kind (`RemoteVideoTrackPublication`, …).                                                        |
-| `TwilioError`            | Base error class. Subclasses: `AccessTokenInvalidError`, `RoomNotFoundError`, `SignalingConnectionError`, `MediaConnectionError`, `ParticipantMaxTracksExceededError`. |
-| `ErrorCode`              | Enum of Twilio Video error codes.                                                                                                                                      |
+| Export                   | Description                                                                                                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Room`                   | A connected video room. Emits events, exposes participants.                                                                                                      |
+| `LocalParticipant`       | The local participant. Publish/unpublish tracks.                                                                                                                 |
+| `RemoteParticipant`      | A remote participant. Emits `trackSubscribed`/`trackUnsubscribed`.                                                                                               |
+| `LocalVideoTrack`        | Pushable video track (`write(frame)`).                                                                                                                           |
+| `LocalAudioTrack`        | Pushable audio track (`write(frame)`, `clearBuffer()`).                                                                                                          |
+| `LocalDataTrack`         | Send arbitrary data (`send`). Create via `createLocalDataTrack(name \| options?)`.                                                                               |
+| `RemoteVideoTrack`       | Receive video frames (`frames()`), `getStats()`, `frameDropped` event.                                                                                           |
+| `RemoteAudioTrack`       | Receive audio frames (`frames()`), `getStats()`, `frameDropped` event.                                                                                           |
+| `RemoteDataTrack`        | Receive data messages (`message` event).                                                                                                                         |
+| `TrackPublication`       | Base class for published tracks (`trackSid`, `trackName`, `kind`, `isTrackEnabled`).                                                                             |
+| `LocalTrackPublication`  | Local publication. Exposes `track` and `unpublish()`. Subclassed per kind (`LocalVideoTrackPublication`, …).                                                     |
+| `RemoteTrackPublication` | Remote publication. Exposes `track` and `isSubscribed`. Subclassed per kind (`RemoteVideoTrackPublication`, …).                                                  |
+| `TwilioError`            | Base error class, carrying a numeric `code`. One subclass per known Twilio code, plus SDK-local errors (`NativeBindingLoadError`, `RoomConnectTimeoutError`, …). |
+| `ErrorCode`              | Enum of Twilio Video error codes.                                                                                                                                |
 
 ## Room Events
 
@@ -232,26 +233,44 @@ const reports = await room.getStats();
 
 ### LocalVideoTrack
 
-Push raw I420 video frames into a room. Frames pushed before `connect()` resolves are silently dropped.
+Push raw I420 video frames into a room. Frames written before `connect()` resolves are dropped, and counted in `getWriteStats()`.
 
 ```js
 const track = createLocalVideoTrack('camera');
 track.write({
-  y,
-  u,
-  v, // Buffers
-  yStride,
-  uStride,
-  vStride, // bytes per row
+  format: 'I420', // optional; only 'I420' is accepted
   width,
-  height,
-  timestampNs, // optional bigint, defaults to monotonic now
+  height, // both must be positive and even
+  y: { data: yBuffer, stride: yStride, width, height },
+  u: { data: uBuffer, stride: uStride, width: width / 2, height: height / 2 },
+  v: { data: vBuffer, stride: vStride, width: width / 2, height: height / 2 },
+  timestamp, // optional microseconds; defaults to monotonic now
   rotation, // optional 0 | 90 | 180 | 270
 });
 track.enabled = false; // mute
 ```
 
-`write()` returns `false` when the underlying source is unavailable (e.g. before the room is connected) and throws `TypeError`/`RangeError` on invalid input.
+Buffers are copied synchronously, so they can be reused as soon as `write()` returns.
+
+`write()` returns `false` when the frame was dropped rather than encoded - most often because the encoder sink has not attached yet, but also when libwebrtc's adapter rate-limits or rejects the resolution. It throws `TypeError`/`RangeError` on invalid input.
+
+Optionally pin the frame size at creation, so a mismatched frame is rejected instead of silently rescaled:
+
+```js
+const track = createLocalVideoTrack({
+  name: 'camera',
+  source: { type: 'raw', format: 'I420', width: 1280, height: 720, fps: 30 },
+});
+```
+
+Publish-side counters:
+
+```js
+const { framesWritten, framesDropped, sendQueueDepth, maxQueue, lastTimestamp } =
+  track.getWriteStats();
+```
+
+Video publish is synchronous - `write()` hands the frame straight to the encoder - so there is no SDK-side send queue and `sendQueueDepth`/`maxQueue` are always `0`. A `framesDropped` here means the frame was rejected, not shed from a queue.
 
 ### LocalAudioTrack
 
@@ -259,10 +278,37 @@ Push raw PCM audio samples into a room. Format is fixed to **48kHz mono S16LE**.
 
 ```js
 const track = createLocalAudioTrack('mic');
-track.write({
+const accepted = track.write({
   pcm, // Buffer of interleaved int16 samples
-  frames, // number of samples
+  frames, // samples per channel, e.g. 480 for a 10ms chunk
+  timestamp, // optional microseconds
 });
+```
+
+Unlike video, audio publish has a real send queue, drained one 10 ms chunk at a
+time. It is bounded (~100 ms by default) so a producer running faster than real
+time sheds the oldest samples instead of accumulating latency. `write()` returns
+`false` for a chunk that caused shedding, and every drop is counted:
+
+```js
+const track = createLocalAudioTrack({
+  name: 'mic',
+  // maxQueue is in 10ms chunks: 20 => ~200ms of smoothing.
+  source: { type: 'raw', format: 'PCM_S16LE', sampleRate: 48000, channels: 1, maxQueue: 20 },
+});
+const { framesWritten, framesDropped, sendQueueDepth, maxQueue } = track.getWriteStats();
+```
+
+Publishing at real-time cadence should never drop. A non-zero `framesDropped`
+means the producer is outrunning the wire.
+
+`clearBuffer()` discards whatever is still queued and not yet sent. Use it when
+the queued audio has become stale rather than merely late - barge-in, where the
+speaker is interrupted and the rest of the utterance should never play, is the
+usual case. Writes after it resume from an empty queue.
+
+```js
+track.clearBuffer();
 ```
 
 ### LocalDataTrack
@@ -274,7 +320,15 @@ const track = createLocalDataTrack({ name: 'chat', ordered: true });
 room.localParticipant.publishTrack(track);
 track.send('hello');
 track.send(Buffer.from([0x01, 0x02]));
+
+// send() reports the outcome. The promise always resolves - never rejects - so
+// a fire-and-forget send cannot produce an unhandled rejection.
+const result = await track.send('important');
+if (!result.ok) console.warn('send failed:', result.error);
 ```
+
+Messages larger than **64 KB** (`kMaxMessageSize`) are rejected synchronously
+with a `RangeError` and never transmitted.
 
 Pass `maxPacketLifeTime` (milliseconds) or `maxRetransmits` (a count) to trade reliability for
 latency. The two are mutually exclusive, and each must be an integer from 0 to 65535.
@@ -294,19 +348,21 @@ limit was not set. `reliable` is `true` only when neither is set.
 Receive decoded I420 video frames from a remote participant.
 
 ```js
-track.onFrame(frame => {
+for await (const frame of track.frames()) {
   // frame: {
   //   format: 'I420',
   //   width, height,
   //   y, u, v,                  // I420Plane: { data: Buffer, stride, width, height }
-  //   timestampNs: bigint,
-  //   captureTimestampNs?: bigint,
+  //   timestamp: number,        // microseconds
+  //   captureTimestamp?: number,
   //   rtpTimestamp?: number,
-  //   frameId: number,
+  //   frameId: number,          // SDK-generated, monotonic per track
   //   rotation?: 0 | 90 | 180 | 270,
+  //   close?(): void,           // optional prompt release
   // }
-});
-track.removeFrameCallback();
+  frame.close?.();
+}
+// The loop ends on unsubscribe or Room disconnect. `break` releases the track.
 
 // Hint the desired render dimensions to the SFU. Width/height must be positive
 // integers. Only takes effect when the room was connected with a
@@ -324,16 +380,16 @@ track.isSwitchedOff;
 Receive decoded PCM audio frames from a remote participant.
 
 ```js
-track.onFrame(frame => {
+for await (const frame of track.frames()) {
   // frame: {
   //   format: 'PCM_S16LE',
   //   sampleRate, channels, frames,
   //   pcm: Buffer,              // interleaved int16 samples
-  //   timestampNs: bigint,
-  //   frameId: number,
+  //   timestamp: number,        // microseconds
+  //   frameId: number,          // SDK-generated, monotonic per track
+  //   close?(): void,
   // }
-});
-track.removeFrameCallback();
+}
 ```
 
 ### RemoteDataTrack
@@ -341,38 +397,41 @@ track.removeFrameCallback();
 Receive string or binary messages from a remote participant.
 
 ```js
-track.onMessage(data => {
+track.on('message', data => {
   /* string | Buffer */
 });
-track.removeMessageCallback();
 ```
 
 `maxPacketLifeTime`, `maxRetransmits`, `reliable`, and `ordered` report how the publisher
 configured delivery. A publisher's limit of `65535` reads back as `null`, because a subscribed
 track reports it the same way it reports an unset limit; `reliable` still distinguishes the two.
 
+For the precise guarantees - buffer ownership, where frames are dropped, drop
+policy and ordering, timestamp rules, and the publish invariants - see
+[FRAME_CONTRACT.md](FRAME_CONTRACT.md).
+
 ## Frame Formats
 
 ### Video (`VideoFrame` / `VideoFrameInput`)
 
-I420 planar layout. Each plane is a `Buffer`; `stride` is bytes per row (≥ width, padded for alignment).
+I420 planar layout. Each plane is an `I420Plane`: `{ data: Buffer, stride, width, height }`, where `stride` is bytes per row (≥ the plane's width, padded for alignment).
 
-| Plane | Logical size             | Buffer size            | Description      |
-| ----- | ------------------------ | ---------------------- | ---------------- |
-| Y     | `width × height`         | `yStride × height`     | Luminance        |
-| U     | `⌈width/2⌉ × ⌈height/2⌉` | `uStride × ⌈height/2⌉` | Chrominance (Cb) |
-| V     | `⌈width/2⌉ × ⌈height/2⌉` | `vStride × ⌈height/2⌉` | Chrominance (Cr) |
+| Plane | Logical size             | `data` size             | Description      |
+| ----- | ------------------------ | ----------------------- | ---------------- |
+| Y     | `width × height`         | `y.stride × height`     | Luminance        |
+| U     | `⌈width/2⌉ × ⌈height/2⌉` | `u.stride × ⌈height/2⌉` | Chrominance (Cb) |
+| V     | `⌈width/2⌉ × ⌈height/2⌉` | `v.stride × ⌈height/2⌉` | Chrominance (Cr) |
 
-Inputs to `LocalVideoTrack.write()` use a flat `VideoFrameInput` shape (`y`/`u`/`v` Buffers + `yStride`/`uStride`/`vStride`); received `VideoFrame`s wrap each plane in an `I420Plane` (`{ data, stride, width, height }`).
+Publish and receive use the **same** planar shape: each of `y`/`u`/`v` is an `I420Plane` (`{ data, stride, width, height }`). A received frame can be written straight back out without reshaping.
 
-Timestamps are **`bigint` nanoseconds** (`timestampNs`). `rotation` is `0 | 90 | 180 | 270`.
+Timestamps are plain numbers of **microseconds** (`timestamp`). Microsecond resolution stays exact in a JS number for roughly 285 years, and the underlying engine reports microseconds natively. `rotation` is `0 | 90 | 180 | 270`.
 
 ### Audio (`AudioFrame` / `AudioFrameInput`)
 
 Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
 
 - **Inputs** to `LocalAudioTrack.write()` are fixed at **48kHz mono** — only `pcm` and `frames` are accepted.
-- **Received `AudioFrame`s** include `sampleRate`, `channels`, `frames`, `pcm`, and `timestampNs: bigint`.
+- **Received `AudioFrame`s** include `sampleRate`, `channels`, `frames`, `pcm`, `timestamp` (microseconds), and `frameId`.
 
 ## Configuration
 
@@ -396,6 +455,7 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
   region?: string;                      // e.g. 'us1', 'au1'
   iceOptions?: IceOptions;
   encodingParameters?: EncodingParameters;
+  connectionTimeout?: number;           // ms; default 30000, 0 waits indefinitely
 }
 ```
 

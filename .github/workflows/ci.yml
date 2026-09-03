@@ -32,12 +32,30 @@ jobs:
             run: |
               npm run lint
               npm run format:check
+          - name: typecheck
+            # test/bundle.test.ts imports ../dist/index.mjs, so the bundle has to
+            # exist before tsc runs.
+            run: |
+              npm run build:ts
+              npm run typecheck
           - name: build-and-test
             # The unit tests require the native addon.
             native: true
             run: |
               npm run build:ts
               npm run test:unit
+          - name: unit-pure
+            # The suites that do not load the addon, so they run without rtc-cpp.
+            run: |
+              npm run build:ts
+              npm run test:unit:pure
+          - name: examples
+            # Examples are shipped code and the documented reproduction path in
+            # CONTRIBUTING.md. They import the built .d.cts, so a removed or
+            # renamed SDK method fails here instead of silently at runtime.
+            run: |
+              npm run build:ts
+              npm run check:examples
           - name: docs
             run: npm run docs
     steps:

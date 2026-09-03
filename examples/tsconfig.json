@@ -1,0 +1,19 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The root config sets rootDir to lib/; these files live outside it.
+    "rootDir": ".",
+    "allowJs": true,
+    "checkJs": true,
+    "declaration": false,
+    "types": ["node"],
+    "lib": ["ES2023"],
+    // The examples are plain JS. Requiring every local to be annotated would be
+    // noise; this check exists to catch calls into the SDK that no longer
+    // exist, which needs only the SDK-typed values to stay typed.
+    "noImplicitAny": false,
+    "strictNullChecks": false
+  },
+  "include": ["**/*.js"]
+}

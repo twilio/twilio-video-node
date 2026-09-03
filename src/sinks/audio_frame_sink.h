@@ -21,7 +21,8 @@ struct AudioFrameData {
 
 class AudioFrameSink : public webrtc::AudioTrackSinkInterface {
 public:
-    AudioFrameSink(Napi::Env env, Napi::Function callback);
+    AudioFrameSink(Napi::Env env, Napi::Function callback,
+                   size_t maxQueueDepth = AsyncContext::kDefaultMaxQueueDepth);
     ~AudioFrameSink();
 
     void OnData(const void* audio_data,
@@ -32,6 +33,11 @@ public:
 
     void close();
 
+    uint64_t droppedCount() const {
+        return asyncContext_ ? asyncContext_->droppedCount() : nativeDropped_;
+    }
+    size_t queueDepth() const { return asyncContext_ ? asyncContext_->queueDepth() : 0; }
+
 private:
     void deliverFrame(AudioFrameData frameData);
 
@@ -41,6 +47,8 @@ private:
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
     std::atomic<uint32_t> nextFrameId_{0};
+    // Preserved across close() so a post-teardown stats read is still accurate.
+    uint64_t nativeDropped_{0};
 };
 
 }

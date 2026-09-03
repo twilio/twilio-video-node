@@ -19,19 +19,34 @@ rtc::scoped_refptr<NodeAudioDevice> NodeAudioDevice::Create(
         new rtc::RefCountedObject<NodeAudioDevice>(task_queue_factory));
 }
 
-void NodeAudioDevice::PushRecordingData(const int16_t* data, size_t num_frames) {
+bool NodeAudioDevice::PushRecordingData(const int16_t* data, size_t num_frames) {
     std::lock_guard<std::mutex> lock(rec_mutex_);
 
     rec_buffer_.insert(rec_buffer_.end(), data, data + num_frames);
 
-    // Cap the recording backlog so a producer that pushes faster than the 10ms
-    // drain can't grow rec_buffer_ without bound.
-    static constexpr int kMaxBufferSeconds = 45;
-    static constexpr size_t kMaxBufferSamples = kSampleRate * kMaxBufferSeconds;
-    if (rec_buffer_.size() > kMaxBufferSamples) {
-        size_t excess = rec_buffer_.size() - kMaxBufferSamples;
+    // Bounded publish queue. A producer pushing faster than the 10 ms drain
+    // sheds the oldest samples rather than accumulating latency; every shed
+    // chunk is counted so the loss is observable through getWriteStats().
+    const size_t max_samples =
+        max_queue_chunks_.load(std::memory_order_relaxed) * kSamplesPer10Ms;
+    if (rec_buffer_.size() > max_samples) {
+        size_t excess = rec_buffer_.size() - max_samples;
         rec_buffer_.erase(rec_buffer_.begin(), rec_buffer_.begin() + excess);
+        dropped_chunks_.fetch_add(1, std::memory_order_relaxed);
+        return false;
     }
+    return true;
+}
+
+void NodeAudioDevice::SetMaxQueueChunks(size_t chunks) {
+    if (chunks < 1) chunks = 1;
+    if (chunks > 4800) chunks = 4800;  // hard ceiling: ~48 s, guards misconfiguration
+    max_queue_chunks_.store(chunks, std::memory_order_relaxed);
+}
+
+size_t NodeAudioDevice::queueDepthChunks() const {
+    std::lock_guard<std::mutex> lock(rec_mutex_);
+    return rec_buffer_.size() / kSamplesPer10Ms;
 }
 
 void NodeAudioDevice::ClearRecordingBuffer() {
