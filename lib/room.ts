@@ -1,7 +1,7 @@
 import { LocalParticipant } from './local_participant.js';
 import { RemoteParticipant, type RemoteParticipantEvents } from './remote_participant.js';
 import { TypedEventEmitter } from './typed_emitter.js';
-import type { LocalTrack } from './track_publication.js';
+import type { LocalTrack, RemoteTrackPublication } from './track_publication.js';
 import type {
   NativeRoom,
   NativeRemoteParticipant,
@@ -111,10 +111,12 @@ export type RoomEvents = {
    * `true`.
    *
    * @param track - The subscribed track.
+   * @param publication - The publication the track was subscribed from.
    * @param participant - The participant publishing it.
    */
   trackSubscribed: (
     track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    publication: RemoteTrackPublication,
     participant: RemoteParticipant,
   ) => void;
   /**
@@ -122,10 +124,12 @@ export type RoomEvents = {
    * and message callbacks will not fire again.
    *
    * @param track - The unsubscribed track.
+   * @param publication - The publication the track was unsubscribed from.
    * @param participant - The participant that was publishing it.
    */
   trackUnsubscribed: (
     track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    publication: RemoteTrackPublication,
     participant: RemoteParticipant,
   ) => void;
   /**

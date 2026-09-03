@@ -7,6 +7,7 @@ import type {
   RemoteTrackPublishEvent,
   RemoteTrackStateEvent,
   RemoteTrackSubscriptionFailedEvent,
+  RemoteTrackPublication as RawRemoteTrackPublication,
   Participant,
   Track,
 } from './types.js';
@@ -18,6 +19,18 @@ import {
   RemoteDataTrackPublication,
   type RemoteTrackPublication,
 } from './track_publication.js';
+
+/** Wraps a raw publication from the native layer in the class matching its kind. */
+function remoteTrackPublicationFor(raw: RawRemoteTrackPublication): RemoteTrackPublication {
+  switch (raw.kind) {
+    case 'video':
+      return new RemoteVideoTrackPublication(raw);
+    case 'audio':
+      return new RemoteAudioTrackPublication(raw);
+    default:
+      return new RemoteDataTrackPublication(raw);
+  }
+}
 
 /**
  * Listener signatures for every event a {@link RemoteParticipant} can emit.
@@ -38,15 +51,23 @@ export type RemoteParticipantEvents = {
    * `isSubscribed` set to `true`.
    *
    * @param track - The subscribed track.
+   * @param publication - The publication the track was subscribed from.
    */
-  trackSubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  trackSubscribed: (
+    track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    publication: RemoteTrackPublication,
+  ) => void;
   /**
    * One of this participant's tracks was unsubscribed from and stops delivering
    * media. Its frame and message callbacks will not fire again.
    *
    * @param track - The unsubscribed track.
+   * @param publication - The publication the track was unsubscribed from.
    */
-  trackUnsubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  trackUnsubscribed: (
+    track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    publication: RemoteTrackPublication,
+  ) => void;
   /**
    * This participant published a track. Subscription follows separately, and
    * `trackSubscribed` reports it.
@@ -122,7 +143,13 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
     this._native = nativeParticipant;
 
     this._native.setEventCallback((event: string, data?: unknown) => {
-      if (event === 'trackSubscriptionFailed') {
+      if (event === 'trackSubscribed' || event === 'trackUnsubscribed') {
+        const { track, publication } = data as {
+          track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack;
+          publication: RawRemoteTrackPublication;
+        };
+        this.emit(event, track, remoteTrackPublicationFor(publication));
+      } else if (event === 'trackSubscriptionFailed') {
         const { error, publication } = (data ?? {}) as {
           error?: unknown;
           publication?: RemoteTrackSubscriptionFailedEvent;

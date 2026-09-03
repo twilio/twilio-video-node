@@ -7,6 +7,32 @@
 
 namespace twilio_video_node {
 
+namespace {
+
+// Builds the `{ track, publication }` payload the subscribe/unsubscribe events
+// carry. The publication mirrors the shape the track collection getters return,
+// and shares the track object rather than wrapping it twice.
+template <typename TrackWrap, typename Publication, typename Track>
+Napi::Object MakeSubscriptionPayload(Napi::Env env, const std::shared_ptr<Publication>& pub,
+                                     const char* kind, const std::shared_ptr<Track>& track) {
+    Napi::Value trackValue = TrackWrap::NewInstance(env, track);
+
+    auto publication = Napi::Object::New(env);
+    publication.Set("trackSid", Napi::String::New(env, pub->getTrackSid()));
+    publication.Set("trackName", Napi::String::New(env, pub->getTrackName()));
+    publication.Set("kind", Napi::String::New(env, kind));
+    publication.Set("isTrackEnabled", Napi::Boolean::New(env, pub->isTrackEnabled()));
+    publication.Set("isSubscribed", Napi::Boolean::New(env, pub->isTrackSubscribed()));
+    publication.Set("track", trackValue);
+
+    auto payload = Napi::Object::New(env);
+    payload.Set("track", trackValue);
+    payload.Set("publication", publication);
+    return payload;
+}
+
+}  // namespace
+
 class RemoteParticipantObserverImpl : public twilio::video::RemoteParticipantObserver {
 public:
     RemoteParticipantObserverImpl() = default;
@@ -53,10 +79,10 @@ public:
     void onAudioTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
         dispatchPubStateEvent("trackDisabled", pub->getTrackSid(), pub->getTrackName(), pub->isTrackSubscribed());
     }
-    void onAudioTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
+    void onAudioTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
-        dispatchEvent("trackSubscribed", [track](Napi::Env env) {
-            return RemoteAudioTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackSubscribed", [pub, track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteAudioTrackWrap>(env, pub, "audio", track);
         });
     }
     void onAudioTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
@@ -64,10 +90,10 @@ public:
         dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "audio",
                                         error.getCode(), error.getMessage());
     }
-    void onAudioTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
+    void onAudioTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                   std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
-        dispatchEvent("trackUnsubscribed", [track](Napi::Env env) {
-            return RemoteAudioTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackUnsubscribed", [pub, track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteAudioTrackWrap>(env, pub, "audio", track);
         });
     }
     void onAudioTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
@@ -88,10 +114,10 @@ public:
     void onVideoTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
         dispatchPubStateEvent("trackDisabled", pub->getTrackSid(), pub->getTrackName(), pub->isTrackSubscribed());
     }
-    void onVideoTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
+    void onVideoTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
-        dispatchEvent("trackSubscribed", [track](Napi::Env env) {
-            return RemoteVideoTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackSubscribed", [pub, track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteVideoTrackWrap>(env, pub, "video", track);
         });
     }
     void onVideoTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
@@ -99,10 +125,10 @@ public:
         dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "video",
                                         error.getCode(), error.getMessage());
     }
-    void onVideoTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
+    void onVideoTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                   std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
-        dispatchEvent("trackUnsubscribed", [track](Napi::Env env) {
-            return RemoteVideoTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackUnsubscribed", [pub, track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteVideoTrackWrap>(env, pub, "video", track);
         });
     }
     void onVideoTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
@@ -129,10 +155,10 @@ public:
                                 std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub) override {
         dispatchTrackEvent("trackUnpublished", pub->getTrackSid(), pub->getTrackName());
     }
-    void onDataTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
-                               std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
-        dispatchEvent("trackSubscribed", [track](Napi::Env env) {
-            return RemoteDataTrackWrap::NewInstance(env, track);
+    void onDataTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
+                                std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
+        dispatchEvent("trackSubscribed", [pub, track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteDataTrackWrap>(env, pub, "data", track);
         });
     }
     void onDataTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
@@ -140,10 +166,10 @@ public:
         dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "data",
                                         error.getCode(), error.getMessage());
     }
-    void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
+    void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
                                  std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
-        dispatchEvent("trackUnsubscribed", [track](Napi::Env env) {
-            return RemoteDataTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackUnsubscribed", [pub, track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteDataTrackWrap>(env, pub, "data", track);
         });
     }
     void onDataTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
