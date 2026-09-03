@@ -9,9 +9,11 @@
  * {@link createLocalAudioTrack}, {@link createLocalDataTrack}, and
  * {@link createLocalTracks}.
  *
- * Video frames are I420 planar with `bigint` nanosecond timestamps; audio is
- * 48kHz mono S16LE PCM on the sending side. Call {@link Room.dispose} when
- * finished to release native resources.
+ * Video frames are I420 planar and audio is 48 kHz mono S16LE PCM, in both
+ * directions. Timestamps are plain numbers of **microseconds**. Receive frames
+ * with `for await (const frame of track.frames())`; awaiting each frame is what
+ * applies backpressure. Call {@link Room.dispose} when finished to release
+ * native resources.
  *
  *
  * @packageDocumentation
@@ -21,6 +23,8 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { Room } from './room.js';
+import { MAX_QUEUE_CEILING } from './frame_stream.js';
+import { NativeBindingLoadError, RoomConnectTimeoutError } from './errors.js';
 import type {
   NativeAddon,
   NativeMediaFactory,
@@ -35,6 +39,8 @@ import type {
   LogLevel,
   PlatformInfo,
   NetworkQualityConfiguration,
+  RawVideoSourceOptions,
+  RawAudioSourceOptions,
 } from './types.js';
 
 export { Room } from './room.js';
@@ -44,6 +50,9 @@ export type { LocalParticipantEvents } from './local_participant.js';
 export { RemoteParticipant } from './remote_participant.js';
 export type { RemoteParticipantEvents } from './remote_participant.js';
 export { TypedEventEmitter } from './typed_emitter.js';
+export { RemoteVideoTrack, RemoteAudioTrack, RemoteDataTrack } from './remote_track.js';
+export type { RemoteMediaTrackEvents, RemoteDataTrackEvents } from './remote_track.js';
+export { FrameStream, MAX_QUEUE_CEILING } from './frame_stream.js';
 export {
   TrackPublication,
   LocalTrackPublication,
@@ -63,6 +72,12 @@ export type {
   IceServer,
   EncodingParameters,
   I420Plane,
+  BackpressureMode,
+  FrameDeliveryOptions,
+  DeliveryStats,
+  WriteStats,
+  RawVideoSourceOptions,
+  RawAudioSourceOptions,
   VideoFrameInput,
   VideoFrame,
   AudioFrameInput,
@@ -75,9 +90,6 @@ export type {
   LocalAudioTrack,
   LocalDataTrack,
   LocalDataTrackOptions,
-  RemoteVideoTrack,
-  RemoteAudioTrack,
-  RemoteDataTrack,
   RoomState,
   ParticipantState,
   LogLevel,
@@ -108,15 +120,48 @@ export type {
   RemoteTrackPublishEvent,
   RemoteTrackStateEvent,
   RemoteTrackSubscriptionFailedEvent,
+  DataTrackSendResult,
 } from './types.js';
 
 export {
   TwilioError,
+  SDK_LOCAL_CODE,
+  // Access token
   AccessTokenInvalidError,
-  RoomNotFoundError,
+  AccessTokenHeaderInvalidError,
+  AccessTokenIssuerInvalidError,
+  AccessTokenExpiredError,
+  AccessTokenNotYetValidError,
+  AccessTokenGrantsInvalidError,
+  AccessTokenSignatureInvalidError,
+  // Signaling
   SignalingConnectionError,
-  MediaConnectionError,
+  SignalingConnectionDisconnectedError,
+  SignalingConnectionTimeoutError,
+  // Room
+  RoomConnectFailedError,
+  RoomMaxParticipantsExceededError,
+  RoomNotFoundError,
+  RoomCompletedError,
+  // Participant
   ParticipantMaxTracksExceededError,
+  ParticipantDuplicateIdentityError,
+  // Track
+  TrackInvalidError,
+  TrackNameTooLongError,
+  TrackNameCharsInvalidError,
+  // Media
+  MediaClientLocalDescFailedError,
+  MediaServerLocalDescFailedError,
+  MediaClientRemoteDescFailedError,
+  MediaServerRemoteDescFailedError,
+  MediaNoSupportedCodecError,
+  MediaConnectionError,
+  // SDK-local
+  NativeBindingLoadError,
+  UnsupportedPlatformError,
+  RoomConnectTimeoutError,
+  DataTrackSendError,
   twilioErrorFromCode,
 } from './errors.js';
 
@@ -158,7 +203,7 @@ function loadAddon(): NativeAddon {
     try {
       return nativeRequire(path.join(ROOT, 'build/Debug/twilio_video_sdk_node.node'));
     } catch (cause) {
-      throw new Error(
+      throw new NativeBindingLoadError(
         `No prebuilt binary found for ${platformDir}. ` +
           'Run npm run build to compile from source.',
         { cause },
@@ -168,6 +213,20 @@ function loadAddon(): NativeAddon {
 }
 
 const addon = loadAddon();
+
+/**
+ * Default {@link ConnectOptions.connectionTimeout}. Long enough to absorb a slow
+ * signaling round trip and ICE gathering on a congested network, short enough
+ * that a wedged connect surfaces rather than hanging a server process.
+ */
+const DEFAULT_CONNECTION_TIMEOUT_MS = 30_000;
+
+/**
+ * How long a timed-out connect waits for the native layer to report
+ * `disconnected` before disposing anyway. Only a backstop against a disconnect
+ * that never lands.
+ */
+const DISPOSE_GRACE_MS = 5_000;
 
 /** Upper bound for a data track's `maxPacketLifeTime`/`maxRetransmits`; both are `unsigned short` in RTCDataChannelInit. */
 const MAX_DATA_TRACK_LIMIT = 65535;
@@ -206,7 +265,17 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
   if (typeof options !== 'object' || options === null) {
     return Promise.reject(new TypeError('options must be an object'));
   }
-  const { networkQuality, ...rest } = options;
+  const { networkQuality, connectionTimeout, ...rest } = options;
+  if (connectionTimeout !== undefined) {
+    if (!Number.isFinite(connectionTimeout) || connectionTimeout < 0) {
+      return Promise.reject(
+        new RangeError(
+          `connectionTimeout must be a non-negative finite number of milliseconds; got ${String(connectionTimeout)}`,
+        ),
+      );
+    }
+  }
+  const timeoutMs = connectionTimeout ?? DEFAULT_CONNECTION_TIMEOUT_MS;
   const internalOpts: Record<string, unknown> = { ...rest };
   // networkQuality is the public contract; clear the native-only fields before re-deriving them,
   // so a caller passing them directly cannot override us.
@@ -247,15 +316,87 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
       ...(options.audioTracks ?? []),
       ...(options.dataTracks ?? []),
     ];
-    const room = new Room(nativeRoom, seededTracks, () => {
-      room.removeListener('connectFailure', onFailure);
-      resolve(room);
-    });
+
+    // A connect that neither succeeds nor fails would otherwise hang forever;
+    // the native layer has no timeout of its own.
+    //
+    // `room` is declared with `let` and every reference is guarded, because the
+    // Room constructor invokes its onConnected callback and could in principle
+    // do so before the assignment completes. `settled` makes the three exits
+    // (connected, failed, timed out) mutually exclusive.
+    // It is assigned once, so prefer-const would flag it, but `const` here
+    // would be a temporal-dead-zone hazard: the declaration has to precede
+    // `new Room(...)` for the onConnected callback to close over it.
+    // eslint-disable-next-line prefer-const
+    let room: Room | undefined;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
+
+    const clearTimer = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
     const onFailure = (error: unknown) => {
-      room.dispose();
+      if (settled) return;
+      settled = true;
+      clearTimer();
+      room?.dispose();
       reject(error || new Error('Connection failed'));
     };
+
+    room = new Room(nativeRoom, seededTracks, () => {
+      if (settled) return;
+      settled = true;
+      clearTimer();
+      room?.removeListener('connectFailure', onFailure);
+      resolve(room as Room);
+    });
+
     room.once('connectFailure', onFailure);
+
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        timer = null;
+        if (settled) return;
+        settled = true;
+        const timedOutRoom = room;
+        timedOutRoom?.removeListener('connectFailure', onFailure);
+
+        // Reject now; unwind the native connect afterwards. Calling dispose()
+        // straight away tears the Room down with the connect still in flight,
+        // which leaves rtc-cpp's connect handler uncalled - it logs "The
+        // connect handler was never called." Asking it to disconnect first
+        // lets the attempt cancel through the normal path.
+        reject(
+          new RoomConnectTimeoutError(
+            `Timed out after ${timeoutMs} ms connecting to the Room. ` +
+              'Raise connectionTimeout, or pass 0 to wait indefinitely.',
+          ),
+        );
+
+        if (!timedOutRoom) return;
+        let disposed = false;
+        const disposeOnce = () => {
+          if (disposed) return;
+          disposed = true;
+          timedOutRoom.dispose();
+        };
+        timedOutRoom.once('disconnected', disposeOnce);
+        try {
+          timedOutRoom.disconnect();
+        } catch {
+          // Never connected far enough to disconnect; fall through to dispose.
+        }
+        // Backstop, so a disconnect that never lands cannot leak the Room.
+        const grace = setTimeout(disposeOnce, DISPOSE_GRACE_MS);
+        grace.unref?.();
+      }, timeoutMs);
+      // A pending connect should not by itself keep the process alive.
+      timer.unref?.();
+    }
   });
 }
 
@@ -320,7 +461,78 @@ export function createLocalVideoTrack(
   options?: string | CreateLocalVideoTrackOptions,
 ): LocalVideoTrack {
   const name = resolveName(options, 'createLocalVideoTrack');
-  return getDefaultMediaFactory().createVideoTrack(name ? { name } : {});
+  const source = typeof options === 'object' && options !== null ? options.source : undefined;
+  if (source !== undefined) validateVideoSource(source);
+  const track = getDefaultMediaFactory().createVideoTrack(name ? { name } : {});
+  if (source) {
+    (track as unknown as { _configureSource(o: RawVideoSourceOptions): void })._configureSource(
+      source,
+    );
+  }
+  return track;
+}
+
+function validateVideoSource(source: RawVideoSourceOptions): void {
+  if (typeof source !== 'object' || source === null) {
+    throw new TypeError('source must be an object');
+  }
+  if (source.type !== 'raw') {
+    throw new TypeError(`source.type must be 'raw'; got ${String(source.type)}`);
+  }
+  if (source.format !== 'I420') {
+    throw new TypeError(`source.format must be 'I420'; got ${String(source.format)}`);
+  }
+  for (const key of ['width', 'height'] as const) {
+    const v = source[key];
+    if (!Number.isInteger(v) || v <= 0) {
+      throw new RangeError(`source.${key} must be a positive integer; got ${String(v)}`);
+    }
+    if ((v as number) % 2 !== 0) {
+      throw new RangeError(`source.${key} must be even; got ${String(v)}`);
+    }
+  }
+  if (source.fps !== undefined && (!Number.isInteger(source.fps) || source.fps <= 0)) {
+    throw new RangeError(`source.fps must be a positive integer; got ${String(source.fps)}`);
+  }
+}
+
+function validateAudioSource(source: RawAudioSourceOptions): void {
+  if (typeof source !== 'object' || source === null) {
+    throw new TypeError('source must be an object');
+  }
+  if (source.type !== 'raw') {
+    throw new TypeError(`source.type must be 'raw'; got ${String(source.type)}`);
+  }
+  if (source.format !== 'PCM_S16LE') {
+    throw new TypeError(`source.format must be 'PCM_S16LE'; got ${String(source.format)}`);
+  }
+  // Fixed by the engine: WebRTC audio is 48 kHz internally and this SDK
+  // publishes mono, so anything else would be silently wrong rather than
+  // resampled.
+  if (source.sampleRate !== 48000) {
+    throw new RangeError(`source.sampleRate must be 48000; got ${String(source.sampleRate)}`);
+  }
+  if (source.channels !== 1) {
+    throw new RangeError(`source.channels must be 1; got ${String(source.channels)}`);
+  }
+  if (source.mode !== undefined && source.mode !== 'latest' && source.mode !== 'queue') {
+    throw new TypeError(`source.mode must be 'latest' or 'queue'; got ${String(source.mode)}`);
+  }
+  if (source.drop !== undefined && source.drop !== 'oldest' && source.drop !== 'newest') {
+    throw new TypeError(`source.drop must be 'oldest' or 'newest'; got ${String(source.drop)}`);
+  }
+  if (source.maxQueue !== undefined) {
+    if (!Number.isInteger(source.maxQueue) || source.maxQueue <= 0) {
+      throw new RangeError(
+        `source.maxQueue must be a positive integer; got ${String(source.maxQueue)}`,
+      );
+    }
+    if (source.maxQueue > MAX_QUEUE_CEILING) {
+      throw new RangeError(
+        `source.maxQueue must be at most ${MAX_QUEUE_CEILING}; got ${source.maxQueue}`,
+      );
+    }
+  }
 }
 
 /**
@@ -346,7 +558,15 @@ export function createLocalAudioTrack(
   options?: string | CreateLocalAudioTrackOptions,
 ): LocalAudioTrack {
   const name = resolveName(options, 'createLocalAudioTrack');
-  return getDefaultMediaFactory().createAudioTrack(name ? { name } : {});
+  const source = typeof options === 'object' && options !== null ? options.source : undefined;
+  if (source !== undefined) validateAudioSource(source);
+  const track = getDefaultMediaFactory().createAudioTrack(name ? { name } : {});
+  if (source) {
+    (track as unknown as { _configureSource(o: RawAudioSourceOptions): void })._configureSource(
+      source,
+    );
+  }
+  return track;
 }
 
 /**

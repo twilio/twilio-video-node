@@ -16,8 +16,8 @@ import {
   twilioErrorFromCode,
   LocalVideoTrackPublication,
   Room,
-} from '../dist/index.mjs';
-import type { ConnectOptions, BandwidthProfileMode } from '../dist/index.mjs';
+} from '../lib/index.js';
+import type { ConnectOptions, BandwidthProfileMode } from '../lib/index.js';
 
 // Internal imports for testing non-exported utilities and error classes
 import {
@@ -224,35 +224,135 @@ describe('Video Track', () => {
   it('write returns false on unpublished track (no encoder sink attached)', () => {
     const track = createLocalVideoTrack('push-test');
 
-    const frame = generateI420Frame(320, 240);
-    const result = track.write({
-      y: frame.y,
-      u: frame.u,
-      v: frame.v,
-      width: 320,
-      height: 240,
-      yStride: 320,
-      uStride: 160,
-      vStride: 160,
-      timestampNs: process.hrtime.bigint(),
-    });
+    const result = track.write({ ...generateI420Frame(320, 240), timestamp: 1_000_000 });
     expect(result).toBe(false);
+  });
+
+  it('write defaults the timestamp when omitted', () => {
+    const track = createLocalVideoTrack('default-ts');
+    expect(track.write(generateI420Frame(320, 240))).toBe(false);
+  });
+
+  it('write accepts a padded stride', () => {
+    const track = createLocalVideoTrack('padded-stride');
+    expect(track.write(generateI420Frame(320, 240, 16))).toBe(false);
   });
 
   it('write rejects odd width or height', () => {
     const track = createLocalVideoTrack('odd-dims-test');
-    const frame = generateI420Frame(320, 240);
-    const base = {
-      y: frame.y,
-      u: frame.u,
-      v: frame.v,
-      yStride: 320,
-      uStride: 160,
-      vStride: 160,
-      timestampNs: process.hrtime.bigint(),
-    };
-    expect(() => track.write({ ...base, width: 321, height: 240 })).toThrow(/must be even/);
-    expect(() => track.write({ ...base, width: 320, height: 241 })).toThrow(/must be even/);
+    const base = generateI420Frame(320, 240);
+    expect(() => track.write({ ...base, width: 321 })).toThrow(/must be even/);
+    expect(() => track.write({ ...base, height: 241 })).toThrow(/must be even/);
+  });
+
+  it('write rejects a non-I420 format', () => {
+    const track = createLocalVideoTrack('bad-format');
+    const base = generateI420Frame(320, 240);
+    expect(() => track.write({ ...base, format: 'NV12' as never })).toThrow(/must be 'I420'/);
+  });
+
+  it('write rejects a plane that is not an I420Plane object', () => {
+    const track = createLocalVideoTrack('bad-plane');
+    const base = generateI420Frame(320, 240);
+    // A Buffer is an object, so it reaches the plane-shape check and fails on
+    // the missing `data` member rather than on the object check.
+    expect(() => track.write({ ...base, y: Buffer.alloc(10) as never })).toThrow(
+      /y\.data must be a Buffer/,
+    );
+    // A primitive fails the object check itself.
+    expect(() => track.write({ ...base, v: 5 as never })).toThrow(/must be an I420Plane object/);
+    // An explicitly-undefined key is still present, so it fails the object
+    // check; only a wholly absent plane reports as missing.
+    expect(() => track.write({ ...base, u: undefined as never })).toThrow(
+      /u must be an I420Plane object/,
+    );
+    const missing = { ...base } as Partial<typeof base>;
+    delete missing.u;
+    expect(() => track.write(missing as typeof base)).toThrow(/requires an I420Plane/);
+  });
+
+  it('write rejects a plane buffer shorter than stride * height', () => {
+    const track = createLocalVideoTrack('short-plane');
+    const base = generateI420Frame(320, 240);
+    const short = { ...base, y: { ...base.y, data: Buffer.alloc(100) } };
+    expect(() => track.write(short)).toThrow(/smaller than stride/);
+  });
+
+  it('write rejects a stride narrower than the plane width', () => {
+    const track = createLocalVideoTrack('narrow-stride');
+    const base = generateI420Frame(320, 240);
+    expect(() => track.write({ ...base, y: { ...base.y, stride: 16 } })).toThrow(
+      /strides must be >=/,
+    );
+  });
+
+  it('write rejects a non-numeric or negative timestamp', () => {
+    const track = createLocalVideoTrack('bad-ts');
+    const base = generateI420Frame(320, 240);
+    expect(() => track.write({ ...base, timestamp: 1n as never })).toThrow(/must be a number/);
+    expect(() => track.write({ ...base, timestamp: -1 })).toThrow(/non-negative/);
+    expect(() => track.write({ ...base, timestamp: 1.5 })).toThrow(/whole number/);
+  });
+
+  it('write rejects an invalid rotation', () => {
+    const track = createLocalVideoTrack('bad-rotation');
+    const base = generateI420Frame(320, 240);
+    expect(() => track.write({ ...base, rotation: 45 as never })).toThrow(/0, 90, 180, or 270/);
+  });
+
+  it('getWriteStats counts dropped frames and reports no send queue', () => {
+    const track = createLocalVideoTrack('write-stats');
+    expect(track.getWriteStats()).toMatchObject({
+      framesWritten: 0,
+      framesDropped: 0,
+      sendQueueDepth: 0,
+      maxQueue: 0,
+    });
+
+    // Unpublished, so every frame is rejected by the adapter and counted.
+    track.write(generateI420Frame(320, 240));
+    track.write(generateI420Frame(320, 240));
+
+    const stats = track.getWriteStats();
+    expect(stats.framesDropped).toBe(2);
+    expect(stats.framesWritten).toBe(0);
+    // Video publish is synchronous, so nothing is ever queued SDK-side.
+    expect(stats.sendQueueDepth).toBe(0);
+  });
+
+  it('counts timestamp regressions without rejecting the frame', () => {
+    const track = createLocalVideoTrack('ts-regression');
+    expect(track.getWriteStats().timestampRegressions).toBe(0);
+
+    // Unpublished frames are dropped by the adapter, so drive the counter
+    // through the audio path instead, which accepts writes immediately.
+    const audio = createLocalAudioTrack('ts-regression-audio');
+    const pcm = generateAudioSamples(480, 48000, 1);
+    audio.write({ pcm, frames: 480, timestamp: 2_000_000 });
+    audio.write({ pcm, frames: 480, timestamp: 3_000_000 });
+    expect(audio.getWriteStats().timestampRegressions).toBe(0);
+
+    // Going backwards is accepted - a looping file source does this - but is
+    // counted so it stays visible.
+    audio.write({ pcm, frames: 480, timestamp: 1_000_000 });
+    expect(audio.getWriteStats().timestampRegressions).toBe(1);
+    // A repeated timestamp does not advance either.
+    audio.write({ pcm, frames: 480, timestamp: 1_000_000 });
+    expect(audio.getWriteStats().timestampRegressions).toBe(2);
+    expect(audio.getWriteStats().framesWritten).toBe(4);
+  });
+
+  it('source options constrain the accepted frame size', () => {
+    const track = createLocalVideoTrack({
+      name: 'sized-source',
+      source: { type: 'raw', format: 'I420', width: 320, height: 240, fps: 30 },
+    });
+    // Matching dimensions pass validation and reach the adapter.
+    expect(track.write(generateI420Frame(320, 240))).toBe(false);
+    // A different size is rejected rather than silently rescaled.
+    expect(() => track.write(generateI420Frame(640, 480))).toThrow(
+      /do not match the track's configured source size/,
+    );
   });
 });
 
@@ -398,6 +498,227 @@ describe('Data Track', () => {
     expect(track.name).toBe('send-test');
     expect(() => track.send('hello')).not.toThrow();
     expect(() => track.send(Buffer.from([0xde, 0xad]))).not.toThrow();
+  });
+});
+
+describe('Track source option validation', () => {
+  const videoSource = { type: 'raw', format: 'I420', width: 320, height: 240 } as const;
+  const audioSource = {
+    type: 'raw',
+    format: 'PCM_S16LE',
+    sampleRate: 48000,
+    channels: 1,
+  } as const;
+
+  it('accepts a well-formed video source', () => {
+    expect(() =>
+      createLocalVideoTrack({ name: 'v-ok', source: { ...videoSource, fps: 30 } }),
+    ).not.toThrow();
+  });
+
+  it('rejects a non-object video source', () => {
+    expect(() => createLocalVideoTrack({ name: 'v1', source: null as never })).toThrow(TypeError);
+    expect(() => createLocalVideoTrack({ name: 'v2', source: 5 as never })).toThrow(TypeError);
+  });
+
+  it('rejects a video source with the wrong type or format', () => {
+    expect(() =>
+      createLocalVideoTrack({ name: 'v3', source: { ...videoSource, type: 'file' as never } }),
+    ).toThrow(/type must be 'raw'/);
+    expect(() =>
+      createLocalVideoTrack({ name: 'v4', source: { ...videoSource, format: 'NV12' as never } }),
+    ).toThrow(/format must be 'I420'/);
+  });
+
+  it.each(['width', 'height'] as const)('rejects a non-positive-integer %s', key => {
+    for (const bad of [0, -2, 1.5, '320']) {
+      expect(() =>
+        createLocalVideoTrack({ name: `v-${key}-${bad}`, source: { ...videoSource, [key]: bad } }),
+      ).toThrow(RangeError);
+    }
+  });
+
+  it.each(['width', 'height'] as const)('rejects an odd %s', key => {
+    expect(() =>
+      createLocalVideoTrack({ name: `v-odd-${key}`, source: { ...videoSource, [key]: 321 } }),
+    ).toThrow(/must be even/);
+  });
+
+  it('rejects a non-positive-integer fps', () => {
+    for (const bad of [0, -1, 1.5]) {
+      expect(() =>
+        createLocalVideoTrack({ name: `v-fps-${bad}`, source: { ...videoSource, fps: bad } }),
+      ).toThrow(/fps must be a positive integer/);
+    }
+  });
+
+  it('accepts a well-formed audio source', () => {
+    expect(() =>
+      createLocalAudioTrack({
+        name: 'a-ok',
+        source: { ...audioSource, mode: 'queue', maxQueue: 20, drop: 'oldest' },
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects a non-object audio source', () => {
+    expect(() => createLocalAudioTrack({ name: 'a1', source: null as never })).toThrow(TypeError);
+  });
+
+  it('rejects an audio source with the wrong type or format', () => {
+    expect(() =>
+      createLocalAudioTrack({ name: 'a2', source: { ...audioSource, type: 'file' as never } }),
+    ).toThrow(/type must be 'raw'/);
+    expect(() =>
+      createLocalAudioTrack({ name: 'a3', source: { ...audioSource, format: 'F32' as never } }),
+    ).toThrow(/format must be 'PCM_S16LE'/);
+  });
+
+  it('rejects any sample rate or channel count but 48000 mono', () => {
+    // Fixed by the engine: anything else would be silently wrong, not resampled.
+    expect(() =>
+      createLocalAudioTrack({ name: 'a4', source: { ...audioSource, sampleRate: 16000 as never } }),
+    ).toThrow(/sampleRate must be 48000/);
+    expect(() =>
+      createLocalAudioTrack({ name: 'a5', source: { ...audioSource, channels: 2 as never } }),
+    ).toThrow(/channels must be 1/);
+  });
+
+  it('rejects an invalid audio mode or drop policy', () => {
+    expect(() =>
+      createLocalAudioTrack({ name: 'a6', source: { ...audioSource, mode: 'fastest' as never } }),
+    ).toThrow(/mode must be/);
+    expect(() =>
+      createLocalAudioTrack({ name: 'a7', source: { ...audioSource, drop: 'middle' as never } }),
+    ).toThrow(/drop must be/);
+  });
+
+  it('rejects an out-of-range audio maxQueue', () => {
+    for (const bad of [0, -1, 2.5]) {
+      expect(() =>
+        createLocalAudioTrack({ name: `a-mq-${bad}`, source: { ...audioSource, maxQueue: bad } }),
+      ).toThrow(/maxQueue must be a positive integer/);
+    }
+    expect(() =>
+      createLocalAudioTrack({ name: 'a-mq-big', source: { ...audioSource, maxQueue: 100000 } }),
+    ).toThrow(/must be at most/);
+  });
+
+  it('sheds a burst that exceeds the audio publish queue, and says so', () => {
+    // Documents a real tradeoff rather than asserting it is fine. The
+    // blueprint's default of 10 chunks is ~100ms, so a producer that emits a
+    // whole utterance at once - a common TTS integration - loses most of it
+    // unless it paces its writes or raises maxQueue.
+    const track = createLocalAudioTrack({
+      name: 'burst-default',
+      source: { ...audioSource, maxQueue: 10 },
+    });
+    const pcm = generateAudioSamples(480, 48000, 1);
+
+    let accepted = 0;
+    for (let i = 0; i < 50; i++) {
+      if (track.write({ pcm, frames: 480 })) accepted++;
+    }
+
+    // Only the queue's worth is taken; the rest is shed and counted.
+    expect(accepted).toBeLessThan(50);
+    expect(track.getWriteStats().framesDropped).toBeGreaterThan(0);
+    expect(accepted + track.getWriteStats().framesDropped).toBe(50);
+  });
+
+  it('accepts the same burst when the queue is sized for it', () => {
+    const track = createLocalAudioTrack({
+      name: 'burst-sized',
+      source: { ...audioSource, maxQueue: 100 },
+    });
+    const pcm = generateAudioSamples(480, 48000, 1);
+
+    let accepted = 0;
+    for (let i = 0; i < 50; i++) {
+      if (track.write({ pcm, frames: 480 })) accepted++;
+    }
+    expect(accepted).toBe(50);
+    expect(track.getWriteStats().framesDropped).toBe(0);
+  });
+
+  it('applies the configured audio maxQueue to the publish queue', () => {
+    const track = createLocalAudioTrack({
+      name: 'a-configured',
+      source: { ...audioSource, maxQueue: 25 },
+    });
+    expect(track.getWriteStats().maxQueue).toBe(25);
+  });
+});
+
+describe('connect() connectionTimeout validation', () => {
+  it.each([-1, NaN, Infinity, 'soon'])('rejects %s', async bad => {
+    await expect(connect('token', { connectionTimeout: bad as never })).rejects.toThrow(RangeError);
+  });
+
+  it('rejects a non-string, non-object argument to the track factories', () => {
+    expect(() => createLocalVideoTrack(5 as never)).toThrow(
+      /createLocalVideoTrack expects a string or options object/,
+    );
+    expect(() => createLocalAudioTrack(true as never)).toThrow(
+      /createLocalAudioTrack expects a string or options object/,
+    );
+  });
+
+  it('normalizes a networkQuality object before reaching the native layer', async () => {
+    // Valid config: gets past validation and fails later on the bogus token,
+    // rather than being rejected as out of range.
+    await expect(
+      connect('not-a-real-token', { networkQuality: { local: 1, remote: 1 } }),
+    ).rejects.not.toThrow(RangeError);
+  });
+
+  it('accepts 0, meaning wait indefinitely', async () => {
+    // Reaches the native connect (and fails there on the fake token) rather
+    // than being rejected by validation.
+    await expect(connect('not-a-real-token', { connectionTimeout: 0 })).rejects.not.toThrow(
+      RangeError,
+    );
+  });
+});
+
+describe('Data Track send limits', () => {
+  it('rejects a string message over 64 KB synchronously', () => {
+    const track = createLocalDataTrack('too-big-string');
+    const oversize = 'a'.repeat(64 * 1024 + 1);
+    expect(() => track.send(oversize)).toThrow(RangeError);
+    expect(() => track.send(oversize)).toThrow(/exceeds the 65536-byte maximum/);
+  });
+
+  it('rejects a Buffer message over 64 KB synchronously', () => {
+    const track = createLocalDataTrack('too-big-buffer');
+    expect(() => track.send(Buffer.alloc(64 * 1024 + 1))).toThrow(RangeError);
+  });
+
+  it('accepts a message exactly at the 64 KB limit', () => {
+    const track = createLocalDataTrack('at-limit');
+    expect(() => track.send(Buffer.alloc(64 * 1024))).not.toThrow();
+  });
+
+  it('counts UTF-8 bytes, not characters, for the limit', () => {
+    const track = createLocalDataTrack('utf8-limit');
+    // Each of these is 4 UTF-8 bytes, so 16385 of them is just over 64 KB
+    // while being far fewer than 65536 JS characters.
+    expect(() => track.send('\u{1F600}'.repeat(16385))).toThrow(RangeError);
+  });
+
+  it('returns a promise from send()', () => {
+    const track = createLocalDataTrack('promise-shape');
+    const result = track.send('hello');
+    expect(result).toBeInstanceOf(Promise);
+    // Never rejects, so a fire-and-forget send cannot cause an unhandled
+    // rejection. Unpublished, the result simply never settles, so this only
+    // asserts the shape.
+    result.catch(() => expect.unreachable('send() must not reject'));
+  });
+
+  it('rejects a non-string, non-Buffer payload', () => {
+    const track = createLocalDataTrack('bad-payload');
+    expect(() => track.send(42 as never)).toThrow(TypeError);
   });
 });
 
@@ -607,7 +928,7 @@ describe('Participants already in the Room at connect', () => {
       kind,
       isTrackEnabled: true,
       isSubscribed: true,
-      track: { kind } as never,
+      track: { kind, sid: `MT-${kind}` } as never,
     };
   }
 

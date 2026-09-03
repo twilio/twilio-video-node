@@ -7,7 +7,10 @@ export default defineConfig({
     typecheck: { enabled: false },
     coverage: {
       provider: 'v8',
-      include: ['dist/**/*.cjs', 'dist/**/*.mjs'],
+      // Measure the TypeScript sources, not the bundle: `dist` is one
+      // concatenated file, so per-module coverage there is not actionable.
+      include: ['lib/**/*.ts'],
+      exclude: ['lib/types.ts'],
       reporter: ['text', 'lcov'],
     },
   },

@@ -6,13 +6,18 @@ export default defineConfig([
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['scripts/**/*.js', 'examples/**/*.js'],
+    // Plain-JS entry points that run directly under node, so they need the
+    // node globals declared. test/soak.mjs is a standalone harness rather than
+    // a vitest case, which is why it belongs here and not with the TS suites.
+    files: ['scripts/**/*.js', 'examples/**/*.js', 'test/**/*.mjs'],
     languageOptions: {
       globals: {
         console: 'readonly',
         process: 'readonly',
         Buffer: 'readonly',
         URL: 'readonly',
+        URLSearchParams: 'readonly',
+        fetch: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
         setInterval: 'readonly',

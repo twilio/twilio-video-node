@@ -1,9 +1,6 @@
 import type {
   NativeRemoteParticipant,
   ParticipantState,
-  RemoteVideoTrack,
-  RemoteAudioTrack,
-  RemoteDataTrack,
   RemoteTrackPublishEvent,
   RemoteTrackStateEvent,
   RemoteTrackSubscriptionFailedEvent,
@@ -12,12 +9,33 @@ import type {
 } from './types.js';
 import { TwilioError, liftTwilioError } from './errors.js';
 import { TypedEventEmitter } from './typed_emitter.js';
+import type { RemoteVideoTrack, RemoteAudioTrack, RemoteDataTrack } from './remote_track.js';
+import { releaseRemoteTrack, wrapRemoteTrack } from './track_registry.js';
+import type {
+  NativeRemoteAudioTrack,
+  NativeRemoteDataTrack,
+  NativeRemoteVideoTrack,
+} from './types.js';
 import {
   RemoteVideoTrackPublication,
   RemoteAudioTrackPublication,
   RemoteDataTrackPublication,
   type RemoteTrackPublication,
 } from './track_publication.js';
+
+type NativeAnyRemoteTrack = NativeRemoteVideoTrack | NativeRemoteAudioTrack | NativeRemoteDataTrack;
+
+/**
+ * Events whose payload is a remote track object rather than a plain
+ * publication record. These are the ones that must be resolved through the
+ * track registry.
+ */
+const TRACK_OBJECT_EVENTS = new Set([
+  'trackSubscribed',
+  'trackUnsubscribed',
+  'videoTrackSwitchedOff',
+  'videoTrackSwitchedOn',
+]);
 
 /**
  * Listener signatures for every event a {@link RemoteParticipant} can emit.
@@ -128,6 +146,17 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
           publication?: RemoteTrackSubscriptionFailedEvent;
         };
         this.emit(event, liftTwilioError(error), publication);
+      } else if (TRACK_OBJECT_EVENTS.has(event)) {
+        // The native layer mints a fresh object per event, so resolve through
+        // the registry: listeners must get the same wrapper a frames() consumer
+        // is iterating.
+        const wrapped = wrapRemoteTrack(data as NativeAnyRemoteTrack);
+        this.emit(event, wrapped);
+        if (event === 'trackUnsubscribed') {
+          // Ends any active frames() iterator so a `for await` loop exits
+          // rather than hanging on a track that will never produce again.
+          releaseRemoteTrack(wrapped.sid);
+        }
       } else {
         this.emit(event, data);
       }

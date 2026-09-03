@@ -20,11 +20,13 @@ public:
     explicit PushableAudioSource(rtc::scoped_refptr<NodeAudioDevice> adm);
     ~PushableAudioSource() override = default;
 
-    void PushSamples(const int16_t* data, int bits_per_sample,
+    // Returns false when the bounded publish queue shed samples to make room.
+    bool PushSamples(const int16_t* data, int bits_per_sample,
                      int sample_rate, size_t number_of_channels,
                      size_t number_of_frames);
 
     void ClearBuffer();
+    NodeAudioDevice* adm() const { return adm_.get(); }
 
     // AudioSourceInterface
     SourceState state() const override { return kLive; }
@@ -67,10 +69,21 @@ private:
     void SetEnabled(const Napi::CallbackInfo& info, const Napi::Value& value);
     Napi::Value Write(const Napi::CallbackInfo& info);
     Napi::Value ClearBuffer(const Napi::CallbackInfo& info);
+    Napi::Value GetWriteStats(const Napi::CallbackInfo& info);
+    Napi::Value ConfigureSource(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::media::LocalAudioTrack> track_;
     std::shared_ptr<twilio::media::MediaFactory> factory_;
     rtc::scoped_refptr<PushableAudioSource> audioSource_;
+
+    uint64_t framesWritten_{0};
+    uint64_t framesDropped_{0};
+    bool hasLastTimestamp_{false};
+    int64_t lastTimestampUs_{0};
+    // A timestamp that does not advance is accepted and counted rather than
+    // rejected: a legitimate producer can restart a loop, and silently
+    // reordering or dropping would be worse than making it visible.
+    uint64_t timestampRegressions_{0};
 };
 
 }

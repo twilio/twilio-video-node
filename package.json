@@ -36,13 +36,16 @@
     "build:ts": "tsdown",
     "docs": "typedoc",
     "test": "vitest run",
-    "test:unit": "vitest run test/unit.test.ts",
+    "test:unit": "vitest run test/unit.test.ts test/bundle.test.ts test/blueprint_conformance.test.ts test/module_load.test.ts test/frame_stream.test.ts test/remote_track.test.ts test/errors.test.ts test/room.test.ts test/participant.test.ts",
     "test:integration": "vitest run test/integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:unit:pure": "vitest run test/frame_stream.test.ts test/remote_track.test.ts test/errors.test.ts test/room.test.ts test/participant.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test:soak": "node test/soak.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -67,7 +70,8 @@
     "scripts/install.js",
     "scripts/common.js",
     "package.json",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "FRAME_CONTRACT.md"
   ],
   "engines": {
     "node": ">=24.0.0"

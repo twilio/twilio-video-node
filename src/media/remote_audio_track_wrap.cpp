@@ -10,8 +10,9 @@ void RemoteAudioTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("kind", &RemoteAudioTrackWrap::GetKind, nullptr),
         InstanceAccessor("sid", &RemoteAudioTrackWrap::GetSid, nullptr),
         InstanceAccessor("enabled", &RemoteAudioTrackWrap::IsEnabled, nullptr),
-        InstanceMethod("onFrame", &RemoteAudioTrackWrap::OnFrame),
-        InstanceMethod("removeFrameCallback", &RemoteAudioTrackWrap::RemoveFrameCallback),
+        InstanceMethod("_attachFrameSink", &RemoteAudioTrackWrap::AttachFrameSink),
+        InstanceMethod("_detachFrameSink", &RemoteAudioTrackWrap::DetachFrameSink),
+        InstanceMethod("_sinkStats", &RemoteAudioTrackWrap::SinkStats),
     });
 
     constructor_ = Napi::Persistent(func);
@@ -73,7 +74,7 @@ Napi::Value RemoteAudioTrackWrap::IsEnabled(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(info.Env(), track_->isEnabled());
 }
 
-Napi::Value RemoteAudioTrackWrap::OnFrame(const Napi::CallbackInfo& info) {
+Napi::Value RemoteAudioTrackWrap::AttachFrameSink(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     if (info.Length() < 1 || !info[0].IsFunction()) {
@@ -81,10 +82,16 @@ Napi::Value RemoteAudioTrackWrap::OnFrame(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
+    size_t depth = AsyncContext::kDefaultMaxQueueDepth;
+    if (info.Length() > 1 && info[1].IsNumber()) {
+        double d = info[1].As<Napi::Number>().DoubleValue();
+        if (d >= 1 && d <= 1024) depth = static_cast<size_t>(d);
+    }
+
     detachSink();
 
     auto callback = info[0].As<Napi::Function>();
-    audioSink_ = std::make_unique<AudioFrameSink>(env, callback);
+    audioSink_ = std::make_unique<AudioFrameSink>(env, callback, depth);
 
     if (track_) {
         auto webrtcTrack = track_->getWebRtcTrack();
@@ -96,7 +103,17 @@ Napi::Value RemoteAudioTrackWrap::OnFrame(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
-Napi::Value RemoteAudioTrackWrap::RemoveFrameCallback(const Napi::CallbackInfo& info) {
+Napi::Value RemoteAudioTrackWrap::SinkStats(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto out = Napi::Object::New(env);
+    out.Set("nativeDropped",
+            Napi::Number::New(env, audioSink_ ? static_cast<double>(audioSink_->droppedCount()) : 0));
+    out.Set("nativeQueueDepth",
+            Napi::Number::New(env, audioSink_ ? static_cast<double>(audioSink_->queueDepth()) : 0));
+    return out;
+}
+
+Napi::Value RemoteAudioTrackWrap::DetachFrameSink(const Napi::CallbackInfo& info) {
     detachSink();
     return info.Env().Undefined();
 }

@@ -28,30 +28,36 @@ export interface I420Plane {
 
 /**
  * An I420 video frame to push into a {@link LocalVideoTrack} via its `write`
- * method. The `y` buffer must be at least `yStride * height` bytes; the `u`/`v`
- * buffers at least `uStride * (height / 2)` / `vStride * (height / 2)` bytes
- * (chroma is 2x-subsampled in each dimension). `width` and `height` must be
- * positive and even; odd dimensions are rejected with a `RangeError`.
+ * method. Uses the same planar layout as the delivered {@link VideoFrame}, so a
+ * received frame can be re-published without reshaping it.
+ *
+ * Each plane's `data` must be at least `stride * height` bytes (`ceil(height / 2)`
+ * for the 2x-subsampled `u`/`v` planes). `width` and `height` must be positive
+ * and even; odd dimensions are rejected with a `RangeError`.
+ *
+ * Buffers are copied synchronously during `write()`, so the caller may reuse or
+ * free them as soon as it returns.
  */
 export interface VideoFrameInput {
-  /** Frame width in pixels. */
+  /** Always `'I420'`. Optional; rejected if present and not `'I420'`. */
+  format?: 'I420';
+  /** Frame width in pixels. Must be positive and even. */
   width: number;
-  /** Frame height in pixels. */
+  /** Frame height in pixels. Must be positive and even. */
   height: number;
-  /** Luminance plane, `yStride * height` bytes long. */
-  y: Buffer;
-  /** Blue-difference chrominance plane, `uStride * ceil(height / 2)` bytes long. */
-  u: Buffer;
-  /** Red-difference chrominance plane, `vStride * ceil(height / 2)` bytes long. */
-  v: Buffer;
-  /** Bytes per row in {@link VideoFrameInput.y}, at least `width`. */
-  yStride: number;
-  /** Bytes per row in {@link VideoFrameInput.u}, at least `ceil(width / 2)`. */
-  uStride: number;
-  /** Bytes per row in {@link VideoFrameInput.v}, at least `ceil(width / 2)`. */
-  vStride: number;
-  /** Defaults to the current monotonic time when omitted. */
-  timestampNs?: bigint;
+  /** Luminance plane. */
+  y: I420Plane;
+  /** Blue-difference chrominance plane, half resolution in each dimension. */
+  u: I420Plane;
+  /** Red-difference chrominance plane, half resolution in each dimension. */
+  v: I420Plane;
+  /**
+   * Presentation time in **microseconds**. Defaults to the current monotonic
+   * time when omitted, which is correct for an application-paced live source.
+   */
+  timestamp?: number;
+  /** Application-defined counter carried for tracing. Not interpreted by the SDK. */
+  frameId?: number;
   /** Clockwise rotation to apply on display, in degrees. Defaults to `0`. */
   rotation?: 0 | 90 | 180 | 270;
 }
@@ -70,24 +76,35 @@ export interface VideoFrame {
   u: I420Plane;
   /** Red-difference chrominance plane, half resolution in each dimension. */
   v: I420Plane;
-  /** Local receive time, in nanoseconds on a monotonic clock. */
-  timestampNs: bigint;
-  /** When the sender captured the frame, in nanoseconds, if the sender reported it. */
-  captureTimestampNs?: bigint;
+  /** Local receive time, in **microseconds** on a monotonic clock. */
+  timestamp: number;
+  /** When the sender captured the frame, in microseconds, if the sender reported it. */
+  captureTimestamp?: number;
   /** RTP timestamp from the packet that carried this frame, if available. */
   rtpTimestamp?: number;
-  /** Monotonically increasing counter identifying this frame within the track. */
+  /** SDK-generated monotonic per-track counter, for gap and drop detection. */
   frameId: number;
   /** Clockwise rotation to apply on display, in degrees. */
   rotation?: 0 | 90 | 180 | 270;
+  /**
+   * Optional deterministic-release hint. Not required for correctness - the
+   * frame is an owned copy and GC reclaims it - but calling it releases the
+   * plane buffers promptly. Idempotent; reading plane data after `close()`
+   * throws.
+   */
+  close?(): void;
 }
 
 /** A PCM audio frame to push into a {@link LocalAudioTrack} via its `write` method. `pcm` is int16 mono samples at 48 kHz; `frames` is the sample count. */
 export interface AudioFrameInput {
-  /** Interleaved signed 16-bit little-endian samples, `frames * 2` bytes long. */
+  /** Interleaved signed 16-bit little-endian samples, `frames * 2` bytes long. Copied synchronously by `write()`. */
   pcm: Buffer;
   /** Number of samples per channel in {@link AudioFrameInput.pcm}. */
   frames: number;
+  /** Presentation time in **microseconds**. Defaults to "now" when omitted. */
+  timestamp?: number;
+  /** Application-defined counter carried for tracing. Not interpreted by the SDK. */
+  frameId?: number;
 }
 
 /** A PCM audio frame delivered to a {@link RemoteAudioTrack}'s frame callback. Always `PCM_S16LE`; `frameId` increments per frame. */
@@ -102,22 +119,135 @@ export interface AudioFrame {
   frames: number;
   /** Interleaved signed 16-bit little-endian samples. */
   pcm: Buffer;
-  /** Local receive time, in nanoseconds on a monotonic clock. */
-  timestampNs: bigint;
-  /** Monotonically increasing counter identifying this frame within the track. */
+  /** Local receive time, in **microseconds** on a monotonic clock. */
+  timestamp: number;
+  /** When the sender captured the frame, in microseconds, if reported. */
+  captureTimestamp?: number;
+  /** RTP timestamp from the packet that carried this frame, if available. */
+  rtpTimestamp?: number;
+  /** SDK-generated monotonic per-track counter, for gap and drop detection. */
   frameId: number;
+  /** Optional deterministic-release hint. Idempotent; reading `pcm` after `close()` throws. */
+  close?(): void;
+}
+
+/**
+ * How a bounded frame queue behaves when it is full.
+ *
+ * - `latest` keeps only the most recent frame; older frames are dropped. Right
+ *   for live video, where a stale frame has no value.
+ * - `queue` buffers up to `maxQueue` frames and drops when full. Right for
+ *   audio, where a small buffer smooths receiver jitter and gaps degrade
+ *   transcription.
+ */
+export type BackpressureMode = 'latest' | 'queue';
+
+/** Per-call delivery policy for {@link RemoteVideoTrack.frames} / {@link RemoteAudioTrack.frames}. */
+export interface FrameDeliveryOptions {
+  /** Defaults to `latest` for video, `queue` for audio. */
+  mode?: BackpressureMode;
+  /** Queue bound. Defaults to 1 for `latest`, 10 for `queue`. Capped at 1024. */
+  maxQueue?: number;
+  /** Which frame to shed when full. Only meaningful for `mode: 'queue'`. Defaults to `oldest`. */
+  drop?: 'oldest' | 'newest';
+}
+
+/**
+ * Receive-side statistics for one remote track. `framesDropped` sums frames
+ * shed by the JS policy queue and frames shed at the native transfer boundary,
+ * so it is the total the consumer never saw.
+ */
+export interface DeliveryStats {
+  /** Frames handed to the consumer. */
+  framesDelivered: number;
+  /** Cumulative frames dropped by backpressure, across both queues. */
+  framesDropped: number;
+  /** Current combined queue occupancy. */
+  queueDepth: number;
+  /** The configured bound for the JS policy queue. */
+  maxQueue: number;
+  /** Timestamp of the most recently delivered frame, in microseconds. */
+  lastTimestamp?: number;
+}
+
+/**
+ * Publish-side statistics for one local track.
+ *
+ * Video publish is synchronous - `write()` hands the frame straight to the
+ * encoder - so there is no SDK-side send queue and `sendQueueDepth`/`maxQueue`
+ * are `0`; a `framesDropped` there means libwebrtc's adapter rejected the
+ * frame. Audio publish does have a bounded queue, drained at 10 ms, so its
+ * depth and bound are real. Audio counters are per audio device, which is
+ * shared across local audio tracks in this process.
+ */
+export interface WriteStats {
+  /** Frames accepted. */
+  framesWritten: number;
+  /** Cumulative frames dropped by publish backpressure. */
+  framesDropped: number;
+  /** Current buffered frames. Always `0` for video. */
+  sendQueueDepth: number;
+  /** Queue bound. Always `0` for video. For audio, the bound in 10 ms chunks. */
+  maxQueue: number;
+  /** Timestamp of the most recently accepted frame, in microseconds. */
+  lastTimestamp?: number;
+  /**
+   * Frames accepted whose `timestamp` did not advance past the previous one.
+   *
+   * Counted, not rejected: a producer may legitimately restart (looping a
+   * file), and silently reordering or discarding would hide a real problem.
+   * A rising count on a live source means the timestamps being supplied are
+   * wrong, which will show up downstream as jitter.
+   */
+  timestampRegressions: number;
+}
+
+/** Raw-frame source configuration for a {@link LocalVideoTrack}. */
+export interface RawVideoSourceOptions {
+  /** Always `'raw'`. Reserved for future source kinds (encoded, file, stream). */
+  type: 'raw';
+  /** Always `'I420'`. */
+  format: 'I420';
+  /** Encoder width hint, in pixels. */
+  width: number;
+  /** Encoder height hint, in pixels. */
+  height: number;
+  /** Encoder frame-rate hint. */
+  fps?: number;
+}
+
+/** Raw-frame source configuration for a {@link LocalAudioTrack}. */
+export interface RawAudioSourceOptions {
+  /** Always `'raw'`. */
+  type: 'raw';
+  /** Always `'PCM_S16LE'`. */
+  format: 'PCM_S16LE';
+  /** Always 48000. WebRTC audio is 48 kHz internally. */
+  sampleRate: 48000;
+  /** Always 1. */
+  channels: 1;
+  /** Publish queue policy. Defaults to `queue`. */
+  mode?: BackpressureMode;
+  /** Publish queue bound, in 10 ms chunks. Defaults to 10 (~100 ms). */
+  maxQueue?: number;
+  /** Which chunk to shed when full. Defaults to `oldest`. */
+  drop?: 'oldest' | 'newest';
 }
 
 /** Options for {@link createLocalVideoTrack}. */
 export interface CreateLocalVideoTrackOptions {
   /** Track name, unique across the local participant's published tracks. Defaults to a generated name such as `video-0`. */
   name?: string;
+  /** Raw-frame source configuration, including encoder sizing hints. */
+  source?: RawVideoSourceOptions;
 }
 
 /** Options for {@link createLocalAudioTrack}. */
 export interface CreateLocalAudioTrackOptions {
   /** Track name, unique across the local participant's published tracks. Defaults to a generated name such as `audio-0`. */
   name?: string;
+  /** Raw-frame source configuration, including the publish queue bound. */
+  source?: RawAudioSourceOptions;
 }
 
 /** Options for {@link createLocalTracks}. Each key accepts a boolean to toggle the kind, or a per-track options object. */
@@ -272,6 +402,12 @@ export interface ConnectOptions {
   iceOptions?: IceOptions;
   /** Initial send-bitrate limits; equivalent to calling {@link LocalParticipant.setEncodingParameters} after connect. */
   encodingParameters?: EncodingParameters;
+  /**
+   * Milliseconds to wait for the Room to connect before giving up. On expiry
+   * the promise rejects with a `RoomConnectTimeoutError` and the partially
+   * built Room is disposed. Defaults to 30000. Pass `0` to wait indefinitely.
+   */
+  connectionTimeout?: number;
 }
 
 /** The kind of media a track carries. */
@@ -288,17 +424,23 @@ export interface LocalVideoTrack {
   /**
    * Push an I420 frame into the track.
    *
-   * Throws `TypeError`/`RangeError` on invalid input (bad shape, non-finite
-   * integers, non-BigInt timestamp, invalid rotation, plane buffer smaller than
-   * `stride * height`). Throws `Error` if the track is not bound to a source.
+   * Buffers are copied synchronously, so the caller may reuse or free them as
+   * soon as this returns.
+   *
+   * Throws `TypeError`/`RangeError` on invalid input (bad plane shape,
+   * non-finite integers, non-numeric timestamp, invalid rotation, plane buffer
+   * smaller than `stride * height`). Throws `Error` if the track is not bound
+   * to a source.
    *
    * Returns `true` when the frame was forwarded to the encoder sink. Returns
-   * `false` when the underlying adapter dropped the frame — most commonly
-   * because the encoder sink has not yet attached (frames pushed before the
-   * room emits `connected`), but also when the adapter rate-limits or rejects
-   * the frame's resolution.
+   * `false` when the frame was dropped - most commonly because the encoder sink
+   * has not attached yet (frames written before `connect()` resolves), but also
+   * when libwebrtc's adapter rate-limits or rejects the frame's resolution.
+   * Every `false` is counted in {@link LocalVideoTrack.getWriteStats}.
    */
   write(frame: VideoFrameInput): boolean;
+  /** Publish-side counters for this track. */
+  getWriteStats(): WriteStats;
 }
 
 /** A local audio track that the application feeds with PCM samples. Create via {@link createLocalAudioTrack}. */
@@ -315,11 +457,20 @@ export interface LocalAudioTrack {
    * Format is fixed at **48 kHz mono S16LE** — `AudioFrameInput` exposes no
    * sampleRate/channels fields, and `pcm` is interpreted as int16 mono samples.
    *
+   * Samples are copied synchronously, so the caller may reuse or free `pcm` as
+   * soon as this returns.
+   *
    * Throws `TypeError`/`RangeError` on invalid input (missing/non-Buffer `pcm`,
-   * non-integer `frames`, `pcm` shorter than `frames`). Throws `Error` if the
-   * track is not bound to a source. Returns `true` on successful enqueue.
+   * non-integer `frames`, `pcm` shorter than `frames`, non-numeric timestamp).
+   * Throws `Error` if the track is not bound to a source.
+   *
+   * Returns `true` when the samples were enqueued, `false` when the bounded
+   * publish queue had to shed the oldest samples to make room. Every `false` is
+   * counted in {@link LocalAudioTrack.getWriteStats}.
    */
   write(frame: AudioFrameInput): boolean;
+  /** Publish-side counters for this track. */
+  getWriteStats(): WriteStats;
   /** Drop any buffered, not-yet-sent audio samples. Use to discard stale audio before resuming. */
   clearBuffer(): void;
 }
@@ -360,8 +511,32 @@ export interface LocalDataTrack {
   readonly reliable: boolean;
   /** Whether messages are delivered in the order they were sent. */
   readonly ordered: boolean;
-  /** Send a message to all subscribed remote participants. */
-  send(data: string | Buffer): void;
+  /**
+   * Send a message to all subscribed remote participants.
+   *
+   * The returned promise **always resolves** - never rejects - so a
+   * fire-and-forget `send()` cannot produce an unhandled rejection. Await it
+   * only when the outcome matters.
+   *
+   * @throws {RangeError} Synchronously, if the message exceeds 64 KB
+   *   (`kMaxMessageSize`). Oversize messages are never transmitted.
+   * @throws {TypeError} Synchronously, if `data` is not a string or Buffer.
+   */
+  send(data: string | Buffer): Promise<DataTrackSendResult>;
+}
+
+/**
+ * Outcome of a {@link LocalDataTrack.send}. `ok` is `false` when the message
+ * could not be sent or queued - most often because the send buffer had no room
+ * for it.
+ */
+export interface DataTrackSendResult {
+  /** Whether the message was sent or queued for sending. */
+  ok: boolean;
+  /** Identifier for this send, unique within the track. */
+  messageId: number;
+  /** Why the send failed. Present only when `ok` is `false`. */
+  error?: string;
 }
 
 /** Desired render dimensions for a remote video track, used to right-size the publisher's encoding. */
@@ -379,10 +554,12 @@ export interface VideoContentPreferences {
 }
 
 /**
- * A remote participant's video track. Attach a frame callback via `onFrame` to
- * receive decoded {@link VideoFrame}s; only one callback is active at a time.
+ * Raw native shape of a remote video track. The exported `RemoteVideoTrack`
+ * class wraps this and owns the `frames()` iterator and its policy queue.
+ *
+ * @internal
  */
-export interface RemoteVideoTrack {
+export interface NativeRemoteVideoTrack {
   /** Track name, as set by the publishing participant. */
   readonly name: string;
   /** Always `'video'`. */
@@ -393,10 +570,12 @@ export interface RemoteVideoTrack {
   readonly enabled: boolean;
   /** Whether the SDK has switched this track off (no frames delivered) under bandwidth pressure. Tracks the `videoTrackSwitchedOff`/`videoTrackSwitchedOn` events. */
   readonly isSwitchedOff: boolean;
-  /** Register the frame callback, replacing any previous one. */
-  onFrame(callback: (frame: VideoFrame) => void): void;
-  /** Remove the frame callback so frames stop being delivered. Pair with `onFrame` to release the listener. */
-  removeFrameCallback(): void;
+  /** @internal Attach the native sink. `maxQueueDepth` bounds the transfer queue. */
+  _attachFrameSink(callback: (frame: VideoFrame) => void, maxQueueDepth?: number): void;
+  /** @internal Detach the native sink so frames stop crossing the boundary. */
+  _detachFrameSink(): void;
+  /** @internal Transfer-queue counters, folded into {@link DeliveryStats}. */
+  _sinkStats(): { nativeDropped: number; nativeQueueDepth: number };
   /**
    * Tell the server what dimensions this track will be rendered at, so it can
    * pick a matching encoding. Takes effect only when the Room was joined with
@@ -408,10 +587,12 @@ export interface RemoteVideoTrack {
 }
 
 /**
- * A remote participant's audio track. Attach a frame callback via `onFrame` to
- * receive decoded {@link AudioFrame}s; only one callback is active at a time.
+ * Raw native shape of a remote audio track. The exported `RemoteAudioTrack`
+ * class wraps this.
+ *
+ * @internal
  */
-export interface RemoteAudioTrack {
+export interface NativeRemoteAudioTrack {
   /** Track name, as set by the publishing participant. */
   readonly name: string;
   /** Always `'audio'`. */
@@ -420,17 +601,21 @@ export interface RemoteAudioTrack {
   readonly sid: Track.SID;
   /** Whether the publisher currently has this track enabled. */
   readonly enabled: boolean;
-  /** Register the frame callback, replacing any previous one. */
-  onFrame(callback: (frame: AudioFrame) => void): void;
-  /** Remove the frame callback so frames stop being delivered. Pair with `onFrame` to release the listener. */
-  removeFrameCallback(): void;
+  /** @internal Attach the native sink. `maxQueueDepth` bounds the transfer queue. */
+  _attachFrameSink(callback: (frame: AudioFrame) => void, maxQueueDepth?: number): void;
+  /** @internal Detach the native sink so frames stop crossing the boundary. */
+  _detachFrameSink(): void;
+  /** @internal Transfer-queue counters, folded into {@link DeliveryStats}. */
+  _sinkStats(): { nativeDropped: number; nativeQueueDepth: number };
 }
 
 /**
- * A remote participant's data track. Attach a message callback via `onMessage`
- * to receive sent messages; only one callback is active at a time.
+ * Raw native shape of a remote data track. The exported `RemoteDataTrack` class
+ * wraps this and re-exposes messages as a `message` event.
+ *
+ * @internal
  */
-export interface RemoteDataTrack {
+export interface NativeRemoteDataTrack {
   /** Track name, as set by the publishing participant. */
   readonly name: string;
   /** Always `'data'`. */
@@ -448,7 +633,7 @@ export interface RemoteDataTrack {
   /**
    * The maximum number of times the publisher retransmits a message before
    * giving up, or `null` when unset. `65535` reads back as `null`, as for
-   * {@link RemoteDataTrack.maxPacketLifeTime}.
+   * {@link NativeRemoteDataTrack.maxPacketLifeTime}.
    */
   readonly maxRetransmits: number | null;
   /** Whether delivery is reliable (the publisher set neither retransmit limit). */
@@ -472,7 +657,7 @@ export interface TrackPublication {
 /** Raw native shape of a remote track publication, adding subscription state and the subscribed track. */
 export interface RemoteTrackPublication extends TrackPublication {
   isSubscribed: boolean;
-  track?: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack;
+  track?: NativeRemoteVideoTrack | NativeRemoteAudioTrack | NativeRemoteDataTrack;
 }
 
 /** Payload for the `trackPublished`/`trackUnpublished` events. */

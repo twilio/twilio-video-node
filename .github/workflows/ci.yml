@@ -32,12 +32,19 @@ jobs:
             run: |
               npm run lint
               npm run format:check
+          - name: typecheck
+            run: npm run typecheck
           - name: build-and-test
             # The unit tests require the native addon.
             native: true
             run: |
               npm run build:ts
               npm run test:unit
+          - name: unit-pure
+            # The suites that do not load the addon, so they run without rtc-cpp.
+            run: |
+              npm run build:ts
+              npm run test:unit:pure
           - name: docs
             run: npm run docs
     steps:

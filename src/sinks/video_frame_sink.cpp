@@ -2,10 +2,10 @@
 
 namespace twilio_video_node {
 
-VideoFrameSink::VideoFrameSink(Napi::Env env, Napi::Function callback)
+VideoFrameSink::VideoFrameSink(Napi::Env env, Napi::Function callback, size_t maxQueueDepth)
     : env_(env)
     , callback_(Napi::Persistent(callback))
-    , asyncContext_(std::make_unique<AsyncContext>(env)) {
+    , asyncContext_(std::make_unique<AsyncContext>(env, maxQueueDepth)) {
 }
 
 VideoFrameSink::~VideoFrameSink() {
@@ -17,6 +17,7 @@ void VideoFrameSink::close() {
     if (closed_) return;
     closed_ = true;
     if (asyncContext_) {
+        nativeDropped_ = asyncContext_->droppedCount();
         asyncContext_->close();
         asyncContext_.reset();
     }
@@ -39,7 +40,7 @@ void VideoFrameSink::OnFrame(const webrtc::VideoFrame& frame) {
         frameData.strideV = i420Buffer->StrideV();
         frameData.timestampUs = frame.timestamp_us();
         frameData.rotation = frame.rotation();
-        frameData.frameId = frame.id();
+        frameData.frameId = nextFrameId_.fetch_add(1, std::memory_order_relaxed);
         frameData.rtpTimestamp = frame.rtp_timestamp();
         const auto& captureTs = frame.capture_time_identifier();
         frameData.hasCaptureTimestampUs = captureTs.has_value();
@@ -104,12 +105,13 @@ void VideoFrameSink::deliverFrame(VideoFrameData frameData) {
         videoFrame.Set("y", yPlane);
         videoFrame.Set("u", uPlane);
         videoFrame.Set("v", vPlane);
-        videoFrame.Set("timestampNs", Napi::BigInt::New(env, frameData.timestampUs * 1000));
+        videoFrame.Set("timestamp",
+                       Napi::Number::New(env, static_cast<double>(frameData.timestampUs)));
         videoFrame.Set("frameId", Napi::Number::New(env, frameData.frameId));
 
         if (frameData.hasCaptureTimestampUs) {
-            videoFrame.Set("captureTimestampNs",
-                           Napi::BigInt::New(env, frameData.captureTimestampUs * 1000));
+            videoFrame.Set("captureTimestamp",
+                           Napi::Number::New(env, static_cast<double>(frameData.captureTimestampUs)));
         }
         videoFrame.Set("rtpTimestamp",
                        Napi::Number::New(env, static_cast<double>(frameData.rtpTimestamp)));
