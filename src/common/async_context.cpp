@@ -72,15 +72,50 @@ void AsyncContext::drain() {
         toProcess.pop();
 
         Napi::HandleScope scope(env_);
-        // Catch JS exceptions to prevent corrupting native state
+        // A throwing listener stops this drain, the way a throwing EventEmitter
+        // listener stops an emit. The exception is left pending so Node reports it
+        // as an uncaughtException; swallowing it here hid consumer bugs entirely,
+        // since nothing else on this path logs. Events queued behind it go back on
+        // the queue so an app with an uncaughtException handler still receives them.
         try {
             fn(env_);
         } catch (const Napi::Error& e) {
-            // JS exception already pending, just continue draining
+            requeueFront(std::move(toProcess));
+            reportFatal(e.Value());
+            return;
+        } catch (const std::exception& e) {
+            requeueFront(std::move(toProcess));
+            reportFatal(Napi::Error::New(env_, e.what()).Value());
+            return;
         } catch (...) {
-            // Swallow unexpected C++ exceptions from callbacks
+            requeueFront(std::move(toProcess));
+            reportFatal(Napi::Error::New(env_, "Unknown C++ exception in event callback").Value());
+            return;
         }
     }
+}
+
+// drain() runs from a libuv callback, not a Node callback scope, so a pending
+// JS exception would have no frame to unwind into. napi_fatal_exception is the
+// documented way to surface one from here: it reaches the process as an
+// 'uncaughtException'.
+void AsyncContext::reportFatal(Napi::Value error) {
+    napi_fatal_exception(env_, error);
+}
+
+void AsyncContext::requeueFront(std::queue<std::function<void(Napi::Env)>> pending) {
+    if (pending.empty()) return;
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_.load(std::memory_order_acquire)) return;
+
+    while (!queue_.empty()) {
+        pending.push(std::move(queue_.front()));
+        queue_.pop();
+    }
+    std::swap(queue_, pending);
+
+    if (async_) uv_async_send(async_);
 }
 
 }

@@ -23,6 +23,8 @@ public:
 private:
     static void onAsync(uv_async_t* handle);
     void drain();
+    void requeueFront(std::queue<std::function<void(Napi::Env)>> pending);
+    void reportFatal(Napi::Value error);
 
     uv_async_t* async_;
     std::mutex mutex_;
