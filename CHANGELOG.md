@@ -31,11 +31,12 @@ This SDK is currently in beta. See the [README](README.md) for details.
   disconnect. Their cached wrapper was previously released only as a side effect of a later
   `room.participants` read; an application that only listens to events, without reading that
   getter, retained every departed participant until the Room itself was disposed.
-- `participantDisconnected` is now delivered in order with the Room's other events, such as
-  the `dominantSpeakerChanged` that precedes it and the `disconnected` that can follow, while
-  still arriving after that participant's final `trackUnsubscribed` events. It also survives a
-  concurrent `room.participants` read, which prunes the departing participant and could
-  previously discard the event before it reached a listener.
+- `participantDisconnected` now arrives after that participant's final `trackUnsubscribed`
+  events, and is emitted from the Room's own event queue so it stays in order with Room events
+  raised before it, such as `dominantSpeakerChanged`. It is not ordered against a Room event
+  raised in the same moment: a Room that ends as a participant leaves can report `disconnected`
+  first, and an application that calls `room.dispose()` from that handler may not receive the
+  `participantDisconnected` at all.
 - `participantDisconnected` now reports the same `RemoteParticipant` object the application
   already received from `participantConnected` or `room.participants`. A `room.participants`
   read while the participant was leaving dropped the cached instance, so the event carried a

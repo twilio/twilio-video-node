@@ -154,6 +154,13 @@ void RoomObserverWrap::onParticipantDisconnected(twilio::video::Room* room, std:
     // between them, so wait on the participant's queue first and use that only
     // to put the event on the Room's queue, where it is emitted in Room order.
     //
+    // This orders it against Room events raised before it, not against one
+    // raised while it is still waiting: a Room ending at the same moment can
+    // reach JS first, and a dispose() from that handler clears this queue
+    // before the event lands on it. Ordering the two strictly would need the
+    // Room's queue to hold a slot for an event another queue has not produced
+    // yet.
+    //
     // The observer is captured weakly: this callback is delivered through the
     // observer's own queue, so it is alive by the time it runs, and holding it
     // strongly here would make an observer that never binds to a wrap hold
