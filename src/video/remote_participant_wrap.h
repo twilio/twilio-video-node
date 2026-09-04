@@ -35,12 +35,11 @@ public:
 
     /**
      * Runs `fn` on the JS thread strictly after every event already queued for
-     * `observer`'s participant -- in particular, after any trackUnsubscribed
-     * raised as part of the same teardown that produced this call. Two
-     * independent AsyncContext queues (this participant's and the Room's) give
-     * no ordering guarantee relative to each other, so participantDisconnected
-     * must be delivered through the participant's own queue rather than the
-     * Room's to guarantee it arrives last.
+     * `observer`'s participant, including any trackUnsubscribed raised as part
+     * of the same teardown. Two independent AsyncContext queues give no
+     * ordering guarantee relative to each other, so an event that must arrive
+     * last for a participant needs to go through the participant's own queue
+     * rather than a separate one.
      */
     static void DispatchAfterPendingEvents(std::shared_ptr<RemoteParticipantObserverImpl> observer,
                                            std::function<void(Napi::Env)> fn);

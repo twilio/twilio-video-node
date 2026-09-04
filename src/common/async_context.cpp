@@ -74,9 +74,9 @@ void AsyncContext::drain() {
         Napi::HandleScope scope(env_);
         // A throwing listener stops this drain, the way a throwing EventEmitter
         // listener stops an emit. The exception is left pending so Node reports it
-        // as an uncaughtException; swallowing it here hid consumer bugs entirely,
-        // since nothing else on this path logs. Events queued behind it go back on
-        // the queue so an app with an uncaughtException handler still receives them.
+        // as an uncaughtException instead of being silently discarded. Events
+        // queued behind the throwing one go back on the queue so an application
+        // that handles uncaughtException still receives them.
         try {
             fn(env_);
         } catch (const Napi::Error& e) {
@@ -96,9 +96,9 @@ void AsyncContext::drain() {
 }
 
 // drain() runs from a libuv callback, not a Node callback scope, so a pending
-// JS exception would have no frame to unwind into. napi_fatal_exception is the
-// documented way to surface one from here: it reaches the process as an
-// 'uncaughtException'.
+// JS exception has no frame to unwind into. napi_fatal_exception is the
+// documented way to surface one from here. It reaches the process as an
+// uncaughtException.
 void AsyncContext::reportFatal(Napi::Value error) {
     napi_fatal_exception(env_, error);
 }

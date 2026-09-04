@@ -79,9 +79,9 @@ void RoomObserverWrap::onReconnected(const twilio::video::Room* room) {
 
 void RoomObserverWrap::onParticipantConnected(twilio::video::Room* room, std::shared_ptr<twilio::video::RemoteParticipant> participant) {
     // Install the observer here, on the signaling thread, rather than inside the
-    // dispatched lambda: rtc-cpp subscribes to the participant's tracks about a
-    // millisecond after this callback, which is well inside the hop to the JS
-    // thread. Events raised in that window are buffered and replayed by bind().
+    // dispatched lambda. rtc-cpp subscribes to the participant's tracks about a
+    // millisecond after this callback, well inside the hop to the JS thread.
+    // Events raised in that window are buffered and replayed once bind() runs.
     auto observer = RemoteParticipantWrap::CreateObserver(participant);
     {
         std::lock_guard<std::mutex> lock(participantObserversMutex_);
@@ -94,12 +94,10 @@ void RoomObserverWrap::onParticipantConnected(twilio::video::Room* room, std::sh
 
 void RoomObserverWrap::onParticipantDisconnected(twilio::video::Room* room, std::shared_ptr<twilio::video::RemoteParticipant> participant) {
     // Reuse the observer registered in onParticipantConnected. rtc-cpp raises the
-    // remaining trackUnsubscribed callbacks around this same disconnect, and
-    // NewInstance()'s default of installing a fresh observer here would steal
-    // those events onto a second, unbound observer that nothing ever binds or
-    // flushes -- they would only surface once (and if) the discarded wrap this
-    // creates gets garbage collected and its destructor clears the participant's
-    // observer back to empty.
+    // remaining trackUnsubscribed callbacks around this same disconnect.
+    // NewInstance()'s default of installing a fresh observer here would replace
+    // the observer the live JS wrap is bound to, and route those callbacks to a
+    // second, unbound observer instead.
     std::shared_ptr<RemoteParticipantObserverImpl> observer;
     {
         std::lock_guard<std::mutex> lock(participantObserversMutex_);
@@ -111,11 +109,10 @@ void RoomObserverWrap::onParticipantDisconnected(twilio::video::Room* room, std:
     }
 
     // This event must reach JS after every trackUnsubscribed already raised for
-    // this teardown, and this participant's queue and the Room's queue are two
-    // independent AsyncContext instances with no ordering guarantee relative to
-    // each other. Deliver it through the participant's own queue instead, via
-    // its observer, so it is strictly ordered after those events rather than
-    // racing them.
+    // this teardown. The participant's queue and the Room's queue are two
+    // independent AsyncContext instances with no ordering guarantee between
+    // them, so deliver this through the participant's own queue instead, via
+    // its observer, to guarantee the order rather than race for it.
     auto self = shared_from_this();
     auto emitDisconnected = [self, participant, observer](Napi::Env env) {
         if (self->closed_.load(std::memory_order_acquire) || !self->roomWrap_) return;
@@ -126,9 +123,9 @@ void RoomObserverWrap::onParticipantDisconnected(twilio::video::Room* room, std:
     if (observer) {
         RemoteParticipantWrap::DispatchAfterPendingEvents(observer, emitDisconnected);
     } else {
-        // No observer on record for this participant (never seen onParticipantConnected,
-        // e.g. it was already present when the local participant connected) -- nothing to
-        // order against, so dispatch directly.
+        // No observer on record for this participant. onParticipantConnected never
+        // ran for it, for example if it was already present when the local
+        // participant connected, so there is nothing to order against.
         dispatchEvent("participantDisconnected", [participant](Napi::Env env) -> Napi::Value {
             return RemoteParticipantWrap::NewInstance(env, participant);
         });

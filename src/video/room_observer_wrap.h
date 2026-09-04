@@ -46,10 +46,9 @@ private:
     std::mutex mutex_;
 
     // Keyed by participant SID. onParticipantConnected creates the observer and
-    // registers it here; onParticipantDisconnected must reuse the same one
-    // rather than installing a second, unbound observer on the same native
-    // participant, which would steal events (including trackUnsubscribed raised
-    // during teardown) away from the observer the live JS wrap is bound to.
+    // registers it here. onParticipantDisconnected reuses the same one instead
+    // of installing a second, unbound observer on the same native participant,
+    // which would replace the observer the live JS wrap is bound to.
     std::mutex participantObserversMutex_;
     std::unordered_map<std::string, std::shared_ptr<RemoteParticipantObserverImpl>> participantObservers_;
 };

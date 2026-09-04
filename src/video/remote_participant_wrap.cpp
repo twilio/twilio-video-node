@@ -64,10 +64,10 @@ public:
         pending_.clear();
     }
 
-    // Runs `fn` through this participant's own queue -- the same one
-    // dispatchEvent() uses -- rather than wrap_->emitEvent(). Used to deliver
-    // participantDisconnected strictly after this participant's own events, a
-    // guarantee two independent AsyncContext instances can't otherwise give.
+    // Runs fn through this participant's own queue, the same one dispatchEvent()
+    // uses, instead of calling wrap_->emitEvent(). Lets a caller deliver a
+    // separate event strictly after this participant's own events, which two
+    // independent AsyncContext instances cannot otherwise guarantee.
     void enqueueRaw(std::function<void(Napi::Env)> fn) {
         dispatchEvent("__internal_ordering_barrier__", [fn = std::move(fn)](Napi::Env env) -> Napi::Value {
             fn(env);

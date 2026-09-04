@@ -1220,11 +1220,10 @@ describe('Subscription to tracks published before joining', () => {
   });
 
   // trackUnsubscribed for a disconnecting participant's tracks and the
-  // participantDisconnected event it precedes are dispatched through two
+  // participantDisconnected event that follows it are dispatched through two
   // independent native queues (the participant's and the Room's) with no
   // ordering guarantee between them. A participant that unpublishes and then
-  // disconnects on every rejoin exercises exactly the teardown path where
-  // that race showed up.
+  // disconnects on every rejoin exercises that teardown path repeatedly.
   it('emits trackUnsubscribed for every remaining track on every rejoin', async () => {
     const roomName = uniqueRoom();
     const incumbent = await connectToRoom('alice', roomName);
