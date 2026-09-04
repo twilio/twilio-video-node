@@ -441,13 +441,48 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
 
 See the [`examples/`](https://github.com/twilio/twilio-video-node/tree/main/examples) directory:
 
-| Example                                                                                                 | Description                                                                                         |
-| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| [`virtual_camera.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/virtual_camera.js) | Decodes an MP4 with ffmpeg and pushes I420 frames to a room.                                        |
-| [`video_mirror.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/video_mirror.js)     | Receives remote video frames and pushes them back as-is.                                            |
-| [`audio_push.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/audio_push.js)         | Generates a sine wave tone and pushes PCM audio to a room.                                          |
-| [`data_channel.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/data_channel.js)     | Two participants exchange string and binary messages via data tracks.                               |
-| [`voice_agent.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/voice_agent.js)       | Bridges room audio to the OpenAI Realtime API for a spoken voice agent (requires `OPENAI_API_KEY`). |
+| Example                                                                                                           | Description                                                                                                 |
+| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [`virtual_camera.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/virtual_camera.js)           | Decodes an MP4 with ffmpeg and pushes I420 frames to a room.                                                |
+| [`video_mirror.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/video_mirror.js)               | Receives remote video frames and pushes them back as-is.                                                    |
+| [`audio_push.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/audio_push.js)                   | Generates a sine wave tone and pushes PCM audio to a room.                                                  |
+| [`data_channel.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/data_channel.js)               | Two participants exchange string and binary messages via data tracks.                                       |
+| [`voice_agent.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/voice_agent.js)                 | Bridges room audio to the OpenAI Realtime API for a spoken voice agent (requires `OPENAI_API_KEY`).         |
+| [`cv_object_detection.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/cv_object_detection.js) | Runs YOLOv8 object detection on a participant's webcam and re-publishes the video with bounding boxes.      |
+| [`cv_face_analysis.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/cv_face_analysis.js)       | Analyzes a participant's face — presence and an attention estimate (head orientation) — drawn on the video. |
+
+The computer-vision examples (`cv_*.js`) run local ONNX models via
+[`onnxruntime-node`](https://www.npmjs.com/package/onnxruntime-node) and draw with
+[`@napi-rs/canvas`](https://www.npmjs.com/package/@napi-rs/canvas) (both dev
+dependencies). No cloud service or API key is needed: each analyzes the first
+participant's video and expresses its result on a re-published video track. Run
+them against any room you also join from a browser, publishing your webcam.
+
+They run CPU inference, which is heavier under Rosetta on Apple Silicon. Two
+environment variables tune the load: `CV_MAX_FPS` (max inferences per second,
+default 8) and `CV_THREADS` (ONNX Runtime threads per model, default 2). Lower
+either to reduce CPU and heat, e.g. `CV_MAX_FPS=4 CV_THREADS=1 node examples/cv_face_analysis.js`.
+
+### Downloading the models
+
+The YOLOv8 ONNX model files are not shipped with the repo — download the ones
+you need and save them to `examples/.models/`. The examples print these same
+instructions if a model is missing.
+
+```bash
+mkdir -p examples/.models
+
+# cv_object_detection.js
+curl -L -o examples/.models/yolov8n.onnx \
+  "https://raw.githubusercontent.com/Hyuto/yolov8-onnxruntime-web/fc4a52c466d15ad4519873a0cef22fbc935b93b6/public/model/yolov8n.onnx"
+
+# cv_face_analysis.js (uses the pose model)
+curl -L -o examples/.models/yolov8n-pose.onnx \
+  "https://raw.githubusercontent.com/akbartus/Yolov8-Pose-Detection-on-Browser/4e063a36ad14d3a0e1da153a6f547219416fcae9/yolov8_pose_onnx/model/yolov8n-pose.onnx"
+```
+
+These URLs point to community mirrors of standard Ultralytics YOLOv8 exports;
+substitute your own source if you prefer. Each model is ~12–13 MB.
 
 The examples load credentials from a `.env` file at the repo root. Copy the
 template, fill in your credentials, and run:

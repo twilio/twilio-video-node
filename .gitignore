@@ -45,5 +45,8 @@ coverage/
 # ...but keep the committed template
 !.env.example
 
+# CV example models (downloaded on first run)
+examples/.models/
+
 # Written by the artifactory-oidc action; holds a registry auth token
 .npmrc

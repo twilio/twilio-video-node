@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@napi-rs/canvas": "^1.0.8",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.0.18",
     "cmake-js": "^7.3.0",
@@ -53,6 +54,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "node-addon-api": "^8.0.0",
+    "onnxruntime-node": "1.22.0",
     "prettier": "^3.8.1",
     "tsdown": "^0.21.1",
     "twilio": "^5.12.1",
