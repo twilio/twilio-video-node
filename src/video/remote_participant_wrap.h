@@ -47,9 +47,11 @@ public:
     /**
      * Builds the JS wrap. Must run on the JS thread.
      *
-     * Pass the observer returned by CreateObserver() to adopt it along with any
-     * events it buffered; pass nullptr to create and install one here, which is
-     * only correct when the participant is already known to the room.
+     * Always pass the observer from RoomObserverWrap::GetOrCreateParticipantObserver
+     * so an already-known participant reuses its existing observer rather than
+     * getting a new, conflicting one. The nullptr default exists only as a
+     * fallback for a genuinely new participant with no registration yet; every
+     * call site in this codebase passes an observer explicitly.
      */
     static Napi::Object NewInstance(Napi::Env env, std::shared_ptr<twilio::video::RemoteParticipant> participant,
                                     std::shared_ptr<RemoteParticipantObserverImpl> observer = nullptr);

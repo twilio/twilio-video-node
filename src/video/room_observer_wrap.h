@@ -40,12 +40,13 @@ public:
     /**
      * Returns the observer already registered for this participant's SID, or
      * creates and registers one. Every code path that can hand a
-     * RemoteParticipant to JS (onParticipantConnected, onParticipantDisconnected,
-     * RoomWrap::GetRemoteParticipants, RoomWrap::GetDominantSpeaker) must call
-     * this instead of RemoteParticipantWrap::CreateObserver directly. A native
-     * participant has exactly one live observer at a time; creating a second
-     * one for the same participant replaces the first, which silently stops
-     * event delivery to whichever JS wrap the first observer was bound to.
+     * RemoteParticipant to JS (the onParticipant... and
+     * onDominantSpeakerChanged callbacks below, plus
+     * RoomWrap::GetRemoteParticipants and RoomWrap::GetDominantSpeaker) must
+     * call this instead of RemoteParticipantWrap::CreateObserver directly. A
+     * native participant has exactly one live observer at a time; creating a
+     * second one for the same participant replaces the first, which silently
+     * stops event delivery to whichever JS wrap the first observer was bound to.
      */
     std::shared_ptr<RemoteParticipantObserverImpl> GetOrCreateParticipantObserver(
         std::shared_ptr<twilio::video::RemoteParticipant> participant);

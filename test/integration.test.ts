@@ -1358,8 +1358,7 @@ describe('Subscription to tracks published before joining', () => {
   });
 
   // Every other test in this file uses at most one other remote participant.
-  // Group Rooms support many; this confirms each is tracked independently
-  // (the shared registries added in 0792ec8 are keyed per participant SID).
+  // Group Rooms support many; this confirms each is tracked independently.
   it('tracks trackSubscribed and trackUnsubscribed independently for several simultaneous participants', async () => {
     const roomName = uniqueRoom();
     const incumbent = await connectToRoom('alice', roomName);

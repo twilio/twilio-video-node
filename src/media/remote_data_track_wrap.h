@@ -18,9 +18,9 @@ public:
      * Builds the JS wrap for `track`, reusing whichever observer this track's
      * SID already has (from a previous NewInstance call for the same track,
      * e.g. a second read of a participant's dataTracks) rather than installing
-     * a new one. A native RemoteDataTrack has one observer at a time, so
-     * installing a second would silently stop message delivery to whichever
-     * wrap the caller already holds a reference to.
+     * a new one. A native RemoteDataTrack accepts only one observer at a time,
+     * so installing a second would silently cut off every wrap already
+     * registered with the first, rather than adding to them.
      */
     static Napi::Object NewInstance(Napi::Env env, std::shared_ptr<twilio::media::RemoteDataTrack> track);
 
