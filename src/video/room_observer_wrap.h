@@ -37,6 +37,22 @@ public:
 
     void close();
 
+    /**
+     * Returns the observer already registered for this participant's SID, or
+     * creates and registers one. Every code path that can hand a
+     * RemoteParticipant to JS (onParticipantConnected, onParticipantDisconnected,
+     * RoomWrap::GetRemoteParticipants, RoomWrap::GetDominantSpeaker) must call
+     * this instead of RemoteParticipantWrap::CreateObserver directly. A native
+     * participant has exactly one live observer at a time; creating a second
+     * one for the same participant replaces the first, which silently stops
+     * event delivery to whichever JS wrap the first observer was bound to.
+     */
+    std::shared_ptr<RemoteParticipantObserverImpl> GetOrCreateParticipantObserver(
+        std::shared_ptr<twilio::video::RemoteParticipant> participant);
+
+    /** Drops the registration for a participant's SID once they have disconnected. */
+    void ForgetParticipantObserver(const std::string& sid);
+
 private:
     void dispatchEvent(const std::string& eventName, std::function<Napi::Value(Napi::Env)> createArgs = nullptr);
 
@@ -45,10 +61,6 @@ private:
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
 
-    // Keyed by participant SID. onParticipantConnected creates the observer and
-    // registers it here. onParticipantDisconnected reuses the same one instead
-    // of installing a second, unbound observer on the same native participant,
-    // which would replace the observer the live JS wrap is bound to.
     std::mutex participantObserversMutex_;
     std::unordered_map<std::string, std::shared_ptr<RemoteParticipantObserverImpl>> participantObservers_;
 };

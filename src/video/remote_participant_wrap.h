@@ -77,6 +77,10 @@ private:
     std::shared_ptr<RemoteParticipantObserverImpl> observer_;
     std::unique_ptr<AsyncContext> asyncContext_;
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+    // Whether this wrap's constructor call to observer_->bind() actually won
+    // the binding, versus another wrap for the same participant already
+    // holding it. Only the winner may detach or close the observer on teardown.
+    bool ownsObserverBinding_ = false;
 };
 
 }

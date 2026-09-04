@@ -37,14 +37,22 @@ class RemoteParticipantObserverImpl : public twilio::video::RemoteParticipantObs
 public:
     RemoteParticipantObserverImpl() = default;
 
-    // Adopts the JS wrap and replays whatever arrived before it existed, in order.
-    // Runs on the JS thread; the replayed events go through the same queue as live
-    // ones, so ordering relative to later events is preserved.
-    void bind(RemoteParticipantWrap* wrap, AsyncContext* ctx, std::shared_ptr<std::atomic<bool>> alive) {
+    // Adopts the JS wrap and replays whatever arrived before it existed, in
+    // order. Runs on the JS thread; the replayed events go through the same
+    // queue as live ones, so ordering relative to later events is preserved.
+    //
+    // A no-op if another wrap is already bound. The same observer can be handed
+    // to more than one wrap for the same participant (a room.participants or
+    // room.dominantSpeaker read can produce a new wrap for a participant that
+    // already has one), and only the first bound wrap should receive events;
+    // rebinding would silently redirect delivery away from whichever wrap the
+    // caller is already holding a reference to. Returns whether this call
+    // became the bound wrap, so the caller knows whether it owns the binding.
+    bool bind(RemoteParticipantWrap* wrap, AsyncContext* ctx, std::shared_ptr<std::atomic<bool>> alive) {
         std::vector<PendingEvent> replay;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (closed_.load(std::memory_order_acquire)) return;
+            if (closed_.load(std::memory_order_acquire) || wrap_ != nullptr) return false;
             wrap_ = wrap;
             ctx_ = ctx;
             alive_ = std::move(alive);
@@ -53,6 +61,7 @@ public:
         for (auto& event : replay) {
             dispatchEvent(event.name, std::move(event.createArgs));
         }
+        return true;
     }
 
     void close() {
@@ -307,7 +316,7 @@ Napi::Object RemoteParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<t
     wrap->participant_ = participant;
     wrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
     wrap->observer_ = observer ? std::move(observer) : CreateObserver(participant);
-    wrap->observer_->bind(wrap, wrap->asyncContext_.get(), wrap->alive_);
+    wrap->ownsObserverBinding_ = wrap->observer_->bind(wrap, wrap->asyncContext_.get(), wrap->alive_);
 
     return scope.Escape(obj).ToObject();
 }
@@ -318,11 +327,18 @@ RemoteParticipantWrap::RemoteParticipantWrap(const Napi::CallbackInfo& info)
 
 RemoteParticipantWrap::~RemoteParticipantWrap() {
     alive_->store(false, std::memory_order_release);
-    if (participant_) {
-        participant_->setObserver(std::weak_ptr<twilio::video::RemoteParticipantObserver>());
-    }
-    if (observer_) {
-        observer_->close();
+    // Only the wrap bind() accepted may tear down the observer. The same
+    // observer can be shared by more than one wrap for the same participant;
+    // tearing it down here regardless of ownership would cut off the wrap that
+    // actually owns it, since detaching the participant's observer and closing
+    // it are both effective immediately and are not specific to this wrap.
+    if (ownsObserverBinding_) {
+        if (participant_) {
+            participant_->setObserver(std::weak_ptr<twilio::video::RemoteParticipantObserver>());
+        }
+        if (observer_) {
+            observer_->close();
+        }
     }
     eventCallback_.Reset();
     if (asyncContext_) {

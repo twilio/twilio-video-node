@@ -649,7 +649,11 @@ Napi::Value RoomWrap::GetDominantSpeaker(const Napi::CallbackInfo& info) {
     auto participant = room_->getDominantSpeaker();
     if (!participant) return info.Env().Null();
 
-    return RemoteParticipantWrap::NewInstance(info.Env(), participant);
+    // Reuse whichever observer this participant already has rather than
+    // installing a new one, which would silently stop event delivery to
+    // whichever JS wrap the existing observer is bound to.
+    auto observer = observer_ ? observer_->GetOrCreateParticipantObserver(participant) : nullptr;
+    return RemoteParticipantWrap::NewInstance(info.Env(), participant, observer);
 }
 
 Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {
@@ -671,7 +675,12 @@ Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {
         if (cacheIt != participantCache_.end() && !cacheIt->second.IsEmpty()) {
             array.Set(i++, cacheIt->second.Value());
         } else {
-            auto participantObj = RemoteParticipantWrap::NewInstance(env, pair.second);
+            // Reuse whichever observer this participant already has (from
+            // onParticipantConnected, or a prior access here) rather than
+            // installing a new one, which would silently stop event delivery to
+            // whichever JS wrap the existing observer is bound to.
+            auto observer = observer_ ? observer_->GetOrCreateParticipantObserver(pair.second) : nullptr;
+            auto participantObj = RemoteParticipantWrap::NewInstance(env, pair.second, observer);
             participantCache_[sid] = Napi::Persistent(participantObj);
             array.Set(i++, participantObj);
         }
