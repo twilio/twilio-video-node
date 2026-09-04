@@ -667,13 +667,9 @@ Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {
     auto participants = room_->getRemoteParticipants();
     auto array = Napi::Array::New(env, participants.size());
 
-    // Track which SIDs are still present
-    std::set<std::string> activeSids;
-
     uint32_t i = 0;
     for (const auto& pair : participants) {
         const std::string& sid = pair.first;
-        activeSids.insert(sid);
 
         auto cacheIt = participantCache_.find(sid);
         if (cacheIt != participantCache_.end() && !cacheIt->second.IsEmpty()) {
@@ -690,15 +686,11 @@ Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {
         }
     }
 
-    // Evict stale entries
-    for (auto it = participantCache_.begin(); it != participantCache_.end(); ) {
-        if (activeSids.find(it->first) == activeSids.end()) {
-            it = participantCache_.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
+    // Departed participants are dropped by ForgetParticipantWrap when their
+    // disconnect is delivered, not by pruning whoever is missing from this
+    // read. The SDK removes a participant before it raises that event, so a
+    // read landing in between would evict an entry that is still needed, which
+    // is the same rule Room's own participant cache follows in JS.
     return array;
 }
 
