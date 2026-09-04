@@ -22,13 +22,22 @@ void RoomObserverWrap::close() {
         closed_.store(true, std::memory_order_release);
         roomWrap_ = nullptr;
     }
+    // Close each observer rather than only dropping the reference. An observer
+    // that never got a JS wrap still holds the events it buffered while
+    // waiting for one, and nothing else would ever release them.
+    std::unordered_map<std::string, std::shared_ptr<RemoteParticipantObserverImpl>> observers;
     {
         std::lock_guard<std::mutex> lock(participantObserversMutex_);
-        participantObservers_.clear();
+        observers.swap(participantObservers_);
     }
+    for (auto& entry : observers) {
+        RemoteParticipantWrap::CloseObserver(entry.second);
+    }
+    // Closed but not destroyed: close() can run from a listener on this very
+    // queue, for instance one that calls room.dispose(), and drain() is still
+    // on the stack below it.
     if (asyncContext_) {
         asyncContext_->close();
-        asyncContext_.reset();
     }
 }
 
@@ -50,6 +59,20 @@ std::shared_ptr<RemoteParticipantObserverImpl> RoomObserverWrap::GetOrCreatePart
 void RoomObserverWrap::ForgetParticipantObserver(const std::string& sid) {
     std::lock_guard<std::mutex> lock(participantObserversMutex_);
     participantObservers_.erase(sid);
+}
+
+void RoomObserverWrap::dispatchRaw(std::function<void(Napi::Env)> fn) {
+    if (closed_.load(std::memory_order_acquire)) return;
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_.load(std::memory_order_acquire) || !asyncContext_ || !roomWrap_) {
+        return;
+    }
+
+    asyncContext_->dispatch([this, fn](Napi::Env env) {
+        if (closed_.load(std::memory_order_acquire) || !roomWrap_) return;
+        fn(env);
+    });
 }
 
 void RoomObserverWrap::dispatchEvent(const std::string& eventName, std::function<Napi::Value(Napi::Env)> createArgs) {
@@ -118,21 +141,39 @@ void RoomObserverWrap::onParticipantDisconnected(twilio::video::Room* room, std:
     auto observer = GetOrCreateParticipantObserver(participant);
     ForgetParticipantObserver(participant->getSid());
 
-    // This event must reach JS after every trackUnsubscribed already raised for
-    // this teardown. The participant's queue and the Room's queue are two
-    // independent AsyncContext instances with no ordering guarantee between
-    // them, so deliver this through the participant's own queue instead, via
-    // its observer, to guarantee the order rather than race for it.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (roomWrap_) roomWrap_->MarkParticipantDisconnecting(participant->getSid());
+    }
+
+    // This event has two orderings to satisfy, and each queue only provides
+    // one. It must arrive after every trackUnsubscribed already raised for
+    // this teardown, which are on the participant's queue, and it must stay in
+    // order with the Room's own events, such as the dominantSpeakerChanged
+    // rtc-cpp raises just before it and the disconnected that may follow. The
+    // two queues are independent AsyncContext instances with no ordering
+    // between them, so wait on the participant's queue first and use that only
+    // to put the event on the Room's queue, where it is emitted in Room order.
+    //
+    // The observer is captured weakly: this callback is delivered through the
+    // observer's own queue, so it is alive by the time it runs, and holding it
+    // strongly here would make an observer that never binds to a wrap hold
+    // itself alive through the event it has buffered.
     auto self = shared_from_this();
-    RemoteParticipantWrap::DispatchAfterPendingEvents(observer, [self, participant, observer](Napi::Env env) {
-        if (self->closed_.load(std::memory_order_acquire) || !self->roomWrap_) return;
-        Napi::Value participantObj = RemoteParticipantWrap::NewInstance(env, participant, observer);
-        self->roomWrap_->emitEvent("participantDisconnected", participantObj);
-        // Drop the cached wrap now rather than leaving it for a future
-        // room.participants read to notice. An application that never reads
-        // that getter would otherwise keep every departed participant pinned
-        // in memory for the rest of the Room's life.
-        self->roomWrap_->ForgetParticipantWrap(participant->getSid());
+    std::weak_ptr<RemoteParticipantObserverImpl> weakObserver = observer;
+    RemoteParticipantWrap::DispatchAfterPendingEvents(observer, [self, participant, weakObserver](Napi::Env) {
+        auto observer = weakObserver.lock();
+        // Raw `this` past this point, like every other Room event: close()
+        // empties the Room's queue, and it always runs before destruction.
+        self->dispatchRaw([this_ = self.get(), participant, observer](Napi::Env env) {
+            Napi::Value participantObj = RemoteParticipantWrap::NewInstance(env, participant, observer);
+            this_->roomWrap_->emitEvent("participantDisconnected", participantObj);
+            // Drop the cached wrap now rather than leaving it for a future
+            // room.participants read to notice. An application that never reads
+            // that getter would otherwise keep every departed participant pinned
+            // in memory for the rest of the Room's life.
+            this_->roomWrap_->ForgetParticipantWrap(participant->getSid());
+        });
     });
 }
 

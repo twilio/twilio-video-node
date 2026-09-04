@@ -57,6 +57,14 @@ public:
 private:
     void dispatchEvent(const std::string& eventName, std::function<Napi::Value(Napi::Env)> createArgs = nullptr);
 
+    /**
+     * Queues `fn` on the Room's own queue, in order with the Room's events, and
+     * runs it only while the Room is still live. For a caller that has to do
+     * more than emit one event, such as emitting and then dropping a cache
+     * entry.
+     */
+    void dispatchRaw(std::function<void(Napi::Env)> fn);
+
     RoomWrap* roomWrap_;
     std::unique_ptr<AsyncContext> asyncContext_;
     std::atomic<bool> closed_{false};

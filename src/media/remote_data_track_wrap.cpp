@@ -35,7 +35,7 @@ public:
     // can be attached to a single video track.
     void bind(RemoteDataTrackWrap* wrap, AsyncContext* ctx, std::shared_ptr<std::atomic<bool>> alive) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire)) return;
+        if (closed_->load(std::memory_order_acquire)) return;
         targets_.push_back({wrap, ctx, std::move(alive)});
     }
 
@@ -53,42 +53,34 @@ public:
     // further messages after this.
     void close() {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire)) return;
-        closed_.store(true, std::memory_order_release);
+        if (closed_->load(std::memory_order_acquire)) return;
+        closed_->store(true, std::memory_order_release);
         targets_.clear();
     }
 
     void onMessage(twilio::media::RemoteDataTrack* track, const std::string& message) override {
-        if (closed_.load(std::memory_order_acquire)) return;
-
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire)) return;
-
-        for (const auto& target : targets_) {
+        forEachTarget([&message](const Target& target, std::shared_ptr<std::atomic<bool>> closed) {
             RemoteDataTrackWrap* wrap = target.wrap;
             auto alive = target.alive;
-            target.ctx->dispatch([wrap, alive, message](Napi::Env env) {
+            target.ctx->dispatch([wrap, alive, closed, message](Napi::Env env) {
                 if (!alive->load(std::memory_order_acquire)) return;
+                if (closed->load(std::memory_order_acquire)) return;
                 wrap->onMessage(message);
             });
-        }
+        });
     }
 
     void onMessage(twilio::media::RemoteDataTrack* track, const uint8_t* message, size_t size) override {
-        if (closed_.load(std::memory_order_acquire)) return;
-
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire)) return;
-
         std::vector<uint8_t> dataCopy(message, message + size);
-        for (const auto& target : targets_) {
+        forEachTarget([&dataCopy](const Target& target, std::shared_ptr<std::atomic<bool>> closed) {
             RemoteDataTrackWrap* wrap = target.wrap;
             auto alive = target.alive;
-            target.ctx->dispatch([wrap, alive, dataCopy](Napi::Env env) {
+            target.ctx->dispatch([wrap, alive, closed, dataCopy](Napi::Env env) {
                 if (!alive->load(std::memory_order_acquire)) return;
+                if (closed->load(std::memory_order_acquire)) return;
                 wrap->onBufferMessage(dataCopy.data(), dataCopy.size());
             });
-        }
+        });
     }
 
 private:
@@ -98,15 +90,65 @@ private:
         std::shared_ptr<std::atomic<bool>> alive;
     };
 
+    // Drops targets whose wrap has been collected, then runs `dispatchTo` for
+    // each of the rest. A wrap unregisters itself from its destructor, so a
+    // dead target here only means the flag was cleared while a message was
+    // already on its way in.
+    template <typename F>
+    void forEachTarget(F dispatchTo) {
+        if (closed_->load(std::memory_order_acquire)) return;
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_->load(std::memory_order_acquire)) return;
+
+        targets_.erase(std::remove_if(targets_.begin(), targets_.end(),
+                                      [](const Target& t) {
+                                          return !t.alive->load(std::memory_order_acquire);
+                                      }),
+                       targets_.end());
+
+        for (const auto& target : targets_) {
+            dispatchTo(target, closed_);
+        }
+    }
+
     std::vector<Target> targets_;
-    std::atomic<bool> closed_{false};
+    // Shared so a queued message can check it on the JS thread. The message
+    // queues are per wrap and the unsubscribe that closes this observer arrives
+    // on the participant's queue, so a message dispatched just before the close
+    // can still be waiting afterwards, and must not be delivered.
+    std::shared_ptr<std::atomic<bool>> closed_ = std::make_shared<std::atomic<bool>>(false);
     std::mutex mutex_;
 };
 
 namespace {
 
+// Keyed by native track identity, not by Track SID: two Rooms in one process
+// subscribed to the same publication get separate RemoteDataTrack objects that
+// report the same SID, and each needs its own observer. Both handles are weak,
+// so a registration never outlives what it refers to; the wraps for a track
+// own its observer between them. `track` is kept alongside so an entry left
+// behind by a freed track cannot be mistaken for a live one if the allocator
+// hands the same address to a new track.
+struct DataTrackRegistration {
+    std::weak_ptr<twilio::media::RemoteDataTrack> track;
+    std::weak_ptr<RemoteDataTrackObserverImpl> observer;
+};
+
 std::mutex g_dataTrackObserversMutex;
-std::unordered_map<std::string, std::shared_ptr<RemoteDataTrackObserverImpl>> g_dataTrackObservers;
+std::unordered_map<const twilio::media::RemoteDataTrack*, DataTrackRegistration> g_dataTrackObservers;
+
+// Requires g_dataTrackObserversMutex. Nothing else erases entries for tracks
+// that went away without an unsubscribe, such as a Room disposed mid-call.
+void pruneDataTrackObservers() {
+    for (auto it = g_dataTrackObservers.begin(); it != g_dataTrackObservers.end(); ) {
+        if (it->second.track.expired() || it->second.observer.expired()) {
+            it = g_dataTrackObservers.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
 
 }  // namespace
 
@@ -138,17 +180,20 @@ Napi::Object RemoteDataTrackWrap::NewInstance(Napi::Env env, std::shared_ptr<twi
     wrap->track_ = track;
     wrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
 
-    std::string sid = track->getSid();
     std::shared_ptr<RemoteDataTrackObserverImpl> observer;
     {
         std::lock_guard<std::mutex> lock(g_dataTrackObserversMutex);
-        auto it = g_dataTrackObservers.find(sid);
-        if (it != g_dataTrackObservers.end()) {
-            observer = it->second;
-        } else {
+
+        auto it = g_dataTrackObservers.find(track.get());
+        if (it != g_dataTrackObservers.end() && it->second.track.lock() == track) {
+            observer = it->second.observer.lock();
+        }
+
+        if (!observer) {
+            pruneDataTrackObservers();
             observer = std::make_shared<RemoteDataTrackObserverImpl>();
             track->setObserver(observer);
-            g_dataTrackObservers[sid] = observer;
+            g_dataTrackObservers[track.get()] = {track, observer};
         }
     }
     wrap->observer_ = observer;
@@ -161,11 +206,13 @@ void RemoteDataTrackWrap::CloseObserver(std::shared_ptr<twilio::media::RemoteDat
     track->setObserver(std::weak_ptr<twilio::media::RemoteDataTrackObserver>());
 
     std::lock_guard<std::mutex> lock(g_dataTrackObserversMutex);
-    auto it = g_dataTrackObservers.find(track->getSid());
-    if (it != g_dataTrackObservers.end()) {
-        it->second->close();
-        g_dataTrackObservers.erase(it);
+    auto it = g_dataTrackObservers.find(track.get());
+    if (it == g_dataTrackObservers.end()) return;
+
+    if (auto observer = it->second.observer.lock()) {
+        observer->close();
     }
+    g_dataTrackObservers.erase(it);
 }
 
 RemoteDataTrackWrap::RemoteDataTrackWrap(const Napi::CallbackInfo& info)

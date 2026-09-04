@@ -23,7 +23,13 @@ Napi::Object MakeSubscriptionPayload(Napi::Env env, const std::shared_ptr<Public
     publication.Set("kind", Napi::String::New(env, kind));
     publication.Set("isTrackEnabled", Napi::Boolean::New(env, pub->isTrackEnabled()));
     publication.Set("isSubscribed", Napi::Boolean::New(env, pub->isTrackSubscribed()));
-    publication.Set("track", trackValue);
+    // Only while subscribed, matching the track collection getters and
+    // RemoteTrackPublication.track. On trackUnsubscribed the publication
+    // reports isSubscribed false, so its track has to be absent; the event's
+    // own track argument is how a listener reaches the track it just lost.
+    if (pub->isTrackSubscribed()) {
+        publication.Set("track", trackValue);
+    }
 
     auto payload = Napi::Object::New(env);
     payload.Set("track", trackValue);
@@ -34,6 +40,14 @@ Napi::Object MakeSubscriptionPayload(Napi::Env env, const std::shared_ptr<Public
 }  // namespace
 
 class RemoteParticipantObserverImpl : public twilio::video::RemoteParticipantObserver {
+    // Either an event to emit (name plus optional createArgs) or, when rawFn is
+    // set, work to run on the queue without emitting anything.
+    struct PendingEvent {
+        std::string name;
+        std::function<Napi::Value(Napi::Env)> createArgs;
+        std::function<void(Napi::Env)> rawFn;
+    };
+
 public:
     RemoteParticipantObserverImpl() = default;
 
@@ -49,17 +63,19 @@ public:
     // caller is already holding a reference to. Returns whether this call
     // became the bound wrap, so the caller knows whether it owns the binding.
     bool bind(RemoteParticipantWrap* wrap, AsyncContext* ctx, std::shared_ptr<std::atomic<bool>> alive) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire) || wrap_ != nullptr) return false;
+        wrap_ = wrap;
+        ctx_ = ctx;
+        alive_ = std::move(alive);
+
+        // Replay while still holding the lock. Releasing it first would let a
+        // signaling thread callback arriving mid-replay see a bound wrap and
+        // reach the queue ahead of these older events.
         std::vector<PendingEvent> replay;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (closed_.load(std::memory_order_acquire) || wrap_ != nullptr) return false;
-            wrap_ = wrap;
-            ctx_ = ctx;
-            alive_ = std::move(alive);
-            replay.swap(pending_);
-        }
+        replay.swap(pending_);
         for (auto& event : replay) {
-            dispatchEvent(event.name, std::move(event.createArgs));
+            enqueueLocked(std::move(event));
         }
         return true;
     }
@@ -74,14 +90,13 @@ public:
     }
 
     // Runs fn through this participant's own queue, the same one dispatchEvent()
-    // uses, instead of calling wrap_->emitEvent(). Lets a caller deliver a
-    // separate event strictly after this participant's own events, which two
-    // independent AsyncContext instances cannot otherwise guarantee.
+    // uses, but without emitting anything. Lets a caller run something strictly
+    // after this participant's own events, which two independent AsyncContext
+    // instances cannot otherwise guarantee. Nothing here reaches JS as an event.
     void enqueueRaw(std::function<void(Napi::Env)> fn) {
-        dispatchEvent("__internal_ordering_barrier__", [fn = std::move(fn)](Napi::Env env) -> Napi::Value {
-            fn(env);
-            return Napi::Value();
-        });
+        PendingEvent event;
+        event.rawFn = std::move(fn);
+        enqueue(std::move(event));
     }
 
     // Audio track events
@@ -211,6 +226,13 @@ public:
 
 private:
     void dispatchEvent(const std::string& eventName, std::function<Napi::Value(Napi::Env)> createArgs = nullptr) {
+        PendingEvent event;
+        event.name = eventName;
+        event.createArgs = std::move(createArgs);
+        enqueue(std::move(event));
+    }
+
+    void enqueue(PendingEvent event) {
         if (closed_.load(std::memory_order_acquire)) return;
 
         std::lock_guard<std::mutex> lock(mutex_);
@@ -219,16 +241,25 @@ private:
         // Buffer until bind() supplies the wrap. The createArgs lambdas only touch
         // Napi when invoked, so holding them off the JS thread is safe.
         if (!wrap_ || !ctx_) {
-            pending_.push_back({eventName, std::move(createArgs)});
+            pending_.push_back(std::move(event));
             return;
         }
 
+        enqueueLocked(std::move(event));
+    }
+
+    // Requires mutex_ held and wrap_/ctx_ set.
+    void enqueueLocked(PendingEvent event) {
         auto alive = alive_;
-        ctx_->dispatch([this, alive, eventName, createArgs](Napi::Env env) {
+        ctx_->dispatch([this, alive, event](Napi::Env env) {
             if (!alive->load(std::memory_order_acquire)) return;
             if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            Napi::Value arg = createArgs ? createArgs(env) : env.Undefined();
-            wrap_->emitEvent(eventName, arg);
+            if (event.rawFn) {
+                event.rawFn(env);
+                return;
+            }
+            Napi::Value arg = event.createArgs ? event.createArgs(env) : env.Undefined();
+            wrap_->emitEvent(event.name, arg);
         });
     }
 
@@ -269,11 +300,6 @@ private:
         });
     }
 
-    struct PendingEvent {
-        std::string name;
-        std::function<Napi::Value(Napi::Env)> createArgs;
-    };
-
     RemoteParticipantWrap* wrap_ = nullptr;
     AsyncContext* ctx_ = nullptr;
     std::shared_ptr<std::atomic<bool>> alive_;
@@ -311,6 +337,10 @@ std::shared_ptr<RemoteParticipantObserverImpl> RemoteParticipantWrap::CreateObse
 void RemoteParticipantWrap::DispatchAfterPendingEvents(std::shared_ptr<RemoteParticipantObserverImpl> observer,
                                                        std::function<void(Napi::Env)> fn) {
     observer->enqueueRaw(std::move(fn));
+}
+
+void RemoteParticipantWrap::CloseObserver(const std::shared_ptr<RemoteParticipantObserverImpl>& observer) {
+    if (observer) observer->close();
 }
 
 Napi::Object RemoteParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<twilio::video::RemoteParticipant> participant,

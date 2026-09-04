@@ -669,7 +669,13 @@ describe('Participants already in the Room at connect', () => {
 
     alice.emit('trackSubscribed', {
       track: { kind: 'video' },
-      publication: { trackSid: 'MT-video', trackName: 'cam', kind: 'video', isTrackEnabled: true, isSubscribed: true },
+      publication: {
+        trackSid: 'MT-video',
+        trackName: 'cam',
+        kind: 'video',
+        isTrackEnabled: true,
+        isSubscribed: true,
+      },
     });
     expect(seen).toEqual(['alice:video:video']);
   });

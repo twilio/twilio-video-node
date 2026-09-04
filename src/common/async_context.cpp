@@ -12,6 +12,7 @@ AsyncContext::AsyncContext(Napi::Env env, size_t maxQueueDepth)
 }
 
 AsyncContext::~AsyncContext() {
+    alive_->store(false, std::memory_order_release);
     close();
 }
 
@@ -65,33 +66,43 @@ void AsyncContext::drain() {
         std::swap(toProcess, queue_);
     }
 
+    // Copies, because a callback below can destroy this AsyncContext. Nothing
+    // after fn() returns may read a member without first confirming `alive`.
+    auto alive = alive_;
+    Napi::Env env = env_;
+
     while (!toProcess.empty()) {
         if (closed_.load(std::memory_order_acquire)) return;
 
         auto fn = std::move(toProcess.front());
         toProcess.pop();
 
-        Napi::HandleScope scope(env_);
+        Napi::HandleScope scope(env);
         // A throwing listener stops this drain, the way a throwing EventEmitter
         // listener stops an emit. The exception is left pending so Node reports it
         // as an uncaughtException instead of being silently discarded. Events
         // queued behind the throwing one go back on the queue so an application
         // that handles uncaughtException still receives them.
         try {
-            fn(env_);
+            fn(env);
         } catch (const Napi::Error& e) {
-            requeueFront(std::move(toProcess));
-            reportFatal(e.Value());
+            Napi::Value error = e.Value();
+            if (alive->load(std::memory_order_acquire)) requeueFront(std::move(toProcess));
+            reportFatal(env, error);
             return;
         } catch (const std::exception& e) {
-            requeueFront(std::move(toProcess));
-            reportFatal(Napi::Error::New(env_, e.what()).Value());
+            Napi::Value error = Napi::Error::New(env, e.what()).Value();
+            if (alive->load(std::memory_order_acquire)) requeueFront(std::move(toProcess));
+            reportFatal(env, error);
             return;
         } catch (...) {
-            requeueFront(std::move(toProcess));
-            reportFatal(Napi::Error::New(env_, "Unknown C++ exception in event callback").Value());
+            Napi::Value error = Napi::Error::New(env, "Unknown C++ exception in event callback").Value();
+            if (alive->load(std::memory_order_acquire)) requeueFront(std::move(toProcess));
+            reportFatal(env, error);
             return;
         }
+
+        if (!alive->load(std::memory_order_acquire)) return;
     }
 }
 
@@ -99,8 +110,8 @@ void AsyncContext::drain() {
 // JS exception has no frame to unwind into. napi_fatal_exception is the
 // documented way to surface one from here. It reaches the process as an
 // uncaughtException.
-void AsyncContext::reportFatal(Napi::Value error) {
-    napi_fatal_exception(env_, error);
+void AsyncContext::reportFatal(Napi::Env env, Napi::Value error) {
+    napi_fatal_exception(env, error);
 }
 
 void AsyncContext::requeueFront(std::queue<std::function<void(Napi::Env)>> pending) {

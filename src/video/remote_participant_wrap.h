@@ -45,6 +45,14 @@ public:
                                            std::function<void(Napi::Env)> fn);
 
     /**
+     * Permanently stops `observer` and releases anything it has buffered. Only
+     * for a caller that owns the observer's registration and is giving it up,
+     * such as the Room tearing down: a bound wrap does this from its own
+     * destructor.
+     */
+    static void CloseObserver(const std::shared_ptr<RemoteParticipantObserverImpl>& observer);
+
+    /**
      * Builds the JS wrap. Must run on the JS thread.
      *
      * Always pass the observer from RoomObserverWrap::GetOrCreateParticipantObserver
