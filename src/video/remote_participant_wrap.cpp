@@ -189,7 +189,13 @@ public:
     void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
                                  std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
         dispatchEvent("trackUnsubscribed", [pub, track](Napi::Env env) {
-            return MakeSubscriptionPayload<RemoteDataTrackWrap>(env, pub, "data", track);
+            Napi::Value payload = MakeSubscriptionPayload<RemoteDataTrackWrap>(env, pub, "data", track);
+            // Close deterministically here, after building this event's
+            // payload, rather than waiting for some wrap's destructor. A data
+            // track can have zero or many live wraps at once, so no individual
+            // wrap's lifetime is the right signal for when to close it.
+            RemoteDataTrackWrap::CloseObserver(track);
+            return payload;
         });
     }
     void onDataTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,

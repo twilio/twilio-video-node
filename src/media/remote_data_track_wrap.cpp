@@ -1,7 +1,12 @@
 #include "remote_data_track_wrap.h"
 #include <twilio/media/data_track_observer.h>
+#include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace twilio_video_node {
 namespace {
@@ -19,47 +24,91 @@ Napi::Value SubscribedOptionOrNull(Napi::Env env, uint16_t value) {
 
 class RemoteDataTrackObserverImpl : public twilio::media::RemoteDataTrackObserver {
 public:
-    RemoteDataTrackObserverImpl(RemoteDataTrackWrap* wrap, AsyncContext* ctx)
-        : wrap_(wrap), ctx_(ctx) {}
+    RemoteDataTrackObserverImpl() = default;
 
+    // Registers `wrap` to receive future messages, alongside any other wrap
+    // already registered. Unlike a RemoteParticipant, a data track's JS wrap is
+    // not cached: reading a participant's dataTracks builds a fresh wrap on
+    // every call, by design, matching RemoteVideoTrack/RemoteAudioTrack. Each
+    // one the caller independently obtains and calls onMessage() on should
+    // independently receive messages, the same way more than one video sink
+    // can be attached to a single video track.
+    void bind(RemoteDataTrackWrap* wrap, AsyncContext* ctx, std::shared_ptr<std::atomic<bool>> alive) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire)) return;
+        targets_.push_back({wrap, ctx, std::move(alive)});
+    }
+
+    // Removes `wrap` from delivery. Called from the wrap's destructor before
+    // its AsyncContext is destroyed, so dispatch() is never called against a
+    // dangling pointer.
+    void unbind(RemoteDataTrackWrap* wrap) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        targets_.erase(std::remove_if(targets_.begin(), targets_.end(),
+                                      [wrap](const Target& t) { return t.wrap == wrap; }),
+                       targets_.end());
+    }
+
+    // Called once, when the track itself is unsubscribed. No wrap can receive
+    // further messages after this.
     void close() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_.load(std::memory_order_acquire)) return;
         closed_.store(true, std::memory_order_release);
-        wrap_ = nullptr;
+        targets_.clear();
     }
 
     void onMessage(twilio::media::RemoteDataTrack* track, const std::string& message) override {
         if (closed_.load(std::memory_order_acquire)) return;
 
         std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire)) return;
 
-        ctx_->dispatch([this, message](Napi::Env env) {
-            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            wrap_->onMessage(message);
-        });
+        for (const auto& target : targets_) {
+            RemoteDataTrackWrap* wrap = target.wrap;
+            auto alive = target.alive;
+            target.ctx->dispatch([wrap, alive, message](Napi::Env env) {
+                if (!alive->load(std::memory_order_acquire)) return;
+                wrap->onMessage(message);
+            });
+        }
     }
 
     void onMessage(twilio::media::RemoteDataTrack* track, const uint8_t* message, size_t size) override {
         if (closed_.load(std::memory_order_acquire)) return;
 
         std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire)) return;
 
         std::vector<uint8_t> dataCopy(message, message + size);
-        ctx_->dispatch([this, dataCopy = std::move(dataCopy)](Napi::Env env) {
-            if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            wrap_->onBufferMessage(dataCopy.data(), dataCopy.size());
-        });
+        for (const auto& target : targets_) {
+            RemoteDataTrackWrap* wrap = target.wrap;
+            auto alive = target.alive;
+            target.ctx->dispatch([wrap, alive, dataCopy](Napi::Env env) {
+                if (!alive->load(std::memory_order_acquire)) return;
+                wrap->onBufferMessage(dataCopy.data(), dataCopy.size());
+            });
+        }
     }
 
 private:
-    RemoteDataTrackWrap* wrap_;
-    AsyncContext* ctx_;
+    struct Target {
+        RemoteDataTrackWrap* wrap;
+        AsyncContext* ctx;
+        std::shared_ptr<std::atomic<bool>> alive;
+    };
+
+    std::vector<Target> targets_;
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
 };
+
+namespace {
+
+std::mutex g_dataTrackObserversMutex;
+std::unordered_map<std::string, std::shared_ptr<RemoteDataTrackObserverImpl>> g_dataTrackObservers;
+
+}  // namespace
 
 Napi::FunctionReference RemoteDataTrackWrap::constructor_;
 
@@ -88,10 +137,35 @@ Napi::Object RemoteDataTrackWrap::NewInstance(Napi::Env env, std::shared_ptr<twi
     RemoteDataTrackWrap* wrap = Napi::ObjectWrap<RemoteDataTrackWrap>::Unwrap(obj);
     wrap->track_ = track;
     wrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
-    wrap->observer_ = std::make_shared<RemoteDataTrackObserverImpl>(wrap, wrap->asyncContext_.get());
-    track->setObserver(wrap->observer_);
+
+    std::string sid = track->getSid();
+    std::shared_ptr<RemoteDataTrackObserverImpl> observer;
+    {
+        std::lock_guard<std::mutex> lock(g_dataTrackObserversMutex);
+        auto it = g_dataTrackObservers.find(sid);
+        if (it != g_dataTrackObservers.end()) {
+            observer = it->second;
+        } else {
+            observer = std::make_shared<RemoteDataTrackObserverImpl>();
+            track->setObserver(observer);
+            g_dataTrackObservers[sid] = observer;
+        }
+    }
+    wrap->observer_ = observer;
+    observer->bind(wrap, wrap->asyncContext_.get(), wrap->alive_);
 
     return scope.Escape(obj).ToObject();
+}
+
+void RemoteDataTrackWrap::CloseObserver(std::shared_ptr<twilio::media::RemoteDataTrack> track) {
+    track->setObserver(std::weak_ptr<twilio::media::RemoteDataTrackObserver>());
+
+    std::lock_guard<std::mutex> lock(g_dataTrackObserversMutex);
+    auto it = g_dataTrackObservers.find(track->getSid());
+    if (it != g_dataTrackObservers.end()) {
+        it->second->close();
+        g_dataTrackObservers.erase(it);
+    }
 }
 
 RemoteDataTrackWrap::RemoteDataTrackWrap(const Napi::CallbackInfo& info)
@@ -99,12 +173,13 @@ RemoteDataTrackWrap::RemoteDataTrackWrap(const Napi::CallbackInfo& info)
 }
 
 RemoteDataTrackWrap::~RemoteDataTrackWrap() {
-    // Detach observer from track first to stop new callbacks arriving
-    if (track_) {
-        track_->setObserver(std::weak_ptr<twilio::media::RemoteDataTrackObserver>());
-    }
+    alive_->store(false, std::memory_order_release);
+    // Removes this wrap from delivery, but the observer itself is not owned by
+    // any one wrap: it is detached from the track and closed once,
+    // deterministically, when the track is unsubscribed (see CloseObserver),
+    // since a track can have zero or many live wraps for it at any moment.
     if (observer_) {
-        observer_->close();
+        observer_->unbind(this);
     }
     if (asyncContext_) {
         asyncContext_->close();
