@@ -1356,4 +1356,47 @@ describe('Subscription to tracks published before joining', () => {
       await incumbent.cleanup();
     }
   });
+
+  // Every other test in this file uses at most one other remote participant.
+  // Group Rooms support many; this confirms each is tracked independently
+  // (the shared registries added in 0792ec8 are keyed per participant SID).
+  it('tracks trackSubscribed and trackUnsubscribed independently for several simultaneous participants', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const peerCount = 3;
+    const perParticipant = new Map<string, { subs: number; unsubs: number }>();
+
+    incumbent.room.on('participantConnected', p => {
+      const record = { subs: 0, unsubs: 0 };
+      perParticipant.set(p.sid, record);
+      p.on('trackSubscribed', () => record.subs++);
+      p.on('trackUnsubscribed', () => record.unsubs++);
+    });
+
+    try {
+      const peers = await Promise.all(
+        Array.from({ length: peerCount }, (_, i) =>
+          connectToRoom(`peer-${i}`, roomName, {
+            videoTracks: [createLocalVideoTrack(`video-${i}`)],
+            audioTracks: [createLocalAudioTrack(`audio-${i}`)],
+          }),
+        ),
+      );
+      await sleep(TIMEOUT.negotiate);
+
+      expect(perParticipant.size).toBe(peerCount);
+      for (const record of perParticipant.values()) {
+        expect(record.subs).toBe(2);
+      }
+
+      await Promise.all(peers.map(peer => peer.cleanup()));
+      await sleep(TIMEOUT.negotiate);
+
+      for (const record of perParticipant.values()) {
+        expect(record.unsubs).toBe(2);
+      }
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
 });
