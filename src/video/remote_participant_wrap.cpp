@@ -9,25 +9,41 @@ namespace twilio_video_node {
 
 namespace {
 
+// The publication state an event reports, read once on the thread the callback
+// arrived on. Reading it later, from the JS thread, would race the signaling
+// thread still mutating the publication: a track unpublished right after being
+// subscribed would report its own trackSubscribed as not subscribed.
+struct PublicationSnapshot {
+    std::string trackSid;
+    std::string trackName;
+    bool enabled;
+    bool subscribed;
+};
+
+template <typename Publication>
+PublicationSnapshot SnapshotPublication(const std::shared_ptr<Publication>& pub) {
+    return {pub->getTrackSid(), pub->getTrackName(), pub->isTrackEnabled(), pub->isTrackSubscribed()};
+}
+
 // Builds the `{ track, publication }` payload the subscribe/unsubscribe events
 // carry. The publication mirrors the shape the track collection getters return,
 // and shares the track object rather than wrapping it twice.
-template <typename TrackWrap, typename Publication, typename Track>
-Napi::Object MakeSubscriptionPayload(Napi::Env env, const std::shared_ptr<Publication>& pub,
+template <typename TrackWrap, typename Track>
+Napi::Object MakeSubscriptionPayload(Napi::Env env, const PublicationSnapshot& snapshot,
                                      const char* kind, const std::shared_ptr<Track>& track) {
     Napi::Value trackValue = TrackWrap::NewInstance(env, track);
 
     auto publication = Napi::Object::New(env);
-    publication.Set("trackSid", Napi::String::New(env, pub->getTrackSid()));
-    publication.Set("trackName", Napi::String::New(env, pub->getTrackName()));
+    publication.Set("trackSid", Napi::String::New(env, snapshot.trackSid));
+    publication.Set("trackName", Napi::String::New(env, snapshot.trackName));
     publication.Set("kind", Napi::String::New(env, kind));
-    publication.Set("isTrackEnabled", Napi::Boolean::New(env, pub->isTrackEnabled()));
-    publication.Set("isSubscribed", Napi::Boolean::New(env, pub->isTrackSubscribed()));
+    publication.Set("isTrackEnabled", Napi::Boolean::New(env, snapshot.enabled));
+    publication.Set("isSubscribed", Napi::Boolean::New(env, snapshot.subscribed));
     // Only while subscribed, matching the track collection getters and
     // RemoteTrackPublication.track. On trackUnsubscribed the publication
     // reports isSubscribed false, so its track has to be absent; the event's
     // own track argument is how a listener reaches the track it just lost.
-    if (pub->isTrackSubscribed()) {
+    if (snapshot.subscribed) {
         publication.Set("track", trackValue);
     }
 
@@ -118,8 +134,8 @@ public:
     }
     void onAudioTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
-        dispatchEvent("trackSubscribed", [pub, track](Napi::Env env) {
-            return MakeSubscriptionPayload<RemoteAudioTrackWrap>(env, pub, "audio", track);
+        dispatchEvent("trackSubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteAudioTrackWrap>(env, snapshot, "audio", track);
         });
     }
     void onAudioTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
@@ -129,8 +145,8 @@ public:
     }
     void onAudioTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                   std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
-        dispatchEvent("trackUnsubscribed", [pub, track](Napi::Env env) {
-            return MakeSubscriptionPayload<RemoteAudioTrackWrap>(env, pub, "audio", track);
+        dispatchEvent("trackUnsubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteAudioTrackWrap>(env, snapshot, "audio", track);
         });
     }
     void onAudioTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
@@ -153,8 +169,8 @@ public:
     }
     void onVideoTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
-        dispatchEvent("trackSubscribed", [pub, track](Napi::Env env) {
-            return MakeSubscriptionPayload<RemoteVideoTrackWrap>(env, pub, "video", track);
+        dispatchEvent("trackSubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteVideoTrackWrap>(env, snapshot, "video", track);
         });
     }
     void onVideoTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
@@ -164,8 +180,8 @@ public:
     }
     void onVideoTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                   std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
-        dispatchEvent("trackUnsubscribed", [pub, track](Napi::Env env) {
-            return MakeSubscriptionPayload<RemoteVideoTrackWrap>(env, pub, "video", track);
+        dispatchEvent("trackUnsubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteVideoTrackWrap>(env, snapshot, "video", track);
         });
     }
     void onVideoTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
@@ -194,8 +210,8 @@ public:
     }
     void onDataTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
-        dispatchEvent("trackSubscribed", [pub, track](Napi::Env env) {
-            return MakeSubscriptionPayload<RemoteDataTrackWrap>(env, pub, "data", track);
+        dispatchEvent("trackSubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteDataTrackWrap>(env, snapshot, "data", track);
         });
     }
     void onDataTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
@@ -205,8 +221,8 @@ public:
     }
     void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
                                  std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
-        dispatchEvent("trackUnsubscribed", [pub, track](Napi::Env env) {
-            Napi::Value payload = MakeSubscriptionPayload<RemoteDataTrackWrap>(env, pub, "data", track);
+        dispatchEvent("trackUnsubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            Napi::Value payload = MakeSubscriptionPayload<RemoteDataTrackWrap>(env, snapshot, "data", track);
             // Close deterministically here, after building this event's
             // payload, rather than waiting for some wrap's destructor. A data
             // track can have zero or many live wraps at once, so no individual

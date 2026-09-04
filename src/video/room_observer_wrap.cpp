@@ -145,11 +145,6 @@ void RoomObserverWrap::onParticipantDisconnected(twilio::video::Room* room, std:
     auto observer = GetOrCreateParticipantObserver(participant);
     ForgetParticipantObserver(participant->getSid());
 
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (roomWrap_) roomWrap_->MarkParticipantDisconnecting(participant->getSid());
-    }
-
     // This event has two orderings to satisfy, and each queue only provides
     // one. It must arrive after every trackUnsubscribed already raised for
     // this teardown, which are on the participant's queue, and it must stay in

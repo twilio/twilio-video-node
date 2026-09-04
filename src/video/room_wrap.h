@@ -79,21 +79,7 @@ public:
      */
     void ForgetParticipantWrap(const std::string& sid);
 
-    /**
-     * Records that a participant is disconnecting and their event is still on
-     * its way to the JS thread. Safe to call from any thread.
-     *
-     * GetRemoteParticipants prunes cached wraps for participants the Room no
-     * longer lists, and rtc-cpp removes a participant before it raises the
-     * disconnect. A read landing in that window would otherwise drop the last
-     * reference to the wrap whose queue is carrying participantDisconnected,
-     * and collecting the wrap discards the event. ForgetParticipantWrap clears
-     * the record once the event has been delivered.
-     */
-    void MarkParticipantDisconnecting(const std::string& sid);
-
 private:
-    bool isParticipantDisconnecting(const std::string& sid);
 
     Napi::FunctionReference eventCallback_;
     static Napi::FunctionReference constructor_;
@@ -123,9 +109,6 @@ private:
     // Participant wrapper caches
     Napi::ObjectReference localParticipantCache_;
     std::map<std::string, Napi::ObjectReference> participantCache_;
-
-    std::mutex disconnectingSidsMutex_;
-    std::set<std::string> disconnectingSids_;
 
 #ifdef __APPLE__
     uv_timer_t* mainQueueTimer_ = nullptr;

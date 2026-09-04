@@ -571,10 +571,6 @@ RoomWrap::~RoomWrap() {
     eventCallback_.Reset();
     localParticipantCache_.Reset();
     participantCache_.clear();
-    {
-        std::lock_guard<std::mutex> lock(disconnectingSidsMutex_);
-        disconnectingSids_.clear();
-    }
 
 #ifdef __APPLE__
     if (mainQueueTimer_) {
@@ -599,18 +595,6 @@ void RoomWrap::emitEvent(const std::string& eventName, Napi::Value arg) {
 
 void RoomWrap::ForgetParticipantWrap(const std::string& sid) {
     participantCache_.erase(sid);
-    std::lock_guard<std::mutex> lock(disconnectingSidsMutex_);
-    disconnectingSids_.erase(sid);
-}
-
-void RoomWrap::MarkParticipantDisconnecting(const std::string& sid) {
-    std::lock_guard<std::mutex> lock(disconnectingSidsMutex_);
-    disconnectingSids_.insert(sid);
-}
-
-bool RoomWrap::isParticipantDisconnecting(const std::string& sid) {
-    std::lock_guard<std::mutex> lock(disconnectingSidsMutex_);
-    return disconnectingSids_.count(sid) > 0;
 }
 
 Napi::Value RoomWrap::GetName(const Napi::CallbackInfo& info) {
@@ -706,10 +690,9 @@ Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {
         }
     }
 
-    // Evict stale entries, except a participant whose disconnect event is
-    // still in flight: the wrap this holds owns the queue carrying it.
+    // Evict stale entries
     for (auto it = participantCache_.begin(); it != participantCache_.end(); ) {
-        if (activeSids.find(it->first) == activeSids.end() && !isParticipantDisconnecting(it->first)) {
+        if (activeSids.find(it->first) == activeSids.end()) {
             it = participantCache_.erase(it);
         } else {
             ++it;
@@ -741,10 +724,6 @@ Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
     eventCallback_.Reset();
     localParticipantCache_.Reset();
     participantCache_.clear();
-    {
-        std::lock_guard<std::mutex> lock(disconnectingSidsMutex_);
-        disconnectingSids_.clear();
-    }
     if (asyncContext_) {
         asyncContext_->close();
         asyncContext_.reset();

@@ -1554,24 +1554,22 @@ describe('Subscription to tracks published before joining', () => {
     let poll: NodeJS.Timeout | undefined;
 
     try {
-      const joined = waitForEvent<RemoteParticipant>(
+      // Counted on the Room, and attached before the peer connects: waiting for
+      // the participant first and only then listening would race the
+      // subscriptions already queued for it. This also keeps no reference to
+      // the participant, so nothing here holds the wrapper, or the queue it
+      // owns, alive through the disconnect.
+      const subscribed = waitForEvents<RemoteTrack>(
         incumbent.room,
-        'participantConnected',
+        'trackSubscribed',
+        2,
         TIMEOUT.subscribe,
       );
       const peer = await connectToRoom('bob', roomName, {
         videoTracks: [createLocalVideoTrack('video')],
         audioTracks: [createLocalAudioTrack('audio')],
       });
-
-      // Deliberately keep no reference to the participant. Both the JS cache
-      // in Room and the native one are pruned by the read above, so a strong
-      // reference here would be the only thing keeping the wrapper, and the
-      // queue it owns, alive through the disconnect.
-      await (async () => {
-        const bob = await joined;
-        await waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 2, TIMEOUT.subscribe);
-      })();
+      await subscribed;
 
       incumbent.room.on('trackUnsubscribed', () => order.push('trackUnsubscribed'));
       const left = waitForEvent(incumbent.room, 'participantDisconnected', TIMEOUT.subscribe);
