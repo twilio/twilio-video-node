@@ -13,6 +13,24 @@ This SDK is currently in beta. See the [README](README.md) for details.
   `uncaughtException`, and events queued behind it are retained so an application that handles
   `uncaughtException` still receives them. Previously such an error produced no output at all,
   which was indistinguishable from an event that was never emitted.
+- `trackUnsubscribed` is now emitted for every track a participant was still publishing when they
+  disconnected. It could previously be lost because it and `participantDisconnected` were
+  delivered on independent internal queues with no guaranteed order between them.
+- Fixed several cases where a `RemoteParticipant` stopped receiving further track events after
+  the SDK built a second internal wrapper for it, which happened on reading `room.participants`
+  or `room.dominantSpeaker`, on a reconnect, or for a participant who was already in the Room
+  when the local participant connected. Reading `room.participants` even once after a
+  participant connected could permanently stop delivery of `trackSubscribed`,
+  `trackUnsubscribed`, and related events for that participant, with no error.
+- Fixed the equivalent issue for `RemoteDataTrack`: reading a participant's `dataTracks` (or
+  `tracks`) a second time could stop message delivery to a `RemoteDataTrack` object obtained
+  from an earlier read. Every independently obtained `RemoteDataTrack` for the same underlying
+  track now receives messages, matching how multiple `RemoteVideoTrack`/`RemoteAudioTrack`
+  objects for the same track already each receive frames.
+- A participant is no longer kept in memory for the rest of the Room's lifetime after they
+  disconnect. Their cached wrapper was previously released only as a side effect of a later
+  `room.participants` read; an application that only listens to events, without reading that
+  getter, retained every departed participant until the Room itself was disposed.
 
 ## Breaking Changes
 
