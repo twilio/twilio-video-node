@@ -593,6 +593,10 @@ void RoomWrap::emitEvent(const std::string& eventName, Napi::Value arg) {
     }
 }
 
+void RoomWrap::ForgetParticipantWrap(const std::string& sid) {
+    participantCache_.erase(sid);
+}
+
 Napi::Value RoomWrap::GetName(const Napi::CallbackInfo& info) {
     if (!room_) return info.Env().Undefined();
     return Napi::String::New(info.Env(), room_->getName());

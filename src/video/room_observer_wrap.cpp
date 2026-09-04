@@ -128,6 +128,11 @@ void RoomObserverWrap::onParticipantDisconnected(twilio::video::Room* room, std:
         if (self->closed_.load(std::memory_order_acquire) || !self->roomWrap_) return;
         Napi::Value participantObj = RemoteParticipantWrap::NewInstance(env, participant, observer);
         self->roomWrap_->emitEvent("participantDisconnected", participantObj);
+        // Drop the cached wrap now rather than leaving it for a future
+        // room.participants read to notice. An application that never reads
+        // that getter would otherwise keep every departed participant pinned
+        // in memory for the rest of the Room's life.
+        self->roomWrap_->ForgetParticipantWrap(participant->getSid());
     });
 }
 
