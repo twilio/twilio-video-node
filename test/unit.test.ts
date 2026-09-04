@@ -663,12 +663,21 @@ describe('Participants already in the Room at connect', () => {
     const alice = makeNativeParticipant();
     const room = connectFake([alice]);
     const seen: string[] = [];
-    room.on('trackSubscribed', (track, participant) =>
-      seen.push(`${participant.identity}:${track.kind}`),
+    room.on('trackSubscribed', (track, publication, participant) =>
+      seen.push(`${participant.identity}:${track.kind}:${publication.kind}`),
     );
 
-    alice.emit('trackSubscribed', { kind: 'video' });
-    expect(seen).toEqual(['alice:video']);
+    alice.emit('trackSubscribed', {
+      track: { kind: 'video' },
+      publication: {
+        trackSid: 'MT-video',
+        trackName: 'cam',
+        kind: 'video',
+        isTrackEnabled: true,
+        isSubscribed: true,
+      },
+    });
+    expect(seen).toEqual(['alice:video:video']);
   });
 
   const nativeSubscriptionFailure = {

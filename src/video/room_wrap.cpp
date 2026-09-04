@@ -593,6 +593,10 @@ void RoomWrap::emitEvent(const std::string& eventName, Napi::Value arg) {
     }
 }
 
+void RoomWrap::ForgetParticipantWrap(const std::string& sid) {
+    participantCache_.erase(sid);
+}
+
 Napi::Value RoomWrap::GetName(const Napi::CallbackInfo& info) {
     if (!room_) return info.Env().Undefined();
     return Napi::String::New(info.Env(), room_->getName());
@@ -649,7 +653,11 @@ Napi::Value RoomWrap::GetDominantSpeaker(const Napi::CallbackInfo& info) {
     auto participant = room_->getDominantSpeaker();
     if (!participant) return info.Env().Null();
 
-    return RemoteParticipantWrap::NewInstance(info.Env(), participant);
+    // Reuse whichever observer this participant already has rather than
+    // installing a new one, which would silently stop event delivery to
+    // whichever JS wrap the existing observer is bound to.
+    auto observer = observer_ ? observer_->GetOrCreateParticipantObserver(participant) : nullptr;
+    return RemoteParticipantWrap::NewInstance(info.Env(), participant, observer);
 }
 
 Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {
@@ -659,33 +667,30 @@ Napi::Value RoomWrap::GetRemoteParticipants(const Napi::CallbackInfo& info) {
     auto participants = room_->getRemoteParticipants();
     auto array = Napi::Array::New(env, participants.size());
 
-    // Track which SIDs are still present
-    std::set<std::string> activeSids;
-
     uint32_t i = 0;
     for (const auto& pair : participants) {
         const std::string& sid = pair.first;
-        activeSids.insert(sid);
 
         auto cacheIt = participantCache_.find(sid);
         if (cacheIt != participantCache_.end() && !cacheIt->second.IsEmpty()) {
             array.Set(i++, cacheIt->second.Value());
         } else {
-            auto participantObj = RemoteParticipantWrap::NewInstance(env, pair.second);
+            // Reuse whichever observer this participant already has (from
+            // onParticipantConnected, or a prior access here) rather than
+            // installing a new one, which would silently stop event delivery to
+            // whichever JS wrap the existing observer is bound to.
+            auto observer = observer_ ? observer_->GetOrCreateParticipantObserver(pair.second) : nullptr;
+            auto participantObj = RemoteParticipantWrap::NewInstance(env, pair.second, observer);
             participantCache_[sid] = Napi::Persistent(participantObj);
             array.Set(i++, participantObj);
         }
     }
 
-    // Evict stale entries
-    for (auto it = participantCache_.begin(); it != participantCache_.end(); ) {
-        if (activeSids.find(it->first) == activeSids.end()) {
-            it = participantCache_.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
+    // Departed participants are dropped by ForgetParticipantWrap when their
+    // disconnect is delivered, not by pruning whoever is missing from this
+    // read. The SDK removes a participant before it raises that event, so a
+    // read landing in between would evict an entry that is still needed, which
+    // is the same rule Room's own participant cache follows in JS.
     return array;
 }
 

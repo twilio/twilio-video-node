@@ -184,18 +184,18 @@ participant's tracks from one place instead of attaching a listener to each part
 
 ### RemoteParticipant Events
 
-| Event                        | Handler Signature                                                               |
-| ---------------------------- | ------------------------------------------------------------------------------- |
-| `trackSubscribed`            | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
-| `trackUnsubscribed`          | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack) => void`      |
-| `trackSubscriptionFailed`    | `(error: TwilioError, publication: RemoteTrackSubscriptionFailedEvent) => void` |
-| `trackPublished`             | `(publication: RemoteTrackPublishEvent) => void`                                |
-| `trackUnpublished`           | `(publication: RemoteTrackPublishEvent) => void`                                |
-| `trackEnabled`               | `(publication: RemoteTrackStateEvent) => void`                                  |
-| `trackDisabled`              | `(publication: RemoteTrackStateEvent) => void`                                  |
-| `videoTrackSwitchedOff`      | `(track: RemoteVideoTrack) => void`                                             |
-| `videoTrackSwitchedOn`       | `(track: RemoteVideoTrack) => void`                                             |
-| `networkQualityLevelChanged` | `(level: number) => void`                                                       |
+| Event                        | Handler Signature                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `trackSubscribed`            | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack, publication: RemoteTrackPublication) => void` |
+| `trackUnsubscribed`          | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack, publication: RemoteTrackPublication) => void` |
+| `trackSubscriptionFailed`    | `(error: TwilioError, publication: RemoteTrackSubscriptionFailedEvent) => void`                                 |
+| `trackPublished`             | `(publication: RemoteTrackPublishEvent) => void`                                                                |
+| `trackUnpublished`           | `(publication: RemoteTrackPublishEvent) => void`                                                                |
+| `trackEnabled`               | `(publication: RemoteTrackStateEvent) => void`                                                                  |
+| `trackDisabled`              | `(publication: RemoteTrackStateEvent) => void`                                                                  |
+| `videoTrackSwitchedOff`      | `(track: RemoteVideoTrack) => void`                                                                             |
+| `videoTrackSwitchedOn`       | `(track: RemoteVideoTrack) => void`                                                                             |
+| `networkQualityLevelChanged` | `(level: number) => void`                                                                                       |
 
 ### LocalParticipant Events
 
