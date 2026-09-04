@@ -413,6 +413,42 @@ describe('Data track send/receive', () => {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
+
+  // dataTracks is rebuilt fresh on every read, the same as videoTracks and
+  // audioTracks, so a second read must not steal message delivery away from a
+  // RemoteDataTrack obtained from an earlier one.
+  it('keeps delivering messages to an earlier reference after dataTracks is read again', async () => {
+    const roomName = uniqueRoom();
+    const dataTrack = createLocalDataTrack('chat');
+    const { connA, connB, remoteA } = await connectPair(roomName);
+
+    const trackPromise = waitForEvent<RemoteDataTrack>(remoteA, 'trackSubscribed', TIMEOUT.subscribe);
+    connA.room.localParticipant.publishTrack(dataTrack);
+    const remoteDataTrack = await trackPromise;
+    await sleep(TIMEOUT.negotiate);
+
+    const received: unknown[] = [];
+    const messageReceived = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Timeout waiting for message')), TIMEOUT.mediaFlow);
+      remoteDataTrack.onMessage(data => {
+        received.push(data);
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+
+    // A typical app reads this to enumerate a participant's tracks.
+    void [...remoteA.dataTracks.values()];
+
+    try {
+      dataTrack.send('still listening');
+      await messageReceived;
+      expect(received).toEqual(['still listening']);
+    } finally {
+      remoteDataTrack.removeMessageCallback();
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
 });
 
 describe('participantDisconnected', () => {
