@@ -1260,4 +1260,64 @@ describe('Subscription to tracks published before joining', () => {
 
     expect(unsubscribedKinds).toEqual(Array.from({ length: rejoins }, () => ['audio', 'video']));
   });
+
+  // A participant already in the Room when we join is wrapped by
+  // RoomWrap::GetRemoteParticipants, a different native code path than
+  // onParticipantConnected. Both used to install their own observer on the
+  // shared native participant, so whichever ran more recently silently took
+  // over event delivery.
+  it('emits trackUnsubscribed for a participant who was already in the Room when we joined', async () => {
+    const roomName = uniqueRoom();
+    const peer = await connectToRoom('bob', roomName, {
+      videoTracks: [createLocalVideoTrack('video')],
+      audioTracks: [createLocalAudioTrack('audio')],
+    });
+
+    const incumbent = await connectToRoom('alice', roomName);
+    try {
+      const [bob] = [...incumbent.room.participants.values()];
+      const unsubscribed = waitForEvents<RemoteTrack>(bob, 'trackUnsubscribed', 2, TIMEOUT.subscribe);
+
+      await peer.cleanup();
+      const tracks = await unsubscribed;
+      expect(tracks.map(track => track.kind).sort()).toEqual(['audio', 'video']);
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
+
+  // Reading room.participants (or room.dominantSpeaker) builds a second native
+  // wrap for a participant that already has one from onParticipantConnected.
+  // That second wrap used to install its own observer, replacing the one the
+  // first wrap's listeners depend on, so any later track event went nowhere.
+  it('keeps delivering trackSubscribed after room.participants has been read', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+
+    try {
+      const joined = waitForEvent<RemoteParticipant>(
+        incumbent.room,
+        'participantConnected',
+        TIMEOUT.subscribe,
+      );
+      const peer = await connectToRoom('bob', roomName, {
+        videoTracks: [createLocalVideoTrack('video')],
+      });
+      const bob = await joined;
+      await waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 1, TIMEOUT.subscribe);
+
+      // A typical app reads this getter to build or refresh a participant list.
+      const [sameParticipant] = [...incumbent.room.participants.values()];
+      expect(sameParticipant).toBe(bob);
+
+      const subscribedAfterRead = waitForEvent<RemoteTrack>(bob, 'trackSubscribed', TIMEOUT.subscribe);
+      peer.room.localParticipant.publishTrack(createLocalAudioTrack('audio'));
+      const track = await subscribedAfterRead;
+      expect(track.kind).toBe('audio');
+
+      await peer.cleanup();
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
 });
