@@ -571,6 +571,10 @@ RoomWrap::~RoomWrap() {
     eventCallback_.Reset();
     localParticipantCache_.Reset();
     participantCache_.clear();
+    {
+        std::lock_guard<std::mutex> lock(disconnectingSidsMutex_);
+        disconnectingSids_.clear();
+    }
 
 #ifdef __APPLE__
     if (mainQueueTimer_) {
@@ -737,6 +741,10 @@ Napi::Value RoomWrap::Dispose(const Napi::CallbackInfo& info) {
     eventCallback_.Reset();
     localParticipantCache_.Reset();
     participantCache_.clear();
+    {
+        std::lock_guard<std::mutex> lock(disconnectingSidsMutex_);
+        disconnectingSids_.clear();
+    }
     if (asyncContext_) {
         asyncContext_->close();
         asyncContext_.reset();

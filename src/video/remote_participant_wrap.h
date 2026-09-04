@@ -53,6 +53,14 @@ public:
     static void CloseObserver(const std::shared_ptr<RemoteParticipantObserverImpl>& observer);
 
     /**
+     * Whether `observer` has been closed and can no longer deliver anything.
+     * A wrap closes the observer it owns when it is collected, so a registry
+     * holding observers needs this to tell a reusable registration from a dead
+     * one.
+     */
+    static bool IsObserverClosed(const std::shared_ptr<RemoteParticipantObserverImpl>& observer);
+
+    /**
      * Builds the JS wrap. Must run on the JS thread.
      *
      * Always pass the observer from RoomObserverWrap::GetOrCreateParticipantObserver

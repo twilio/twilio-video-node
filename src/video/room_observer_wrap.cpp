@@ -25,13 +25,13 @@ void RoomObserverWrap::close() {
     // Close each observer rather than only dropping the reference. An observer
     // that never got a JS wrap still holds the events it buffered while
     // waiting for one, and nothing else would ever release them.
-    std::unordered_map<std::string, std::shared_ptr<RemoteParticipantObserverImpl>> observers;
+    std::unordered_map<std::string, ParticipantObserverRegistration> observers;
     {
         std::lock_guard<std::mutex> lock(participantObserversMutex_);
         observers.swap(participantObservers_);
     }
     for (auto& entry : observers) {
-        RemoteParticipantWrap::CloseObserver(entry.second);
+        RemoteParticipantWrap::CloseObserver(entry.second.observer);
     }
     // Closed but not destroyed: close() can run from a listener on this very
     // queue, for instance one that calls room.dispose(), and drain() is still
@@ -48,11 +48,15 @@ std::shared_ptr<RemoteParticipantObserverImpl> RoomObserverWrap::GetOrCreatePart
     std::lock_guard<std::mutex> lock(participantObserversMutex_);
     auto it = participantObservers_.find(sid);
     if (it != participantObservers_.end()) {
-        return it->second;
+        if (it->second.participant.lock() == participant &&
+            !RemoteParticipantWrap::IsObserverClosed(it->second.observer)) {
+            return it->second.observer;
+        }
+        participantObservers_.erase(it);
     }
 
     auto observer = RemoteParticipantWrap::CreateObserver(participant);
-    participantObservers_[sid] = observer;
+    participantObservers_[sid] = {participant, observer};
     return observer;
 }
 

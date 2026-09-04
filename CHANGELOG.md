@@ -36,6 +36,11 @@ This SDK is currently in beta. See the [README](README.md) for details.
   still arriving after that participant's final `trackUnsubscribed` events. It also survives a
   concurrent `room.participants` read, which prunes the departing participant and could
   previously discard the event before it reached a listener.
+- `participantDisconnected` now reports the same `RemoteParticipant` object the application
+  already received from `participantConnected` or `room.participants`. A `room.participants`
+  read while the participant was leaving dropped the cached instance, so the event carried a
+  second one: a listener attached to the original never saw the disconnect, and that original
+  was never disposed.
 - Fixed a crash during teardown when an event listener disposes the Room it is handling an
   event for. The internal event queue continued to touch its own state after the listener
   returned, which the `dispose()` had already freed.

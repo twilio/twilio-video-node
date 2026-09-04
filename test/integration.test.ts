@@ -1506,6 +1506,43 @@ describe('Subscription to tracks published before joining', () => {
     }
   });
 
+  // participantDisconnected must report the same RemoteParticipant object the
+  // application already has, so a listener registered on it still fires and
+  // the SDK disposes the instance the application is holding. A
+  // room.participants read in the disconnect window used to drop the cached
+  // instance, and a second one was built for the event.
+  it('reports the same RemoteParticipant instance on disconnect as on connect', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const poll = setInterval(() => void [...incumbent.room.participants.values()], 5);
+
+    try {
+      const joined = waitForEvent<RemoteParticipant>(
+        incumbent.room,
+        'participantConnected',
+        TIMEOUT.subscribe,
+      );
+      const peer = await connectToRoom('bob', roomName, {
+        videoTracks: [createLocalVideoTrack('video')],
+      });
+      const bob = await joined;
+      await waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 1, TIMEOUT.subscribe);
+
+      const left = waitForEvent<RemoteParticipant>(
+        incumbent.room,
+        'participantDisconnected',
+        TIMEOUT.subscribe,
+      );
+      await peer.cleanup();
+      const departed = await left;
+
+      expect(departed).toBe(bob);
+    } finally {
+      clearInterval(poll);
+      await incumbent.cleanup();
+    }
+  });
+
   // A participant is removed from the Room before the disconnect event
   // reaches JS. Reading room.participants in that window drops the last
   // reference to the wrapper carrying the event, so the read must not be able

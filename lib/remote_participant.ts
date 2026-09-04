@@ -144,7 +144,7 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'trackSubscribed' || event === 'trackUnsubscribed') {
-        const { track, publication } = data as {
+        const { track, publication } = (data ?? {}) as {
           track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack;
           publication: RawRemoteTrackPublication;
         };

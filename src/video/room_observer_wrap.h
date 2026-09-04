@@ -38,15 +38,19 @@ public:
     void close();
 
     /**
-     * Returns the observer already registered for this participant's SID, or
-     * creates and registers one. Every code path that can hand a
-     * RemoteParticipant to JS (the onParticipant... and
-     * onDominantSpeakerChanged callbacks below, plus
-     * RoomWrap::GetRemoteParticipants and RoomWrap::GetDominantSpeaker) must
-     * call this instead of RemoteParticipantWrap::CreateObserver directly. A
-     * native participant has exactly one live observer at a time; creating a
+     * Returns the observer already registered for this participant, or creates
+     * and registers one. Every code path that can hand a RemoteParticipant to
+     * JS (the onParticipant... and onDominantSpeakerChanged callbacks below,
+     * plus RoomWrap::GetRemoteParticipants and RoomWrap::GetDominantSpeaker)
+     * must call this instead of RemoteParticipantWrap::CreateObserver directly.
+     * A native participant has exactly one live observer at a time; creating a
      * second one for the same participant replaces the first, which silently
      * stops event delivery to whichever JS wrap the first observer was bound to.
+     *
+     * A registration is reused only for the same native participant while its
+     * observer is still open. A different instance reporting the same SID, or
+     * an observer already closed by the wrap that owned it, gets a fresh
+     * observer installed rather than one that would never deliver anything.
      */
     std::shared_ptr<RemoteParticipantObserverImpl> GetOrCreateParticipantObserver(
         std::shared_ptr<twilio::video::RemoteParticipant> participant);
@@ -70,8 +74,16 @@ private:
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
 
+    // Keyed by SID, but holding the participant it was installed on so a
+    // different instance reporting the same SID cannot inherit it. The handle
+    // is weak: the registration must not keep a departed participant alive.
+    struct ParticipantObserverRegistration {
+        std::weak_ptr<twilio::video::RemoteParticipant> participant;
+        std::shared_ptr<RemoteParticipantObserverImpl> observer;
+    };
+
     std::mutex participantObserversMutex_;
-    std::unordered_map<std::string, std::shared_ptr<RemoteParticipantObserverImpl>> participantObservers_;
+    std::unordered_map<std::string, ParticipantObserverRegistration> participantObservers_;
 };
 
 }

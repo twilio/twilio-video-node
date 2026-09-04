@@ -80,6 +80,8 @@ public:
         return true;
     }
 
+    bool isClosed() const { return closed_.load(std::memory_order_acquire); }
+
     void close() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_.load(std::memory_order_acquire)) return;
@@ -341,6 +343,10 @@ void RemoteParticipantWrap::DispatchAfterPendingEvents(std::shared_ptr<RemotePar
 
 void RemoteParticipantWrap::CloseObserver(const std::shared_ptr<RemoteParticipantObserverImpl>& observer) {
     if (observer) observer->close();
+}
+
+bool RemoteParticipantWrap::IsObserverClosed(const std::shared_ptr<RemoteParticipantObserverImpl>& observer) {
+    return !observer || observer->isClosed();
 }
 
 Napi::Object RemoteParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<twilio::video::RemoteParticipant> participant,

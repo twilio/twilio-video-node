@@ -325,13 +325,12 @@ export class Room extends TypedEventEmitter<RoomEvents> {
       map.set(native.sid, this._wrapRemoteParticipant(native));
     }
 
-    // Evict stale cache entries
-    for (const sid of this._remoteParticipantCache.keys()) {
-      if (!map.has(sid)) {
-        this._remoteParticipantCache.delete(sid);
-      }
-    }
-
+    // A participant who left is dropped from the cache by the
+    // participantDisconnected handler, not here. The SDK removes a participant
+    // before it raises that event, so evicting whoever is missing from this
+    // read would drop the cached instance while the event is still in flight,
+    // and the handler would then hand out a second RemoteParticipant for the
+    // same participant and dispose that one instead of the original.
     return map;
   }
 
