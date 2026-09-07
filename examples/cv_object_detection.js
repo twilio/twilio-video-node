@@ -65,7 +65,7 @@ runCvExample({
       // Grayscale the frame, then draw colored boxes on top so the analysis
       // stands out rather than reading as a plain mirror.
       desaturateRgba(rgba);
-      const { ctx } = canvasFromRgba(rgba, width, height);
+      const ctx = canvasFromRgba(rgba, width, height);
       drawDetections(ctx, detections, COCO_CLASSES);
       return rgbaToI420(rgbaFromCanvas(ctx, width, height), width, height);
     };

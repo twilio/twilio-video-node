@@ -62,7 +62,7 @@ runCvExample({
 
       // Grayscale for display, then draw the analysis on top so it stands out.
       desaturateRgba(rgba);
-      const { ctx } = canvasFromRgba(rgba, width, height);
+      const ctx = canvasFromRgba(rgba, width, height);
 
       // A face is "on screen" for any person whose face keypoints are visible.
       let primary = null;

@@ -151,4 +151,4 @@ async function runCvExample(options) {
   }, 5000);
 }
 
-module.exports = { runCvExample, MAX_FPS };
+module.exports = { runCvExample };
