@@ -21,7 +21,7 @@
  */
 
 const { runCvExample } = require('./helpers/cv-runner');
-const { loadModel } = require('./helpers/onnx-model');
+const { loadModel, runModel } = require('./helpers/onnx-model');
 const { letterbox, decodePose, nms } = require('./helpers/yolo');
 const { rgbaToI420 } = require('./helpers/yuv');
 const {
@@ -52,23 +52,16 @@ runCvExample({
   trackName: 'cv-face-analysis',
   async createProcessor() {
     const poseModel = await loadModel('pose');
-    const inputName = poseModel.inputNames[0];
     let lastLogged = 0;
 
     return async function process(rgba, width, height) {
-      // Grayscale first: it emphasizes the analysis rather than mirroring.
-      desaturateRgba(rgba);
+      // Pose runs on the color frame.
       const { tensor, scale, padX, padY } = letterbox(rgba, width, height);
-      const output = await poseModel.run({ [inputName]: tensor });
-      const persons = nms(
-        decodePose(output[poseModel.outputNames[0]], {
-          scale,
-          padX,
-          padY,
-          confThreshold: POSE_CONF,
-        }),
-      );
+      const output = await runModel(poseModel, tensor);
+      const persons = nms(decodePose(output, { scale, padX, padY, confThreshold: POSE_CONF }));
 
+      // Grayscale for display, then draw the analysis on top so it stands out.
+      desaturateRgba(rgba);
       const { ctx } = canvasFromRgba(rgba, width, height);
 
       // A face is "on screen" for any person whose face keypoints are visible.

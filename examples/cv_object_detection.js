@@ -14,7 +14,7 @@
  */
 
 const { runCvExample } = require('./helpers/cv-runner');
-const { loadModel } = require('./helpers/onnx-model');
+const { loadModel, runModel } = require('./helpers/onnx-model');
 const { letterbox, decodeDetections, nms } = require('./helpers/yolo');
 const { rgbaToI420 } = require('./helpers/yuv');
 const {
@@ -32,22 +32,21 @@ runCvExample({
   trackName: 'cv-detection',
   async createProcessor() {
     const session = await loadModel('detection');
-    const inputName = session.inputNames[0];
     let lastLogged = 0;
 
     return async function process(rgba, width, height) {
       const { tensor, scale, padX, padY } = letterbox(rgba, width, height);
-      const output = await session.run({ [inputName]: tensor });
-      const raw = output[session.outputNames[0]];
+      const output = await runModel(session, tensor);
 
-      let detections = decodeDetections(raw, {
-        numClasses: 80,
-        scale,
-        padX,
-        padY,
-        confThreshold: CONF_THRESHOLD,
-      });
-      detections = nms(detections);
+      const detections = nms(
+        decodeDetections(output, {
+          numClasses: COCO_CLASSES.length,
+          scale,
+          padX,
+          padY,
+          confThreshold: CONF_THRESHOLD,
+        }),
+      );
 
       // Log a rolling summary about once a second.
       if (Date.now() - lastLogged > 1000) {
