@@ -102,16 +102,15 @@ function desaturateRgba(rgba) {
   }
 }
 
-// Build a drawing surface from an RGBA buffer.
+// Build a drawing context from an RGBA buffer.
 function canvasFromRgba(rgba, width, height) {
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext('2d');
+  const ctx = createCanvas(width, height).getContext('2d');
   ctx.putImageData(
     new ImageData(new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.length), width, height),
     0,
     0,
   );
-  return { canvas, ctx };
+  return ctx;
 }
 
 // Read the (possibly annotated) surface back into a packed RGBA Buffer.

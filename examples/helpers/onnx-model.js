@@ -76,4 +76,4 @@ async function runModel(session, tensor) {
   return output[session.outputNames[0]];
 }
 
-module.exports = { loadModel, runModel, MODELS, CACHE_DIR };
+module.exports = { loadModel, runModel };

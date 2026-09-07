@@ -133,11 +133,4 @@ function decodePose(output, opts) {
   return out;
 }
 
-module.exports = {
-  INPUT_SIZE,
-  letterbox,
-  decodeDetections,
-  decodePose,
-  nms,
-  NUM_KEYPOINTS,
-};
+module.exports = { letterbox, decodeDetections, decodePose, nms };
