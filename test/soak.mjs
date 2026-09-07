@@ -71,7 +71,9 @@ function token(identity, room) {
     process.env.TWILIO_ACCOUNT_SID,
     process.env.TWILIO_API_KEY,
     process.env.TWILIO_API_SECRET,
-    { identity, ttl: Math.max(3600, MINUTES * 60 + 600) },
+    // Twilio caps access-token TTL at 24h. A rotating run mints a fresh token
+    // per session, so the TTL only has to outlast one session.
+    { identity, ttl: Math.min(86400, Math.max(3600, MINUTES * 60 + 600)) },
   );
   const grant = new AccessToken.VideoGrant();
   grant.room = room;
@@ -157,163 +159,216 @@ async function createRoomWithDuration(room, seconds) {
   );
   return created;
 }
-
 async function main() {
-  const room = `soak-${MINUTES}m-${Date.now()}`;
+  const totalMs = MINUTES * 60_000;
+  const started = Date.now();
+  const deadline = started + totalMs;
+
+  // Twilio caps MaxParticipantDuration at 86400s (24h), verified against the
+  // API: 90000 is rejected with code 53123. A run longer than that has to move
+  // to a fresh room periodically. Rotating also exercises connect/publish/
+  // subscribe/disconnect repeatedly, which a single long-lived room never does.
+  const ROTATE_SECONDS = Math.round(Number(arg('rotate-hours', '4')) * 3600);
+  const publishing = MODE !== 'idle';
+  const rotating = totalMs > ROTATE_SECONDS * 1000;
+
   log(
-    `starting ${MINUTES} minute soak, mode=${MODE}, room=${room}, ` +
-      `sampling every ${SAMPLE_SECONDS}s`,
+    `starting ${MINUTES} minute soak, mode=${MODE}, sampling every ${SAMPLE_SECONDS}s` +
+      (rotating ? `, rotating rooms every ${ROTATE_SECONDS / 3600}h` : ''),
   );
 
-  const TWILIO_DEFAULT_PARTICIPANT_SECONDS = 14400;
-  const needSeconds = MINUTES * 60 + 600;
-  if (needSeconds > TWILIO_DEFAULT_PARTICIPANT_SECONDS) {
-    await createRoomWithDuration(room, Math.min(needSeconds, 86400));
-  }
-
-  const videoTrack = createLocalVideoTrack({
-    name: 'soak-cam',
-    source: { type: 'raw', format: 'I420', width: 640, height: 480, fps: VIDEO_FPS },
-  });
-  const audioTrack = createLocalAudioTrack('soak-mic');
-
-  const publishing = MODE !== 'idle';
-  const alice = await connect(token('alice', room), {
-    name: room,
-    ...(publishing ? { videoTracks: [videoTrack], audioTracks: [audioTrack] } : {}),
-    connectionTimeout: 30_000,
-  });
-  const bob = await connect(token('bob', room), { name: room, connectionTimeout: 30_000 });
-  log(`connected: room=${alice.sid}`);
-
-  // Without these the harness cannot tell a live room from a dead one: a
-  // server-side disconnect leaves the publish timers running and the sample
-  // line still advancing, so the run looks healthy while measuring nothing.
-  let roomFailure = null;
-  for (const [who, r] of [
-    ['alice', alice],
-    ['bob', bob],
-  ]) {
-    r.on('disconnected', (_room, error) => {
-      const why = error ? `${error.code} ${error.message}` : 'no error supplied';
-      log(`ROOM DISCONNECTED (${who}): ${why}`);
-      roomFailure ??= `${who} disconnected: ${why}`;
-    });
-    r.on('reconnecting', error =>
-      log(`ROOM RECONNECTING (${who}): ${error?.message ?? 'unknown'}`),
-    );
-    r.on('reconnected', () => log(`ROOM RECONNECTED (${who})`));
-  }
-
-  // Consume everything Bob subscribes to. Loops end by themselves when the
-  // track is unsubscribed or the Room disconnects.
+  const samples = [];
+  let sessions = 0;
+  let sessionFailure = null;
+  // Counters survive rotation: the tracks are recreated each session, so their
+  // per-track stats reset while these keep the run-long totals.
   let videoDelivered = 0;
   let audioDelivered = 0;
-  const consumers = [];
-  const tracks = { video: null, audio: null };
+  const cum = { videoWritten: 0, videoWriteDropped: 0, audioWritten: 0, audioWriteDropped: 0 };
 
-  // In 'publish' mode Bob still subscribes - that is automatic - but never
-  // starts a frames() iterator, so nothing crosses into JS.
-  const consuming = MODE === 'full';
-  bob.on('trackSubscribed', track => {
-    if (!consuming) return;
-    if (track.kind === 'video') {
-      tracks.video = track;
-      consumers.push(
-        (async () => {
-          for await (const frame of track.frames({ mode: 'latest', maxQueue: 1 })) {
-            videoDelivered++;
-            frame.close?.();
-          }
-        })(),
-      );
-    } else if (track.kind === 'audio') {
-      tracks.audio = track;
-      consumers.push(
-        (async () => {
-          for await (const frame of track.frames({ mode: 'queue', maxQueue: 10 })) {
-            audioDelivered++;
-            frame.close?.();
-          }
-        })(),
-      );
-    }
-  });
-
-  // Publish at real-time cadence. A fresh frame object each tick, so any
-  // retention by the SDK would show as growth.
-  const videoTimer = publishing
-    ? setInterval(
-        () => {
-          videoTrack.write(i420(640, 480));
-        },
-        Math.round(1000 / VIDEO_FPS),
-      )
-    : null;
-  const audioTimer = publishing
-    ? setInterval(() => {
-        audioTrack.write({ pcm: pcmChunk, frames: 480 });
-      }, AUDIO_CHUNK_MS)
-    : null;
-
-  const samples = [];
-  const started = Date.now();
-  const deadline = started + MINUTES * 60_000;
+  /** The live session, or null between rotations. */
+  let s = null;
 
   const sample = () => {
     const mem = process.memoryUsage();
-    const vw = videoTrack.getWriteStats();
-    const aw = audioTrack.getWriteStats();
+    const vw = s ? s.videoTrack.getWriteStats() : { framesWritten: 0, framesDropped: 0 };
+    const aw = s ? s.audioTrack.getWriteStats() : { framesWritten: 0, framesDropped: 0 };
     const entry = {
       t: Math.round((Date.now() - started) / 1000),
+      session: sessions,
       rssMB: +(mem.rss / 1048576).toFixed(2),
       heapUsedMB: +(mem.heapUsed / 1048576).toFixed(2),
       externalMB: +(mem.external / 1048576).toFixed(2),
       arrayBuffersMB: +(mem.arrayBuffers / 1048576).toFixed(2),
       fds: fdCount(),
       threads: threadCount(),
-      videoWritten: vw.framesWritten,
-      videoWriteDropped: vw.framesDropped,
-      audioWritten: aw.framesWritten,
-      audioWriteDropped: aw.framesDropped,
+      videoWritten: cum.videoWritten + vw.framesWritten,
+      videoWriteDropped: cum.videoWriteDropped + vw.framesDropped,
+      audioWritten: cum.audioWritten + aw.framesWritten,
+      audioWriteDropped: cum.audioWriteDropped + aw.framesDropped,
       videoDelivered,
       audioDelivered,
-      videoRecvDropped: tracks.video?.getStats().framesDropped ?? 0,
-      audioRecvDropped: tracks.audio?.getStats().framesDropped ?? 0,
+      videoRecvDropped: s?.tracks.video?.getStats().framesDropped ?? 0,
+      audioRecvDropped: s?.tracks.audio?.getStats().framesDropped ?? 0,
     };
     samples.push(entry);
     log(
-      `t=${entry.t}s rss=${entry.rssMB}MB heap=${entry.heapUsedMB}MB ext=${entry.externalMB}MB ` +
-        `fds=${entry.fds} thr=${entry.threads} vTx=${entry.videoWritten} vRx=${entry.videoDelivered} ` +
+      `t=${entry.t}s sess=${entry.session} rss=${entry.rssMB}MB heap=${entry.heapUsedMB}MB ` +
+        `ext=${entry.externalMB}MB fds=${entry.fds} thr=${entry.threads} ` +
+        `vTx=${entry.videoWritten} vRx=${entry.videoDelivered} ` +
         `aTx=${entry.audioWritten} aRx=${entry.audioDelivered}`,
     );
   };
 
-  sample();
+  /** Connect a fresh room and start publishing and consuming. */
+  async function startSession(sessionSeconds) {
+    const room = `soak-${MINUTES}m-s${sessions}-${Date.now()}`;
+    // Give the room headroom past the planned rotation so the server never cuts
+    // the session mid-flight; the harness decides when to move on, not the cap.
+    await createRoomWithDuration(room, Math.min(sessionSeconds + 600, 86400));
+
+    const videoTrack = createLocalVideoTrack({
+      name: 'soak-cam',
+      source: { type: 'raw', format: 'I420', width: 640, height: 480, fps: VIDEO_FPS },
+    });
+    const audioTrack = createLocalAudioTrack('soak-mic');
+
+    const alice = await connect(token('alice', room), {
+      name: room,
+      ...(publishing ? { videoTracks: [videoTrack], audioTracks: [audioTrack] } : {}),
+      connectionTimeout: 30_000,
+    });
+    const bob = await connect(token('bob', room), { name: room, connectionTimeout: 30_000 });
+    log(`session ${sessions}: connected room=${alice.sid}`);
+
+    const session = {
+      alice,
+      bob,
+      videoTrack,
+      audioTrack,
+      consumers: [],
+      tracks: { video: null, audio: null },
+      closing: false,
+      videoTimer: null,
+      audioTimer: null,
+    };
+
+    // A disconnect during planned teardown is expected; one at any other time
+    // means the run stopped measuring anything and must abort loudly.
+    for (const [who, r] of [
+      ['alice', alice],
+      ['bob', bob],
+    ]) {
+      r.on('disconnected', (_room, error) => {
+        if (session.closing) return;
+        const why = error ? `${error.code} ${error.message}` : 'no error supplied';
+        log(`ROOM DISCONNECTED (${who}): ${why}`);
+        sessionFailure ??= `${who} disconnected unexpectedly: ${why}`;
+      });
+      r.on('reconnecting', error =>
+        log(`ROOM RECONNECTING (${who}): ${error?.message ?? 'unknown'}`),
+      );
+      r.on('reconnected', () => log(`ROOM RECONNECTED (${who})`));
+    }
+
+    const consuming = MODE === 'full';
+    const consume = track => {
+      if (!consuming) return;
+      if (track.kind === 'video' && !session.tracks.video) {
+        session.tracks.video = track;
+        session.consumers.push(
+          (async () => {
+            for await (const frame of track.frames({ mode: 'latest', maxQueue: 1 })) {
+              videoDelivered++;
+              frame.close?.();
+            }
+          })(),
+        );
+      } else if (track.kind === 'audio' && !session.tracks.audio) {
+        session.tracks.audio = track;
+        session.consumers.push(
+          (async () => {
+            for await (const frame of track.frames({ mode: 'queue', maxQueue: 10 })) {
+              audioDelivered++;
+              frame.close?.();
+            }
+          })(),
+        );
+      }
+    };
+    bob.on('trackSubscribed', consume);
+    // Subscription can complete while connect() is still resolving, so the
+    // event may already have fired by the time the handler is attached. Sweep
+    // what is subscribed now as well; consume() ignores duplicates.
+    for (const p of bob.participants.values()) {
+      for (const pub of p.tracks.values()) {
+        if (pub.isSubscribed && pub.track) consume(pub.track);
+      }
+    }
+
+    // A fresh frame object each tick, so any retention by the SDK shows as growth.
+    if (publishing) {
+      session.videoTimer = setInterval(
+        () => {
+          videoTrack.write(i420(640, 480));
+        },
+        Math.round(1000 / VIDEO_FPS),
+      );
+      session.audioTimer = setInterval(() => {
+        audioTrack.write({ pcm: pcmChunk, frames: 480 });
+      }, AUDIO_CHUNK_MS);
+    }
+    return session;
+  }
+
+  /** Tear a session down and fold its per-track counters into the run totals. */
+  async function stopSession(session) {
+    session.closing = true;
+    if (session.videoTimer) clearInterval(session.videoTimer);
+    if (session.audioTimer) clearInterval(session.audioTimer);
+    const vw = session.videoTrack.getWriteStats();
+    const aw = session.audioTrack.getWriteStats();
+    cum.videoWritten += vw.framesWritten;
+    cum.videoWriteDropped += vw.framesDropped;
+    cum.audioWritten += aw.framesWritten;
+    cum.audioWriteDropped += aw.framesDropped;
+    session.bob.disconnect();
+    session.alice.disconnect();
+    await Promise.race([Promise.all(session.consumers), new Promise(r => setTimeout(r, 10_000))]);
+    session.bob.dispose();
+    session.alice.dispose();
+  }
+
   const sampler = setInterval(sample, SAMPLE_SECONDS * 1000);
 
-  // Poll for a disconnect rather than only waiting out the clock, so the run
-  // stops at the failure instead of accumulating meaningless samples after it.
-  await new Promise(resolve => {
-    const tick = setInterval(() => {
-      if (roomFailure || Date.now() >= deadline) {
-        clearInterval(tick);
-        resolve();
-      }
-    }, 1_000);
-  });
+  while (Date.now() < deadline && !sessionFailure) {
+    const remainingMs = deadline - Date.now();
+    const sessionMs = Math.min(ROTATE_SECONDS * 1000, remainingMs);
+    s = await startSession(Math.round(sessionMs / 1000));
+    sample();
+
+    await new Promise(resolve => {
+      const sessionEnd = Date.now() + sessionMs;
+      const tick = setInterval(() => {
+        if (sessionFailure || Date.now() >= sessionEnd) {
+          clearInterval(tick);
+          resolve();
+        }
+      }, 1_000);
+    });
+
+    sample();
+    await stopSession(s);
+    s = null;
+    sessions++;
+    if (!sessionFailure && Date.now() < deadline) {
+      log(`rotating: session ${sessions} finished, starting a fresh room`);
+    }
+  }
 
   clearInterval(sampler);
-  if (videoTimer) clearInterval(videoTimer);
-  if (audioTimer) clearInterval(audioTimer);
-  sample();
-
-  log('tearing down');
-  bob.disconnect();
-  alice.disconnect();
-  await Promise.race([Promise.all(consumers), new Promise(r => setTimeout(r, 10_000))]);
-  bob.dispose();
-  alice.dispose();
+  const roomFailure = sessionFailure;
+  log(`tearing down after ${sessions} session(s)`);
 
   // Settle, then take a final reading to see whether teardown released memory.
   await new Promise(r => setTimeout(r, 3_000));
