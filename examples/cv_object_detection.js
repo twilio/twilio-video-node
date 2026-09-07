@@ -1,12 +1,12 @@
 /**
  * Computer Vision — object detection.
  *
- * Joins a room, runs YOLOv8n on the first participant's webcam, and re-publishes
- * the video with bounding boxes + labels drawn on it (person, laptop, cell
- * phone, cup, ...). Results are shown on the video track only — no data track —
- * so it works against any room you join from a browser.
+ * Joins a room, runs YOLOX-nano on the first participant's webcam, and
+ * re-publishes the video with bounding boxes + labels drawn on it (person,
+ * laptop, cell phone, cup, ...). Results are shown on the video track only — no
+ * data track — so it works against any room you join from a browser.
  *
- * Download the YOLOv8n ONNX model to examples/.models/ before running (the
+ * Download the YOLOX-nano ONNX model to examples/.models/ before running (the
  * program prints instructions if it is missing; see the README). Requires
  * Node.js >= 24, x64 (see README).
  *
@@ -15,7 +15,7 @@
 
 const { runCvExample } = require('./helpers/cv-runner');
 const { loadModel, runModel } = require('./helpers/onnx-model');
-const { letterbox, decodeDetections, nms } = require('./helpers/yolo');
+const { letterbox, decodeYolox, nms } = require('./helpers/yolo');
 const { rgbaToI420 } = require('./helpers/yuv');
 const {
   desaturateRgba,
@@ -39,13 +39,7 @@ runCvExample({
       const output = await runModel(session, tensor);
 
       const detections = nms(
-        decodeDetections(output, {
-          numClasses: COCO_CLASSES.length,
-          scale,
-          padX,
-          padY,
-          confThreshold: CONF_THRESHOLD,
-        }),
+        decodeYolox(output, { scale, padX, padY, confThreshold: CONF_THRESHOLD }),
       );
 
       // Log a rolling summary about once a second.
