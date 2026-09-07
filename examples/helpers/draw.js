@@ -149,12 +149,12 @@ function drawFaceBox(ctx, box, lines, color) {
   ctx.strokeStyle = color;
   ctx.strokeRect(box.x, box.y, box.w, box.h);
 
-  const fontSize = 22;
-  const bandHeight = fontSize + 6;
+  const fontSize = 30;
+  const bandHeight = fontSize + 8;
   ctx.font = `${fontSize}px sans-serif`;
   let top = Math.max(0, box.y - bandHeight * lines.length);
   for (const line of lines) {
-    const w = ctx.measureText(line).width + 10;
+    const w = ctx.measureText(line).width + 12;
     ctx.fillStyle = color;
     ctx.fillRect(box.x, top, w, bandHeight);
     ctx.fillStyle = '#000';
@@ -202,9 +202,9 @@ function drawFaceKeypoints(ctx, keypoints, minScore = 0.3) {
 // Draw a status banner as a centered pill near the top of the frame, sized to
 // its text so it stays visible regardless of the viewer's crop.
 function drawBanner(ctx, width, text, color = 'rgba(0,0,0,0.6)') {
-  const fontSize = 20;
-  const padX = 14;
-  const padY = 8;
+  const fontSize = 28;
+  const padX = 18;
+  const padY = 10;
   const top = 10;
   ctx.font = `${fontSize}px sans-serif`;
   const boxW = ctx.measureText(text).width + padX * 2;
