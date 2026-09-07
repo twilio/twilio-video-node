@@ -22,7 +22,7 @@
 
 const { runCvExample } = require('./helpers/cv-runner');
 const { loadModel, runModelOutputs } = require('./helpers/onnx-model');
-const { letterbox, decodeRtmo } = require('./helpers/yolo');
+const { letterbox, decodeRtmo } = require('./helpers/cv-postprocess');
 const { rgbaToI420 } = require('./helpers/yuv');
 const {
   desaturateRgba,
