@@ -15,7 +15,7 @@
 
 const { runCvExample } = require('./helpers/cv-runner');
 const { loadModel, runModel } = require('./helpers/onnx-model');
-const { letterbox, decodeYolox, nms } = require('./helpers/yolo');
+const { letterbox, decodeYolox, nms } = require('./helpers/cv-postprocess');
 const { rgbaToI420 } = require('./helpers/yuv');
 const {
   desaturateRgba,
