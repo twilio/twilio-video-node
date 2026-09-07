@@ -3,20 +3,118 @@
 #include "../media/remote_audio_track_wrap.h"
 #include "../media/remote_data_track_wrap.h"
 #include "../common/error.h"
+#include <vector>
 
 namespace twilio_video_node {
 
+namespace {
+
+// The publication state an event reports, read once on the thread the callback
+// arrived on. Reading it later, from the JS thread, would race the signaling
+// thread still mutating the publication: a track unpublished right after being
+// subscribed would report its own trackSubscribed as not subscribed.
+struct PublicationSnapshot {
+    std::string trackSid;
+    std::string trackName;
+    bool enabled;
+    bool subscribed;
+};
+
+template <typename Publication>
+PublicationSnapshot SnapshotPublication(const std::shared_ptr<Publication>& pub) {
+    return {pub->getTrackSid(), pub->getTrackName(), pub->isTrackEnabled(), pub->isTrackSubscribed()};
+}
+
+// Builds the `{ track, publication }` payload the subscribe/unsubscribe events
+// carry. The publication mirrors the shape the track collection getters return,
+// and shares the track object rather than wrapping it twice.
+template <typename TrackWrap, typename Track>
+Napi::Object MakeSubscriptionPayload(Napi::Env env, const PublicationSnapshot& snapshot,
+                                     const char* kind, const std::shared_ptr<Track>& track) {
+    Napi::Value trackValue = TrackWrap::NewInstance(env, track);
+
+    auto publication = Napi::Object::New(env);
+    publication.Set("trackSid", Napi::String::New(env, snapshot.trackSid));
+    publication.Set("trackName", Napi::String::New(env, snapshot.trackName));
+    publication.Set("kind", Napi::String::New(env, kind));
+    publication.Set("isTrackEnabled", Napi::Boolean::New(env, snapshot.enabled));
+    publication.Set("isSubscribed", Napi::Boolean::New(env, snapshot.subscribed));
+    // Only while subscribed, matching the track collection getters and
+    // RemoteTrackPublication.track. On trackUnsubscribed the publication
+    // reports isSubscribed false, so its track has to be absent; the event's
+    // own track argument is how a listener reaches the track it just lost.
+    if (snapshot.subscribed) {
+        publication.Set("track", trackValue);
+    }
+
+    auto payload = Napi::Object::New(env);
+    payload.Set("track", trackValue);
+    payload.Set("publication", publication);
+    return payload;
+}
+
+}  // namespace
+
 class RemoteParticipantObserverImpl : public twilio::video::RemoteParticipantObserver {
+    // Either an event to emit (name plus optional createArgs) or, when rawFn is
+    // set, work to run on the queue without emitting anything.
+    struct PendingEvent {
+        std::string name;
+        std::function<Napi::Value(Napi::Env)> createArgs;
+        std::function<void(Napi::Env)> rawFn;
+    };
+
 public:
-    RemoteParticipantObserverImpl(RemoteParticipantWrap* wrap, AsyncContext* ctx,
-                                   std::shared_ptr<std::atomic<bool>> alive)
-        : wrap_(wrap), ctx_(ctx), alive_(alive) {}
+    RemoteParticipantObserverImpl() = default;
+
+    // Adopts the JS wrap and replays whatever arrived before it existed, in
+    // order. Runs on the JS thread; the replayed events go through the same
+    // queue as live ones, so ordering relative to later events is preserved.
+    //
+    // A no-op if another wrap is already bound. The same observer can be handed
+    // to more than one wrap for the same participant (a room.participants or
+    // room.dominantSpeaker read can produce a new wrap for a participant that
+    // already has one), and only the first bound wrap should receive events;
+    // rebinding would silently redirect delivery away from whichever wrap the
+    // caller is already holding a reference to. Returns whether this call
+    // became the bound wrap, so the caller knows whether it owns the binding.
+    bool bind(RemoteParticipantWrap* wrap, AsyncContext* ctx, std::shared_ptr<std::atomic<bool>> alive) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire) || wrap_ != nullptr) return false;
+        wrap_ = wrap;
+        ctx_ = ctx;
+        alive_ = std::move(alive);
+
+        // Replay while still holding the lock. Releasing it first would let a
+        // signaling thread callback arriving mid-replay see a bound wrap and
+        // reach the queue ahead of these older events.
+        std::vector<PendingEvent> replay;
+        replay.swap(pending_);
+        for (auto& event : replay) {
+            enqueueLocked(std::move(event));
+        }
+        return true;
+    }
+
+    bool isClosed() const { return closed_.load(std::memory_order_acquire); }
 
     void close() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_.load(std::memory_order_acquire)) return;
         closed_.store(true, std::memory_order_release);
         wrap_ = nullptr;
+        ctx_ = nullptr;
+        pending_.clear();
+    }
+
+    // Runs fn through this participant's own queue, the same one dispatchEvent()
+    // uses, but without emitting anything. Lets a caller run something strictly
+    // after this participant's own events, which two independent AsyncContext
+    // instances cannot otherwise guarantee. Nothing here reaches JS as an event.
+    void enqueueRaw(std::function<void(Napi::Env)> fn) {
+        PendingEvent event;
+        event.rawFn = std::move(fn);
+        enqueue(std::move(event));
     }
 
     // Audio track events
@@ -34,10 +132,10 @@ public:
     void onAudioTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
         dispatchPubStateEvent("trackDisabled", pub->getTrackSid(), pub->getTrackName(), pub->isTrackSubscribed());
     }
-    void onAudioTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
+    void onAudioTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
-        dispatchEvent("trackSubscribed", [track](Napi::Env env) {
-            return RemoteAudioTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackSubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteAudioTrackWrap>(env, snapshot, "audio", track);
         });
     }
     void onAudioTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
@@ -45,10 +143,10 @@ public:
         dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "audio",
                                         error.getCode(), error.getMessage());
     }
-    void onAudioTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
+    void onAudioTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                   std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
-        dispatchEvent("trackUnsubscribed", [track](Napi::Env env) {
-            return RemoteAudioTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackUnsubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteAudioTrackWrap>(env, snapshot, "audio", track);
         });
     }
     void onAudioTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication>,
@@ -69,10 +167,10 @@ public:
     void onVideoTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
         dispatchPubStateEvent("trackDisabled", pub->getTrackSid(), pub->getTrackName(), pub->isTrackSubscribed());
     }
-    void onVideoTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
+    void onVideoTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
-        dispatchEvent("trackSubscribed", [track](Napi::Env env) {
-            return RemoteVideoTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackSubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteVideoTrackWrap>(env, snapshot, "video", track);
         });
     }
     void onVideoTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
@@ -80,10 +178,10 @@ public:
         dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "video",
                                         error.getCode(), error.getMessage());
     }
-    void onVideoTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
+    void onVideoTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                   std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
-        dispatchEvent("trackUnsubscribed", [track](Napi::Env env) {
-            return RemoteVideoTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackUnsubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteVideoTrackWrap>(env, snapshot, "video", track);
         });
     }
     void onVideoTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication>,
@@ -110,10 +208,10 @@ public:
                                 std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub) override {
         dispatchTrackEvent("trackUnpublished", pub->getTrackSid(), pub->getTrackName());
     }
-    void onDataTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
-                               std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
-        dispatchEvent("trackSubscribed", [track](Napi::Env env) {
-            return RemoteDataTrackWrap::NewInstance(env, track);
+    void onDataTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
+                                std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
+        dispatchEvent("trackSubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            return MakeSubscriptionPayload<RemoteDataTrackWrap>(env, snapshot, "data", track);
         });
     }
     void onDataTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
@@ -121,10 +219,16 @@ public:
         dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "data",
                                         error.getCode(), error.getMessage());
     }
-    void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
+    void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
                                  std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
-        dispatchEvent("trackUnsubscribed", [track](Napi::Env env) {
-            return RemoteDataTrackWrap::NewInstance(env, track);
+        dispatchEvent("trackUnsubscribed", [snapshot = SnapshotPublication(pub), track](Napi::Env env) {
+            Napi::Value payload = MakeSubscriptionPayload<RemoteDataTrackWrap>(env, snapshot, "data", track);
+            // Close deterministically here, after building this event's
+            // payload, rather than waiting for some wrap's destructor. A data
+            // track can have zero or many live wraps at once, so no individual
+            // wrap's lifetime is the right signal for when to close it.
+            RemoteDataTrackWrap::CloseObserver(track);
+            return payload;
         });
     }
     void onDataTrackPublishPriorityChanged(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication>,
@@ -140,17 +244,40 @@ public:
 
 private:
     void dispatchEvent(const std::string& eventName, std::function<Napi::Value(Napi::Env)> createArgs = nullptr) {
+        PendingEvent event;
+        event.name = eventName;
+        event.createArgs = std::move(createArgs);
+        enqueue(std::move(event));
+    }
+
+    void enqueue(PendingEvent event) {
         if (closed_.load(std::memory_order_acquire)) return;
 
         std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire)) return;
 
+        // Buffer until bind() supplies the wrap. The createArgs lambdas only touch
+        // Napi when invoked, so holding them off the JS thread is safe.
+        if (!wrap_ || !ctx_) {
+            pending_.push_back(std::move(event));
+            return;
+        }
+
+        enqueueLocked(std::move(event));
+    }
+
+    // Requires mutex_ held and wrap_/ctx_ set.
+    void enqueueLocked(PendingEvent event) {
         auto alive = alive_;
-        ctx_->dispatch([this, alive, eventName, createArgs](Napi::Env env) {
+        ctx_->dispatch([this, alive, event](Napi::Env env) {
             if (!alive->load(std::memory_order_acquire)) return;
             if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            Napi::Value arg = createArgs ? createArgs(env) : env.Undefined();
-            wrap_->emitEvent(eventName, arg);
+            if (event.rawFn) {
+                event.rawFn(env);
+                return;
+            }
+            Napi::Value arg = event.createArgs ? event.createArgs(env) : env.Undefined();
+            wrap_->emitEvent(event.name, arg);
         });
     }
 
@@ -191,9 +318,10 @@ private:
         });
     }
 
-    RemoteParticipantWrap* wrap_;
-    AsyncContext* ctx_;
+    RemoteParticipantWrap* wrap_ = nullptr;
+    AsyncContext* ctx_ = nullptr;
     std::shared_ptr<std::atomic<bool>> alive_;
+    std::vector<PendingEvent> pending_;
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
 };
@@ -217,15 +345,36 @@ void RemoteParticipantWrap::Init(Napi::Env env, Napi::Object exports) {
     exports.Set("RemoteParticipant", func);
 }
 
-Napi::Object RemoteParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<twilio::video::RemoteParticipant> participant) {
+std::shared_ptr<RemoteParticipantObserverImpl> RemoteParticipantWrap::CreateObserver(
+    std::shared_ptr<twilio::video::RemoteParticipant> participant) {
+    auto observer = std::make_shared<RemoteParticipantObserverImpl>();
+    participant->setObserver(observer);
+    return observer;
+}
+
+void RemoteParticipantWrap::DispatchAfterPendingEvents(std::shared_ptr<RemoteParticipantObserverImpl> observer,
+                                                       std::function<void(Napi::Env)> fn) {
+    observer->enqueueRaw(std::move(fn));
+}
+
+void RemoteParticipantWrap::CloseObserver(const std::shared_ptr<RemoteParticipantObserverImpl>& observer) {
+    if (observer) observer->close();
+}
+
+bool RemoteParticipantWrap::IsObserverClosed(const std::shared_ptr<RemoteParticipantObserverImpl>& observer) {
+    return !observer || observer->isClosed();
+}
+
+Napi::Object RemoteParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<twilio::video::RemoteParticipant> participant,
+                                               std::shared_ptr<RemoteParticipantObserverImpl> observer) {
     Napi::EscapableHandleScope scope(env);
 
     Napi::Object obj = constructor_.New({});
     RemoteParticipantWrap* wrap = Napi::ObjectWrap<RemoteParticipantWrap>::Unwrap(obj);
     wrap->participant_ = participant;
     wrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
-    wrap->observer_ = std::make_shared<RemoteParticipantObserverImpl>(wrap, wrap->asyncContext_.get(), wrap->alive_);
-    participant->setObserver(wrap->observer_);
+    wrap->observer_ = observer ? std::move(observer) : CreateObserver(participant);
+    wrap->ownsObserverBinding_ = wrap->observer_->bind(wrap, wrap->asyncContext_.get(), wrap->alive_);
 
     return scope.Escape(obj).ToObject();
 }
@@ -236,11 +385,18 @@ RemoteParticipantWrap::RemoteParticipantWrap(const Napi::CallbackInfo& info)
 
 RemoteParticipantWrap::~RemoteParticipantWrap() {
     alive_->store(false, std::memory_order_release);
-    if (participant_) {
-        participant_->setObserver(std::weak_ptr<twilio::video::RemoteParticipantObserver>());
-    }
-    if (observer_) {
-        observer_->close();
+    // Only the wrap bind() accepted may tear down the observer. The same
+    // observer can be shared by more than one wrap for the same participant;
+    // tearing it down here regardless of ownership would cut off the wrap that
+    // actually owns it, since detaching the participant's observer and closing
+    // it are both effective immediately and are not specific to this wrap.
+    if (ownsObserverBinding_) {
+        if (participant_) {
+            participant_->setObserver(std::weak_ptr<twilio::video::RemoteParticipantObserver>());
+        }
+        if (observer_) {
+            observer_->close();
+        }
     }
     eventCallback_.Reset();
     if (asyncContext_) {

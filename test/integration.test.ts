@@ -10,6 +10,7 @@ import type {
   VideoFrame,
   AudioFrame,
   RemoteTrack,
+  RemoteTrackPublication,
   StatsReport,
   VideoContentPreferences,
 } from '../dist/index.mjs';
@@ -413,6 +414,49 @@ describe('Data track send/receive', () => {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
+
+  // dataTracks is rebuilt fresh on every read, the same as videoTracks and
+  // audioTracks, so a second read must not steal message delivery away from a
+  // RemoteDataTrack obtained from an earlier one.
+  it('keeps delivering messages to an earlier reference after dataTracks is read again', async () => {
+    const roomName = uniqueRoom();
+    const dataTrack = createLocalDataTrack('chat');
+    const { connA, connB, remoteA } = await connectPair(roomName);
+
+    const trackPromise = waitForEvent<RemoteDataTrack>(
+      remoteA,
+      'trackSubscribed',
+      TIMEOUT.subscribe,
+    );
+    connA.room.localParticipant.publishTrack(dataTrack);
+    const remoteDataTrack = await trackPromise;
+    await sleep(TIMEOUT.negotiate);
+
+    const received: unknown[] = [];
+    const messageReceived = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error('Timeout waiting for message')),
+        TIMEOUT.mediaFlow,
+      );
+      remoteDataTrack.onMessage(data => {
+        received.push(data);
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+
+    // A typical app reads this to enumerate a participant's tracks.
+    void [...remoteA.dataTracks.values()];
+
+    try {
+      dataTrack.send('still listening');
+      await messageReceived;
+      expect(received).toEqual(['still listening']);
+    } finally {
+      remoteDataTrack.removeMessageCallback();
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
 });
 
 describe('participantDisconnected', () => {
@@ -720,7 +764,7 @@ describe('Room-level track event bubbling', () => {
         () => reject(new Error('Timeout waiting for room trackSubscribed')),
         TIMEOUT.subscribe,
       );
-      connB.room.on('trackSubscribed', (track, participant) => {
+      connB.room.on('trackSubscribed', (track, _publication, participant) => {
         clearTimeout(timeout);
         resolve({ track, participant });
       });
@@ -762,14 +806,17 @@ describe('Late joiner into a populated room', () => {
         () => reject(new Error(`Timeout waiting for trackSubscribed x2, got: [${kinds}]`)),
         TIMEOUT.subscribe,
       );
-      connB.room.on('trackSubscribed', (track: RemoteTrack, participant: RemoteParticipant) => {
-        kinds.push(track.kind);
-        publishers.push(participant.identity);
-        if (kinds.length === 2) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      });
+      connB.room.on(
+        'trackSubscribed',
+        (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
+          kinds.push(track.kind);
+          publishers.push(participant.identity);
+          if (kinds.length === 2) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        },
+      );
     });
 
     try {
@@ -1137,5 +1184,536 @@ describe('RemoteVideoTrack.setContentPreferences', () => {
 describe('Error paths', () => {
   it('connect rejects with invalid token', async () => {
     await expect(connect('invalid-token', { name: uniqueRoom() })).rejects.toThrow();
+  });
+});
+
+describe('Subscription to tracks published before joining', () => {
+  // The observer rtc-cpp calls is installed on the signaling thread, because
+  // subscription lands about a millisecond after the participant-connected
+  // callback. Attaching it on the JS thread instead loses these events, and
+  // loses them more often on later joins, so one join is not enough coverage.
+  it('emits trackSubscribed on every rejoin, not just the first', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const rejoins = 3;
+    const subscribedKinds: string[][] = [];
+
+    try {
+      for (let i = 0; i < rejoins; i++) {
+        const joined = waitForEvent<RemoteParticipant>(
+          incumbent.room,
+          'participantConnected',
+          TIMEOUT.subscribe,
+        );
+        const peer = await connectToRoom('bob', roomName, {
+          videoTracks: [createLocalVideoTrack(`video-${i}`)],
+          audioTracks: [createLocalAudioTrack(`audio-${i}`)],
+        });
+
+        const remotePeer = await joined;
+        const tracks = await waitForEvents<RemoteTrack>(
+          remotePeer,
+          'trackSubscribed',
+          2,
+          TIMEOUT.subscribe,
+        );
+        subscribedKinds.push(tracks.map(track => track.kind).sort());
+
+        const left = waitForEvent(incumbent.room, 'participantDisconnected', TIMEOUT.subscribe);
+        await peer.cleanup();
+        await left;
+      }
+    } finally {
+      await incumbent.cleanup();
+    }
+
+    expect(subscribedKinds).toEqual(Array.from({ length: rejoins }, () => ['audio', 'video']));
+  });
+
+  it("passes the track's publication and participant to the Room's trackSubscribed", async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+
+    try {
+      const subscribed = waitForEvents<unknown>(
+        incumbent.room,
+        'trackSubscribed',
+        1,
+        TIMEOUT.subscribe,
+      );
+      const args: unknown[] = [];
+      incumbent.room.once('trackSubscribed', (...received: unknown[]) => args.push(...received));
+
+      const peer = await connectToRoom('bob', roomName, {
+        videoTracks: [createLocalVideoTrack('video')],
+      });
+      await subscribed;
+
+      const [track, publication, participant] = args as [
+        RemoteVideoTrack,
+        { trackSid: string; kind: string; isSubscribed: boolean },
+        RemoteParticipant,
+      ];
+      expect(track.kind).toBe('video');
+      expect(publication.kind).toBe('video');
+      expect(publication.isSubscribed).toBe(true);
+      expect(publication.trackSid).toBe(track.sid);
+      expect(participant.identity).toBe('bob');
+
+      await peer.cleanup();
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
+
+  // trackUnsubscribed for a disconnecting participant's tracks and the
+  // participantDisconnected event that follows it are dispatched through two
+  // independent native queues (the participant's and the Room's) with no
+  // ordering guarantee between them. A participant that unpublishes and then
+  // disconnects on every rejoin exercises that teardown path repeatedly.
+  it('emits trackUnsubscribed for every remaining track on every rejoin', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const rejoins = 3;
+    const unsubscribedKinds: string[][] = [];
+
+    try {
+      for (let i = 0; i < rejoins; i++) {
+        const joined = waitForEvent<RemoteParticipant>(
+          incumbent.room,
+          'participantConnected',
+          TIMEOUT.subscribe,
+        );
+        const peer = await connectToRoom('bob', roomName, {
+          videoTracks: [createLocalVideoTrack(`video-${i}`)],
+          audioTracks: [createLocalAudioTrack(`audio-${i}`)],
+        });
+        const remotePeer = await joined;
+        await waitForEvents<RemoteTrack>(remotePeer, 'trackSubscribed', 2, TIMEOUT.subscribe);
+
+        const unsubscribed = waitForEvents<RemoteTrack>(
+          remotePeer,
+          'trackUnsubscribed',
+          2,
+          TIMEOUT.subscribe,
+        );
+        await peer.cleanup();
+        const tracks = await unsubscribed;
+        unsubscribedKinds.push(tracks.map(track => track.kind).sort());
+      }
+    } finally {
+      await incumbent.cleanup();
+    }
+
+    expect(unsubscribedKinds).toEqual(Array.from({ length: rejoins }, () => ['audio', 'video']));
+  });
+
+  // A participant already in the Room when we join is wrapped by
+  // RoomWrap::GetRemoteParticipants, a different native code path than
+  // onParticipantConnected. Both used to install their own observer on the
+  // shared native participant, so whichever ran more recently silently took
+  // over event delivery.
+  it('emits trackUnsubscribed for a participant who was already in the Room when we joined', async () => {
+    const roomName = uniqueRoom();
+    const peer = await connectToRoom('bob', roomName, {
+      videoTracks: [createLocalVideoTrack('video')],
+      audioTracks: [createLocalAudioTrack('audio')],
+    });
+
+    const incumbent = await connectToRoom('alice', roomName);
+    try {
+      const [bob] = [...incumbent.room.participants.values()];
+      const unsubscribed = waitForEvents<RemoteTrack>(
+        bob,
+        'trackUnsubscribed',
+        2,
+        TIMEOUT.subscribe,
+      );
+
+      await peer.cleanup();
+      const tracks = await unsubscribed;
+      expect(tracks.map(track => track.kind).sort()).toEqual(['audio', 'video']);
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
+
+  // Reading room.participants (or room.dominantSpeaker) builds a second native
+  // wrap for a participant that already has one from onParticipantConnected.
+  // That second wrap used to install its own observer, replacing the one the
+  // first wrap's listeners depend on, so any later track event went nowhere.
+  it('keeps delivering trackSubscribed after room.participants has been read', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+
+    try {
+      const joined = waitForEvent<RemoteParticipant>(
+        incumbent.room,
+        'participantConnected',
+        TIMEOUT.subscribe,
+      );
+      const peer = await connectToRoom('bob', roomName, {
+        videoTracks: [createLocalVideoTrack('video')],
+      });
+      const bob = await joined;
+      await waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 1, TIMEOUT.subscribe);
+
+      // A typical app reads this getter to build or refresh a participant list.
+      const [sameParticipant] = [...incumbent.room.participants.values()];
+      expect(sameParticipant).toBe(bob);
+
+      const subscribedAfterRead = waitForEvent<RemoteTrack>(
+        bob,
+        'trackSubscribed',
+        TIMEOUT.subscribe,
+      );
+      peer.room.localParticipant.publishTrack(createLocalAudioTrack('audio'));
+      const track = await subscribedAfterRead;
+      expect(track.kind).toBe('audio');
+
+      await peer.cleanup();
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
+
+  // Every other test in this file uses at most one other remote participant.
+  // Group Rooms support many; this confirms each is tracked independently.
+  it('tracks trackSubscribed and trackUnsubscribed independently for several simultaneous participants', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const peerCount = 3;
+    const perParticipant = new Map<string, { subs: number; unsubs: number }>();
+
+    incumbent.room.on('participantConnected', p => {
+      const record = { subs: 0, unsubs: 0 };
+      perParticipant.set(p.sid, record);
+      p.on('trackSubscribed', () => record.subs++);
+      p.on('trackUnsubscribed', () => record.unsubs++);
+    });
+
+    try {
+      const peers = await Promise.all(
+        Array.from({ length: peerCount }, (_, i) =>
+          connectToRoom(`peer-${i}`, roomName, {
+            videoTracks: [createLocalVideoTrack(`video-${i}`)],
+            audioTracks: [createLocalAudioTrack(`audio-${i}`)],
+          }),
+        ),
+      );
+      await sleep(TIMEOUT.negotiate);
+
+      expect(perParticipant.size).toBe(peerCount);
+      for (const record of perParticipant.values()) {
+        expect(record.subs).toBe(2);
+      }
+
+      await Promise.all(peers.map(peer => peer.cleanup()));
+      await sleep(TIMEOUT.negotiate);
+
+      for (const record of perParticipant.values()) {
+        expect(record.unsubs).toBe(2);
+      }
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
+
+  it('reports the publication as subscribed with its track, and unsubscribed without one', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+
+    try {
+      const subscribed = waitForEvent<unknown>(
+        incumbent.room,
+        'trackSubscribed',
+        TIMEOUT.subscribe,
+      );
+      const subscribeArgs: unknown[] = [];
+      incumbent.room.once('trackSubscribed', (...args: unknown[]) => subscribeArgs.push(...args));
+
+      const peer = await connectToRoom('bob', roomName, {
+        videoTracks: [createLocalVideoTrack('video')],
+      });
+      await subscribed;
+
+      const [, subscribedPub] = subscribeArgs as [RemoteTrack, RemoteTrackPublication];
+      expect(subscribedPub.isSubscribed).toBe(true);
+      expect(subscribedPub.track).toBeDefined();
+
+      const unsubscribed = waitForEvent<unknown>(
+        incumbent.room,
+        'trackUnsubscribed',
+        TIMEOUT.subscribe,
+      );
+      const unsubscribeArgs: unknown[] = [];
+      incumbent.room.once('trackUnsubscribed', (...args: unknown[]) =>
+        unsubscribeArgs.push(...args),
+      );
+      await peer.cleanup();
+      await unsubscribed;
+
+      const [lostTrack, unsubscribedPub] = unsubscribeArgs as [RemoteTrack, RemoteTrackPublication];
+      // The track reaches the listener as the event's own first argument. The
+      // publication reports isSubscribed false, so it must not also carry one.
+      expect(lostTrack.kind).toBe('video');
+      expect(unsubscribedPub.isSubscribed).toBe(false);
+      expect(unsubscribedPub.track).toBeUndefined();
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
+
+  // The native layer sequences participantDisconnected behind a participant's
+  // own events by putting work on that participant's queue. Nothing about that
+  // mechanism may show up as an event an application can see.
+  it('emits no internal events while a participant joins and leaves', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const emitted: string[] = [];
+    const roomEmit = incumbent.room.emit.bind(incumbent.room);
+    incumbent.room.emit = ((event: string, ...args: unknown[]) => {
+      emitted.push(event);
+      return roomEmit(event, ...args);
+    }) as typeof incumbent.room.emit;
+
+    try {
+      const joined = waitForEvent<RemoteParticipant>(
+        incumbent.room,
+        'participantConnected',
+        TIMEOUT.subscribe,
+      );
+      const peer = await connectToRoom('bob', roomName, {
+        videoTracks: [createLocalVideoTrack('video')],
+      });
+      const bob = await joined;
+
+      const participantEmit = bob.emit.bind(bob);
+      bob.emit = ((event: string, ...args: unknown[]) => {
+        emitted.push(event);
+        return participantEmit(event, ...args);
+      }) as typeof bob.emit;
+
+      await waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 1, TIMEOUT.subscribe);
+      const left = waitForEvent(incumbent.room, 'participantDisconnected', TIMEOUT.subscribe);
+      await peer.cleanup();
+      await left;
+
+      expect(emitted).toContain('participantDisconnected');
+      expect(emitted.filter(event => event.startsWith('__'))).toEqual([]);
+    } finally {
+      await incumbent.cleanup();
+    }
+  });
+
+  // participantDisconnected must report the same RemoteParticipant object the
+  // application already has, so a listener registered on it still fires and
+  // the SDK disposes the instance the application is holding. A
+  // room.participants read in the disconnect window used to drop the cached
+  // instance, and a second one was built for the event.
+  it('reports the same RemoteParticipant instance on disconnect as on connect', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const poll = setInterval(() => void [...incumbent.room.participants.values()], 5);
+
+    try {
+      const joined = waitForEvent<RemoteParticipant>(
+        incumbent.room,
+        'participantConnected',
+        TIMEOUT.subscribe,
+      );
+      const peer = await connectToRoom('bob', roomName, {
+        videoTracks: [createLocalVideoTrack('video')],
+      });
+      const bob = await joined;
+      await waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 1, TIMEOUT.subscribe);
+
+      const left = waitForEvent<RemoteParticipant>(
+        incumbent.room,
+        'participantDisconnected',
+        TIMEOUT.subscribe,
+      );
+      await peer.cleanup();
+      const departed = await left;
+
+      expect(departed).toBe(bob);
+    } finally {
+      clearInterval(poll);
+      await incumbent.cleanup();
+    }
+  });
+
+  // A participant is removed from the Room before the disconnect event
+  // reaches JS. Reading room.participants in that window drops the last
+  // reference to the wrapper carrying the event, so the read must not be able
+  // to take the event with it.
+  it('still emits participantDisconnected while room.participants is polled', async () => {
+    const roomName = uniqueRoom();
+    const incumbent = await connectToRoom('alice', roomName);
+    const order: string[] = [];
+    let poll: NodeJS.Timeout | undefined;
+
+    try {
+      // Counted on the Room, and attached before the peer connects: waiting for
+      // the participant first and only then listening would race the
+      // subscriptions already queued for it. This also keeps no reference to
+      // the participant, so nothing here holds the wrapper, or the queue it
+      // owns, alive through the disconnect.
+      const subscribed = waitForEvents<RemoteTrack>(
+        incumbent.room,
+        'trackSubscribed',
+        2,
+        TIMEOUT.subscribe,
+      );
+      const peer = await connectToRoom('bob', roomName, {
+        videoTracks: [createLocalVideoTrack('video')],
+        audioTracks: [createLocalAudioTrack('audio')],
+      });
+      await subscribed;
+
+      incumbent.room.on('trackUnsubscribed', () => order.push('trackUnsubscribed'));
+      const left = waitForEvent(incumbent.room, 'participantDisconnected', TIMEOUT.subscribe);
+      incumbent.room.once('participantDisconnected', () => order.push('participantDisconnected'));
+
+      // Poll only across the teardown. The read prunes both the JS and native
+      // caches, and a collection has to follow for the queued event to be
+      // lost, so ask for one where the runtime allows it (node --expose-gc).
+      poll = setInterval(() => {
+        void [...incumbent.room.participants.values()];
+        (globalThis as { gc?: () => void }).gc?.();
+      }, 5);
+
+      await peer.cleanup();
+      await left;
+
+      expect(order).toEqual(['trackUnsubscribed', 'trackUnsubscribed', 'participantDisconnected']);
+      expect(incumbent.room.participants.size).toBe(0);
+    } finally {
+      clearInterval(poll);
+      await incumbent.cleanup();
+    }
+  });
+
+  // Two Rooms in one process subscribed to the same publication hold separate
+  // native tracks that report the same Track SID. Each needs its own message
+  // delivery; neither may take over or cut off the other.
+  it('delivers data track messages to two Rooms subscribed to the same publication', async () => {
+    const roomName = uniqueRoom();
+    const dataTrack = createLocalDataTrack('chat');
+    // Subscribers first, so each sees the publisher connect.
+    const subscribers = await Promise.all([
+      connectToRoom('bob', roomName),
+      connectToRoom('carol', roomName),
+    ]);
+    // Each subscriber also sees the other one connect, so wait for the
+    // publisher specifically.
+    const joined = subscribers.map(
+      subscriber =>
+        new Promise<RemoteParticipant>((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('Timeout waiting for the publisher to connect')),
+            TIMEOUT.subscribe,
+          );
+          subscriber.room.on('participantConnected', (participant: RemoteParticipant) => {
+            if (participant.identity !== 'alice') return;
+            clearTimeout(timer);
+            resolve(participant);
+          });
+        }),
+    );
+    const publisher = await connectToRoom('alice', roomName, { dataTracks: [dataTrack] });
+
+    try {
+      const tracks = await Promise.all(
+        joined.map(async participant => {
+          const alice = await participant;
+          return waitForEvent<RemoteDataTrack>(alice, 'trackSubscribed', TIMEOUT.subscribe);
+        }),
+      );
+      await sleep(TIMEOUT.negotiate);
+
+      const received = tracks.map(track => {
+        const messages: unknown[] = [];
+        track.onMessage(data => messages.push(data));
+        return messages;
+      });
+
+      dataTrack.send('to both rooms');
+      await sleep(TIMEOUT.negotiate);
+
+      for (const messages of received) {
+        expect(messages).toEqual(['to both rooms']);
+      }
+
+      // Tearing one Room down must not take the other's delivery with it.
+      // Sharing a single observer between the two native tracks looks correct
+      // until this point, because both wraps then receive the one Room's
+      // messages.
+      await subscribers[0].cleanup();
+      tracks[0].removeMessageCallback();
+      dataTrack.send('to the remaining room');
+      await sleep(TIMEOUT.negotiate);
+
+      expect(received[1]).toEqual(['to both rooms', 'to the remaining room']);
+      tracks[1].removeMessageCallback();
+    } finally {
+      await Promise.all([publisher.cleanup(), ...subscribers.map(s => s.cleanup())]);
+    }
+  });
+
+  // The documented contract for trackUnsubscribed is that the track's message
+  // callback does not fire again. Messages travel on the track's own queue and
+  // the unsubscribe on the participant's, so one already in flight has to be
+  // dropped rather than delivered late.
+  it('delivers no data track messages after trackUnsubscribed', async () => {
+    const roomName = uniqueRoom();
+    const dataTrack = createLocalDataTrack('chat');
+    // Subscriber first, so it sees the publisher connect.
+    const subscriber = await connectToRoom('bob', roomName);
+    const joined = waitForEvent<RemoteParticipant>(
+      subscriber.room,
+      'participantConnected',
+      TIMEOUT.subscribe,
+    );
+    const publisher = await connectToRoom('alice', roomName, { dataTracks: [dataTrack] });
+
+    try {
+      const alice = await joined;
+      const track = await waitForEvent<RemoteDataTrack>(
+        alice,
+        'trackSubscribed',
+        TIMEOUT.subscribe,
+      );
+      await sleep(TIMEOUT.negotiate);
+
+      let unsubscribed = false;
+      const afterUnsubscribe: unknown[] = [];
+      track.onMessage(data => {
+        if (unsubscribed) afterUnsubscribe.push(data);
+      });
+      alice.once('trackUnsubscribed', () => {
+        unsubscribed = true;
+      });
+
+      // Keep sending right through the unpublish so a message is in flight
+      // when the unsubscribe lands.
+      const sender = setInterval(() => {
+        try {
+          dataTrack.send('mid-teardown');
+        } catch {
+          // The track stops accepting sends once unpublished.
+        }
+      }, 5);
+      const gone = waitForEvent(alice, 'trackUnsubscribed', TIMEOUT.subscribe);
+      publisher.room.localParticipant.unpublishTrack(dataTrack);
+      await gone;
+      clearInterval(sender);
+      await sleep(TIMEOUT.negotiate);
+
+      expect(afterUnsubscribe).toEqual([]);
+      track.removeMessageCallback();
+    } finally {
+      await Promise.all([publisher.cleanup(), subscriber.cleanup()]);
+    }
   });
 });

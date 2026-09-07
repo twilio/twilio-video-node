@@ -67,7 +67,20 @@ public:
     void emitEvent(const std::string& eventName, Napi::Value arg = Napi::Value());
     twilio::video::Room* getRoom() const { return room_.get(); }
 
+    /**
+     * Drops the cached wrap for a participant's SID. Call on the JS thread when
+     * a participant disconnects, so a participant who leaves is not pinned in
+     * memory for the rest of the Room's life. Without this, participantCache_
+     * only prunes a departed participant as a side effect of a later
+     * GetRemoteParticipants call; an application that never reads
+     * room.participants would otherwise keep every departed participant's wrap
+     * (and the native object beneath it) alive until the Room itself is
+     * disposed.
+     */
+    void ForgetParticipantWrap(const std::string& sid);
+
 private:
+
     Napi::FunctionReference eventCallback_;
     static Napi::FunctionReference constructor_;
 
