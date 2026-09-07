@@ -6,7 +6,7 @@
 
 const { createCanvas, ImageData } = require('@napi-rs/canvas');
 
-// The 80 COCO class names, in the order YOLOv8 detection emits them.
+// The 80 COCO class names, in standard COCO order (what the detection model emits).
 const COCO_CLASSES = [
   'person',
   'bicycle',

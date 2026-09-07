@@ -103,9 +103,10 @@ runCvExample({
 
 // --- Attention scoring (head-orientation heuristic) -------------------------
 //
-// All derived from the five face keypoints (nose, eyes, ears) that YOLOv8-pose
-// emits per person. This is head orientation, not gaze — it detects turning
-// away and looking up/down, but not where the eyes point within a facing head.
+// All derived from the five face keypoints (nose, eyes, ears) that the RTMO pose
+// model emits per person. This is head orientation, not gaze — it detects
+// turning away and looking up/down, but not where the eyes point within a facing
+// head.
 
 // A face is considered on screen when the nose, or both eyes, are visible.
 function isFaceVisible(keypoints, minScore = 0.3) {
