@@ -9,6 +9,10 @@
 // Results are communicated back through the published video track only (drawn
 // onto the frame); the examples intentionally use no data track, so they work
 // against any room a developer joins from a browser.
+//
+// CPU load is tunable via two environment variables: CV_MAX_FPS (max inferences
+// per second, default 8, below) and CV_THREADS (ONNX Runtime threads per model,
+// default 2, applied in helpers/onnx-model.js). Lower either to reduce CPU/heat.
 
 const { connect, createLocalVideoTrack } = require('../../dist/index.cjs');
 const { generateToken } = require('./token');
