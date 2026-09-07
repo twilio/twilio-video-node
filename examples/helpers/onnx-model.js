@@ -69,4 +69,11 @@ async function loadModel(key) {
   });
 }
 
-module.exports = { loadModel, MODELS, CACHE_DIR };
+// Run a session on a single input tensor and return its single output tensor,
+// hiding ONNX Runtime's input/output-name bookkeeping.
+async function runModel(session, tensor) {
+  const output = await session.run({ [session.inputNames[0]]: tensor });
+  return output[session.outputNames[0]];
+}
+
+module.exports = { loadModel, runModel, MODELS, CACHE_DIR };
