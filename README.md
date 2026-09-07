@@ -439,6 +439,14 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
 
 ## Examples
 
+The example applications listed below demonstrate various ways to use the SDK for audio or video processing. They load credentials from a `.env` file at the repo root. Copy the template, fill in your credentials, and run:
+
+```bash
+cp .env.example .env
+# edit .env: set TWILIO_ACCOUNT_SID / TWILIO_API_KEY / TWILIO_API_SECRET
+node examples/virtual_camera.js [room-name]
+```
+
 See the [`examples/`](https://github.com/twilio/twilio-video-node/tree/main/examples) directory:
 
 | Example                                                                                                           | Description                                                                                                 |
@@ -458,12 +466,7 @@ dependencies). No cloud service or API key is needed: each analyzes the first
 participant's video and expresses its result on a re-published video track. Run
 them against any room you also join from a browser, publishing your webcam.
 
-They run CPU inference, which is heavier under Rosetta on Apple Silicon. Two
-environment variables tune the load: `CV_MAX_FPS` (max inferences per second,
-default 8) and `CV_THREADS` (ONNX Runtime threads per model, default 2). Lower
-either to reduce CPU and heat, e.g. `CV_MAX_FPS=4 CV_THREADS=1 node examples/cv_face_analysis.js`.
-
-### Downloading the models
+### Downloading the Computer Vision models
 
 The ONNX model files are not shipped with the repo — download the ones you need
 and save them to `examples/.models/`. The examples print these same instructions
@@ -487,17 +490,6 @@ Both models are **Apache-2.0** licensed and downloaded from their projects'
 official channels — [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) by
 Megvii and [RTMO](https://github.com/open-mmlab/mmpose/tree/main/projects/rtmo)
 (OpenMMLab mmpose).
-
-The examples load credentials from a `.env` file at the repo root. Copy the
-template, fill in your credentials, and run:
-
-```bash
-cp .env.example .env
-# edit .env: set TWILIO_ACCOUNT_SID / TWILIO_API_KEY / TWILIO_API_SECRET
-node examples/virtual_camera.js [room-name]
-```
-
-`.env` is gitignored, so your real credentials are never committed.
 
 ## License
 
