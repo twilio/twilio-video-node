@@ -448,7 +448,7 @@ See the [`examples/`](https://github.com/twilio/twilio-video-node/tree/main/exam
 | [`audio_push.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/audio_push.js)                   | Generates a sine wave tone and pushes PCM audio to a room.                                                  |
 | [`data_channel.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/data_channel.js)               | Two participants exchange string and binary messages via data tracks.                                       |
 | [`voice_agent.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/voice_agent.js)                 | Bridges room audio to the OpenAI Realtime API for a spoken voice agent (requires `OPENAI_API_KEY`).         |
-| [`cv_object_detection.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/cv_object_detection.js) | Runs YOLOv8 object detection on a participant's webcam and re-publishes the video with bounding boxes.      |
+| [`cv_object_detection.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/cv_object_detection.js) | Runs YOLOX object detection on a participant's webcam and re-publishes the video with bounding boxes.       |
 | [`cv_face_analysis.js`](https://github.com/twilio/twilio-video-node/blob/main/examples/cv_face_analysis.js)       | Analyzes a participant's face — presence and an attention estimate (head orientation) — drawn on the video. |
 
 The computer-vision examples (`cv_*.js`) run local ONNX models via
@@ -465,24 +465,28 @@ either to reduce CPU and heat, e.g. `CV_MAX_FPS=4 CV_THREADS=1 node examples/cv_
 
 ### Downloading the models
 
-The YOLOv8 ONNX model files are not shipped with the repo — download the ones
-you need and save them to `examples/.models/`. The examples print these same
-instructions if a model is missing.
+The ONNX model files are not shipped with the repo — download the ones you need
+and save them to `examples/.models/`. The examples print these same instructions
+if a model is missing.
 
 ```bash
 mkdir -p examples/.models
 
-# cv_object_detection.js
-curl -L -o examples/.models/yolov8n.onnx \
-  "https://raw.githubusercontent.com/Hyuto/yolov8-onnxruntime-web/fc4a52c466d15ad4519873a0cef22fbc935b93b6/public/model/yolov8n.onnx"
+# cv_object_detection.js — YOLOX-nano (~3.7 MB)
+curl -L -o examples/.models/yolox_nano.onnx \
+  "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx"
 
-# cv_face_analysis.js (uses the pose model)
-curl -L -o examples/.models/yolov8n-pose.onnx \
-  "https://raw.githubusercontent.com/akbartus/Yolov8-Pose-Detection-on-Browser/4e063a36ad14d3a0e1da153a6f547219416fcae9/yolov8_pose_onnx/model/yolov8n-pose.onnx"
+# cv_face_analysis.js — RTMO-t (a zip containing end2end.onnx, ~27 MB extracted)
+curl -L -o examples/.models/rtmo-t.zip \
+  "https://download.openmmlab.com/mmpose/v1/projects/rtmo/onnx_sdk/rtmo-t_8xb32-600e_body7-416x416-f48f75cb_20231219.zip"
+unzip -j examples/.models/rtmo-t.zip '*end2end.onnx' -d examples/.models
+mv examples/.models/end2end.onnx examples/.models/rtmo-t.onnx
 ```
 
-These URLs point to community mirrors of standard Ultralytics YOLOv8 exports;
-substitute your own source if you prefer. Each model is ~12–13 MB.
+Both models are **Apache-2.0** licensed and downloaded from their projects'
+official channels — [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) by
+Megvii and [RTMO](https://github.com/open-mmlab/mmpose/tree/main/projects/rtmo)
+(OpenMMLab mmpose).
 
 The examples load credentials from a `.env` file at the repo root. Copy the
 template, fill in your credentials, and run:

@@ -12,20 +12,21 @@ const ort = require('onnxruntime-node');
 
 const CACHE_DIR = path.join(__dirname, '..', '.models');
 
-// Standard Ultralytics YOLOv8 ONNX exports (640x640 input). `url` is the
-// suggested download source, surfaced in the instructions below; it is not
-// fetched automatically. These are third-party community mirrors — swap in your
-// own source if you prefer.
+// Both models are permissively licensed (Apache-2.0) and hosted on their
+// projects' own official channels. `url` is the suggested download source,
+// surfaced in the instructions below; it is not fetched automatically. RTMO is
+// distributed as a zip, so `zipEntry` names the .onnx to extract from it.
 const MODELS = {
   detection: {
-    name: 'YOLOv8n object detection (COCO)',
-    file: 'yolov8n.onnx',
-    url: 'https://raw.githubusercontent.com/Hyuto/yolov8-onnxruntime-web/fc4a52c466d15ad4519873a0cef22fbc935b93b6/public/model/yolov8n.onnx',
+    name: 'YOLOX-nano object detection, COCO (Apache-2.0)',
+    file: 'yolox_nano.onnx',
+    url: 'https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx',
   },
   pose: {
-    name: 'YOLOv8n pose',
-    file: 'yolov8n-pose.onnx',
-    url: 'https://raw.githubusercontent.com/akbartus/Yolov8-Pose-Detection-on-Browser/4e063a36ad14d3a0e1da153a6f547219416fcae9/yolov8_pose_onnx/model/yolov8n-pose.onnx',
+    name: 'RTMO-t pose, COCO keypoints (Apache-2.0)',
+    file: 'rtmo-t.onnx',
+    url: 'https://download.openmmlab.com/mmpose/v1/projects/rtmo/onnx_sdk/rtmo-t_8xb32-600e_body7-416x416-f48f75cb_20231219.zip',
+    zipEntry: 'end2end.onnx',
   },
 };
 
@@ -35,19 +36,27 @@ const MODELS = {
 const THREADS = Math.max(1, Number(process.env.CV_THREADS) || 2);
 
 function missingModelInstructions(spec, dest) {
-  return [
+  const lines = [
     '',
     `[model] Required model not found: ${spec.name}`,
     `        Expected at: ${dest}`,
     '',
     '        Download it, then save it to that path. For example:',
     `          mkdir -p ${CACHE_DIR}`,
-    `          curl -L -o ${dest} \\`,
-    `            "${spec.url}"`,
-    '',
-    '        See the README\'s "Downloading the models" section for all models.',
-    '',
-  ].join('\n');
+  ];
+  if (spec.zipEntry) {
+    const zip = `${dest}.zip`;
+    lines.push(
+      `          curl -L -o ${zip} \\`,
+      `            "${spec.url}"`,
+      `          unzip -j ${zip} '*${spec.zipEntry}' -d ${CACHE_DIR}`,
+      `          mv ${path.join(CACHE_DIR, spec.zipEntry)} ${dest}`,
+    );
+  } else {
+    lines.push(`          curl -L -o ${dest} \\`, `            "${spec.url}"`);
+  }
+  lines.push('', '        See the README\'s "Downloading the models" section for all models.', '');
+  return lines.join('\n');
 }
 
 // Resolve a model to an ort.InferenceSession. Exits with instructions if the
@@ -76,4 +85,10 @@ async function runModel(session, tensor) {
   return output[session.outputNames[0]];
 }
 
-module.exports = { loadModel, runModel };
+// Run a session and return all output tensors keyed by name — for models with
+// more than one output (e.g. RTMO's `dets` + `keypoints`).
+async function runModelOutputs(session, tensor) {
+  return session.run({ [session.inputNames[0]]: tensor });
+}
+
+module.exports = { loadModel, runModel, runModelOutputs };

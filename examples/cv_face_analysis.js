@@ -5,10 +5,10 @@
  * video (no data track):
  *   - whether a face is on screen,
  *   - an attention estimate ("Attentive" vs "Looking away"): a head-orientation
- *     heuristic from YOLOv8-pose face keypoints — turning away (yaw), head tilt
- *     (roll), or looking up/down (pitch) all read as looking away. Not true gaze
- *     tracking. The keypoints it uses (nose, eyes, ears) are drawn on the frame
- *     so the scoring is visible.
+ *     heuristic from the RTMO pose model's face keypoints — turning away (yaw),
+ *     head tilt (roll), or looking up/down (pitch) all read as looking away. Not
+ *     true gaze tracking. The keypoints it uses (nose, eyes, ears) are drawn on
+ *     the frame so the scoring is visible.
  *
  * It runs a single ONNX model (pose). Download it to examples/.models/ before
  * running (the program prints instructions if it is missing; see the README).
@@ -21,8 +21,8 @@
  */
 
 const { runCvExample } = require('./helpers/cv-runner');
-const { loadModel, runModel } = require('./helpers/onnx-model');
-const { letterbox, decodePose, nms } = require('./helpers/yolo');
+const { loadModel, runModelOutputs } = require('./helpers/onnx-model');
+const { letterbox, decodeRtmo } = require('./helpers/yolo');
 const { rgbaToI420 } = require('./helpers/yuv');
 const {
   desaturateRgba,
@@ -55,10 +55,11 @@ runCvExample({
     let lastLogged = 0;
 
     return async function process(rgba, width, height) {
-      // Pose runs on the color frame.
+      // Pose runs on the color frame. RTMO outputs already-decoded, NMS'd
+      // person boxes (`dets`) and keypoints, so no extra suppression is needed.
       const { tensor, scale, padX, padY } = letterbox(rgba, width, height);
-      const output = await runModel(poseModel, tensor);
-      const persons = nms(decodePose(output, { scale, padX, padY, confThreshold: POSE_CONF }));
+      const { dets, keypoints } = await runModelOutputs(poseModel, tensor);
+      const persons = decodeRtmo(dets, keypoints, { scale, padX, padY, scoreThreshold: POSE_CONF });
 
       // Grayscale for display, then draw the analysis on top so it stands out.
       desaturateRgba(rgba);
