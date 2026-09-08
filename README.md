@@ -447,6 +447,8 @@ cp .env.example .env
 node examples/virtual_camera.js [room-name]
 ```
 
+`.env` is gitignored, so your real credentials are never committed.
+
 See the [`examples/`](https://github.com/twilio/twilio-video-node/tree/main/examples) directory:
 
 | Example                                                                                                           | Description                                                                                                 |
