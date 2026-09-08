@@ -52,7 +52,7 @@ async function runCvExample(options) {
   let busy = false;
   let lastRun = 0;
   let activeTrack = null;
-  const handledTrackSids = new Set();
+  let boundTrackSid = null;
 
   function onFrame(frame) {
     frameCount++;
@@ -97,8 +97,10 @@ async function runCvExample(options) {
 
   function handleTrack(track, participant) {
     if (track.kind !== 'video') return; // only analyze video, not audio/data
-    if (handledTrackSids.has(track.sid)) return;
-    handledTrackSids.add(track.sid);
+    // Bind to the first participant's video and ignore any others, so the shared
+    // pacing state (onFrame, busy, activeTrack, ...) always describes one source.
+    if (boundTrackSid !== null) return;
+    boundTrackSid = track.sid;
     activeTrack = track;
     console.log(`[cv] Analyzing video from ${participant.identity}`);
     registerFrameSink(track);
