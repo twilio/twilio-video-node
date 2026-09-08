@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const ort = require('onnxruntime-node');
 
 const CACHE_DIR = path.join(__dirname, '..', '.models');
@@ -16,17 +17,21 @@ const CACHE_DIR = path.join(__dirname, '..', '.models');
 // projects' own official channels. `url` is the suggested download source,
 // surfaced in the instructions below; it is not fetched automatically. RTMO is
 // distributed as a zip, so `zipEntry` names the .onnx to extract from it.
+// `sha256` is verified before the file is handed to ONNX Runtime, so a corrupt
+// or substituted binary is caught rather than parsed.
 const MODELS = {
   detection: {
     name: 'YOLOX-nano object detection, COCO (Apache-2.0)',
     file: 'yolox_nano.onnx',
     url: 'https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx',
+    sha256: 'c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d',
   },
   pose: {
     name: 'RTMO-t pose, COCO keypoints (Apache-2.0)',
     file: 'rtmo-t.onnx',
     url: 'https://download.openmmlab.com/mmpose/v1/projects/rtmo/onnx_sdk/rtmo-t_8xb32-600e_body7-416x416-f48f75cb_20231219.zip',
     zipEntry: 'end2end.onnx',
+    sha256: '20aad6e2e42359cac1c5b4a0b2da00e29bfe91a72a782fdcf287d273a04c1b24',
   },
 };
 
@@ -55,12 +60,18 @@ function missingModelInstructions(spec, dest) {
   } else {
     lines.push(`          curl -L -o ${dest} \\`, `            "${spec.url}"`);
   }
-  lines.push('', '        See the README\'s "Downloading the models" section for all models.', '');
+  lines.push(
+    '',
+    `        Then verify it: echo "${spec.sha256}  ${dest}" | shasum -a 256 -c`,
+    '        See the README\'s "Downloading the models" section for all models.',
+    '',
+  );
   return lines.join('\n');
 }
 
 // Resolve a model to an ort.InferenceSession. Exits with instructions if the
-// file has not been downloaded yet.
+// file is missing, or with a checksum error if it does not match the pinned
+// SHA-256 (so a corrupt or substituted binary is never parsed).
 async function loadModel(key) {
   const spec = MODELS[key];
   if (!spec) throw new Error(`Unknown model '${key}'`);
@@ -68,6 +79,17 @@ async function loadModel(key) {
   const dest = path.join(CACHE_DIR, spec.file);
   if (!fs.existsSync(dest)) {
     console.error(missingModelInstructions(spec, dest));
+    process.exit(1);
+  }
+
+  const actual = crypto.createHash('sha256').update(fs.readFileSync(dest)).digest('hex');
+  if (actual !== spec.sha256) {
+    console.error(
+      `\n[model] Checksum mismatch for ${spec.file}\n` +
+        `        expected ${spec.sha256}\n` +
+        `        actual   ${actual}\n` +
+        '        The file may be corrupt or tampered with — re-download it.\n',
+    );
     process.exit(1);
   }
 
