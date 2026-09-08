@@ -484,12 +484,17 @@ curl -L -o examples/.models/rtmo-t.zip \
   "https://download.openmmlab.com/mmpose/v1/projects/rtmo/onnx_sdk/rtmo-t_8xb32-600e_body7-416x416-f48f75cb_20231219.zip"
 unzip -j examples/.models/rtmo-t.zip '*end2end.onnx' -d examples/.models
 mv examples/.models/end2end.onnx examples/.models/rtmo-t.onnx
+
+# verify the downloads (the examples also check this on startup)
+echo "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d  examples/.models/yolox_nano.onnx" | shasum -a 256 -c
+echo "20aad6e2e42359cac1c5b4a0b2da00e29bfe91a72a782fdcf287d273a04c1b24  examples/.models/rtmo-t.onnx"     | shasum -a 256 -c
 ```
 
 Both models are **Apache-2.0** licensed and downloaded from their projects'
 official channels — [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) by
 Megvii and [RTMO](https://github.com/open-mmlab/mmpose/tree/main/projects/rtmo)
-(OpenMMLab mmpose).
+(OpenMMLab mmpose). Each example verifies its model's SHA-256 on startup and
+refuses to run a file that doesn't match.
 
 ## License
 
