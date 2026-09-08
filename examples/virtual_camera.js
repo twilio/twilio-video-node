@@ -33,6 +33,7 @@ async function main() {
   room.on('disconnected', error => {
     publisher.stop();
     console.log('Disconnected', error ? error.message : '');
+    room.dispose();
     process.exit(0);
   });
 

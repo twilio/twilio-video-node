@@ -82,11 +82,29 @@ async function main() {
   // room.participants and check isSubscribed on the publications found there.
   room.participants.forEach(participantConnected);
   room.on('participantConnected', participantConnected);
+
+  room.on('disconnected', () => {
+    room.dispose();
+  });
 }
 
 main().catch(err => {
   console.error('Error:', err);
   process.exit(1);
+});
+```
+
+## Releasing a Room
+
+Call `room.dispose()` when you are done with a Room. Until you do, the process
+does not exit on its own. `disconnect()` leaves the room but does not release
+the native resources behind it.
+
+The `disconnected` event is the clearest place to dispose:
+
+```js
+room.on('disconnected', () => {
+  room.dispose();
 });
 ```
 

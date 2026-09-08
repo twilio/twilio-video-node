@@ -69,6 +69,7 @@ async function main() {
 
   room.on('disconnected', error => {
     console.log('Disconnected', error ? error.message : '');
+    room.dispose();
     process.exit(error ? 1 : 0);
   });
 

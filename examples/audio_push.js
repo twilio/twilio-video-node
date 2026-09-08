@@ -46,6 +46,7 @@ async function main() {
   room.on('disconnected', error => {
     pusher.stop();
     console.log('Disconnected', error ? error.message : '');
+    room.dispose();
     process.exit(0);
   });
 
