@@ -4,13 +4,14 @@ import type {
   RemoteTrackPublishEvent,
   RemoteTrackStateEvent,
   RemoteTrackSubscriptionFailedEvent,
+  RemoteTrackPublication as RawRemoteTrackPublication,
   Participant,
   Track,
 } from './types.js';
 import { TwilioError, liftTwilioError } from './errors.js';
 import { TypedEventEmitter } from './typed_emitter.js';
 import type { RemoteVideoTrack, RemoteAudioTrack, RemoteDataTrack } from './remote_track.js';
-import { releaseRemoteTrack, wrapRemoteTrack } from './track_registry.js';
+import type { TrackRegistry } from './track_registry.js';
 import type {
   NativeRemoteAudioTrack,
   NativeRemoteDataTrack,
@@ -30,12 +31,22 @@ type NativeAnyRemoteTrack = NativeRemoteVideoTrack | NativeRemoteAudioTrack | Na
  * publication record. These are the ones that must be resolved through the
  * track registry.
  */
-const TRACK_OBJECT_EVENTS = new Set([
-  'trackSubscribed',
-  'trackUnsubscribed',
-  'videoTrackSwitchedOff',
-  'videoTrackSwitchedOn',
-]);
+const TRACK_OBJECT_EVENTS = new Set(['videoTrackSwitchedOff', 'videoTrackSwitchedOn']);
+
+/** Wraps a raw publication from the native layer in the class matching its kind. */
+function remoteTrackPublicationFor(
+  raw: RawRemoteTrackPublication,
+  registry: TrackRegistry,
+): RemoteTrackPublication {
+  switch (raw.kind) {
+    case 'video':
+      return new RemoteVideoTrackPublication(raw, registry);
+    case 'audio':
+      return new RemoteAudioTrackPublication(raw, registry);
+    default:
+      return new RemoteDataTrackPublication(raw, registry);
+  }
+}
 
 /**
  * Listener signatures for every event a {@link RemoteParticipant} can emit.
@@ -56,15 +67,23 @@ export type RemoteParticipantEvents = {
    * `isSubscribed` set to `true`.
    *
    * @param track - The subscribed track.
+   * @param publication - The publication the track was subscribed from.
    */
-  trackSubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  trackSubscribed: (
+    track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    publication: RemoteTrackPublication,
+  ) => void;
   /**
    * One of this participant's tracks was unsubscribed from and stops delivering
    * media. Its frame and message callbacks will not fire again.
    *
    * @param track - The unsubscribed track.
+   * @param publication - The publication the track was unsubscribed from.
    */
-  trackUnsubscribed: (track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack) => void;
+  trackUnsubscribed: (
+    track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    publication: RemoteTrackPublication,
+  ) => void;
   /**
    * This participant published a track. Subscription follows separately, and
    * `trackSubscribed` reports it.
@@ -133,11 +152,14 @@ export type RemoteParticipantEvents = {
 export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents> {
   /** @internal */
   readonly _native: NativeRemoteParticipant;
+  /** @internal The owning Room's track registry. */
+  private readonly _registry: TrackRegistry;
 
   /** @internal */
-  constructor(nativeParticipant: NativeRemoteParticipant) {
+  constructor(nativeParticipant: NativeRemoteParticipant, registry: TrackRegistry) {
     super();
     this._native = nativeParticipant;
+    this._registry = registry;
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'trackSubscriptionFailed') {
@@ -146,17 +168,25 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
           publication?: RemoteTrackSubscriptionFailedEvent;
         };
         this.emit(event, liftTwilioError(error), publication);
-      } else if (TRACK_OBJECT_EVENTS.has(event)) {
-        // The native layer mints a fresh object per event, so resolve through
-        // the registry: listeners must get the same wrapper a frames() consumer
-        // is iterating.
-        const wrapped = wrapRemoteTrack(data as NativeAnyRemoteTrack);
-        this.emit(event, wrapped);
+      } else if (event === 'trackSubscribed' || event === 'trackUnsubscribed') {
+        // The native layer sends { track, publication }, and mints a fresh
+        // track object per event. Resolve the track through the registry so
+        // listeners get the same wrapper a frames() consumer is iterating, and
+        // pass the publication alongside it.
+        const { track, publication } = (data ?? {}) as {
+          track: NativeAnyRemoteTrack;
+          publication: RawRemoteTrackPublication;
+        };
+        const wrapped = registry.wrapRemoteTrack(track);
+        this.emit(event, wrapped, remoteTrackPublicationFor(publication, registry));
         if (event === 'trackUnsubscribed') {
           // Ends any active frames() iterator so a `for await` loop exits
           // rather than hanging on a track that will never produce again.
-          releaseRemoteTrack(wrapped.sid);
+          registry.releaseRemoteTrack(wrapped.sid);
         }
+      } else if (TRACK_OBJECT_EVENTS.has(event)) {
+        // Switched-off/on still carry the track alone.
+        this.emit(event, registry.wrapRemoteTrack(data as NativeAnyRemoteTrack));
       } else {
         this.emit(event, data);
       }
@@ -191,7 +221,7 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
   get videoTracks(): Map<Track.SID, RemoteVideoTrackPublication> {
     const map = new Map<Track.SID, RemoteVideoTrackPublication>();
     for (const raw of this._native.videoTracks) {
-      map.set(raw.trackSid, new RemoteVideoTrackPublication(raw));
+      map.set(raw.trackSid, new RemoteVideoTrackPublication(raw, this._registry));
     }
     return map;
   }
@@ -200,7 +230,7 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
   get audioTracks(): Map<Track.SID, RemoteAudioTrackPublication> {
     const map = new Map<Track.SID, RemoteAudioTrackPublication>();
     for (const raw of this._native.audioTracks) {
-      map.set(raw.trackSid, new RemoteAudioTrackPublication(raw));
+      map.set(raw.trackSid, new RemoteAudioTrackPublication(raw, this._registry));
     }
     return map;
   }
@@ -209,7 +239,7 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
   get dataTracks(): Map<Track.SID, RemoteDataTrackPublication> {
     const map = new Map<Track.SID, RemoteDataTrackPublication>();
     for (const raw of this._native.dataTracks) {
-      map.set(raw.trackSid, new RemoteDataTrackPublication(raw));
+      map.set(raw.trackSid, new RemoteDataTrackPublication(raw, this._registry));
     }
     return map;
   }

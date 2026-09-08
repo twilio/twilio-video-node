@@ -2,8 +2,8 @@ import { LocalParticipant } from './local_participant.js';
 import { RemoteParticipant, type RemoteParticipantEvents } from './remote_participant.js';
 import { TypedEventEmitter } from './typed_emitter.js';
 import type { RemoteVideoTrack, RemoteAudioTrack, RemoteDataTrack } from './remote_track.js';
-import { releaseAllRemoteTracks } from './track_registry.js';
-import type { LocalTrack } from './track_publication.js';
+import { TrackRegistry } from './track_registry.js';
+import type { LocalTrack, RemoteTrackPublication } from './track_publication.js';
 import type {
   NativeRoom,
   NativeRemoteParticipant,
@@ -110,10 +110,12 @@ export type RoomEvents = {
    * `true`.
    *
    * @param track - The subscribed track.
+   * @param publication - The publication the track was subscribed from.
    * @param participant - The participant publishing it.
    */
   trackSubscribed: (
     track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    publication: RemoteTrackPublication,
     participant: RemoteParticipant,
   ) => void;
   /**
@@ -121,10 +123,12 @@ export type RoomEvents = {
    * and message callbacks will not fire again.
    *
    * @param track - The unsubscribed track.
+   * @param publication - The publication the track was unsubscribed from.
    * @param participant - The participant that was publishing it.
    */
   trackUnsubscribed: (
     track: RemoteVideoTrack | RemoteAudioTrack | RemoteDataTrack,
+    publication: RemoteTrackPublication,
     participant: RemoteParticipant,
   ) => void;
   /**
@@ -221,6 +225,13 @@ const BUBBLED_TRACK_EVENTS = [
 export class Room extends TypedEventEmitter<RoomEvents> {
   /** @internal */
   readonly _native: NativeRoom;
+  /**
+   * @internal Remote-track wrappers for this Room only. Scoped here rather
+   * than module-wide so two Rooms in one process subscribed to the same
+   * publication each get their own wrapper, and so one Room's teardown does
+   * not end another Room's receivers.
+   */
+  readonly _tracks = new TrackRegistry();
   private _localParticipant: LocalParticipant | null = null;
   private _remoteParticipantCache = new Map<Participant.SID, RemoteParticipant>();
   private _seededTracks: ReadonlyArray<LocalTrack>;
@@ -253,7 +264,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
       } else if (event === 'disconnected') {
         // End every active frames() iterator before surfacing the event, so a
         // `for await` loop completes rather than hanging on a dead Room.
-        releaseAllRemoteTracks();
+        this._tracks.releaseAllRemoteTracks();
         this.emit(event, data ? liftTwilioError(data) : undefined);
       } else if (ROOM_ERROR_EVENTS.has(event)) {
         this.emit(event, liftTwilioError(data));
@@ -325,13 +336,12 @@ export class Room extends TypedEventEmitter<RoomEvents> {
       map.set(native.sid, this._wrapRemoteParticipant(native));
     }
 
-    // Evict stale cache entries
-    for (const sid of this._remoteParticipantCache.keys()) {
-      if (!map.has(sid)) {
-        this._remoteParticipantCache.delete(sid);
-      }
-    }
-
+    // A participant who left is dropped from the cache by the
+    // participantDisconnected handler, not here. The SDK removes a participant
+    // before it raises that event, so evicting whoever is missing from this
+    // read would drop the cached instance while the event is still in flight,
+    // and the handler would then hand out a second RemoteParticipant for the
+    // same participant and dispose that one instead of the original.
     return map;
   }
 
@@ -384,7 +394,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     this._remoteParticipantCache.clear();
     // Ends every active frames() iterator; without this a `for await` loop on a
     // subscribed track would hang after the Room goes away.
-    releaseAllRemoteTracks();
+    this._tracks.releaseAllRemoteTracks();
     this._native.dispose();
     this.removeAllListeners();
   }
@@ -412,7 +422,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     const sid = native.sid;
     let wrapped = this._remoteParticipantCache.get(sid);
     if (!wrapped) {
-      wrapped = new RemoteParticipant(native);
+      wrapped = new RemoteParticipant(native, this._tracks);
       this._bubbleTrackEvents(wrapped);
       this._remoteParticipantCache.set(sid, wrapped);
     }

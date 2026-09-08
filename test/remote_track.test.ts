@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { RemoteVideoTrack, RemoteAudioTrack, RemoteDataTrack } from '../lib/remote_track.js';
-import {
-  wrapRemoteTrack,
-  peekRemoteTrack,
-  releaseRemoteTrack,
-  releaseAllRemoteTracks,
-} from '../lib/track_registry.js';
+import { TrackRegistry } from '../lib/track_registry.js';
 import type { AudioFrame, VideoFrame } from '../lib/types.js';
+
+let registry: TrackRegistry;
+beforeEach(() => {
+  registry = new TrackRegistry();
+});
 
 /**
  * Stand-in for the native track wrap. Records sink attach/detach so tests can
@@ -102,7 +102,7 @@ function videoFrame(id: number): VideoFrame {
   } as VideoFrame;
 }
 
-afterEach(() => releaseAllRemoteTracks());
+afterEach(() => registry.releaseAllRemoteTracks());
 
 describe('RemoteVideoTrack properties', () => {
   it('reads through to the native track', () => {
@@ -420,67 +420,110 @@ describe('RemoteDataTrack', () => {
 
 describe('track registry', () => {
   it('returns a stable wrapper for the same SID', () => {
-    const a = wrapRemoteTrack(fakeNativeVideo('MT-1') as never);
-    const b = wrapRemoteTrack(fakeNativeVideo('MT-1') as never);
+    const a = registry.wrapRemoteTrack(fakeNativeVideo('MT-1') as never);
+    const b = registry.wrapRemoteTrack(fakeNativeVideo('MT-1') as never);
     // The native layer mints a new object per event; the wrapper must not follow.
     expect(a).toBe(b);
   });
 
   it('builds the right class per kind', () => {
-    expect(wrapRemoteTrack(fakeNativeVideo('MT-v') as never)).toBeInstanceOf(RemoteVideoTrack);
-    expect(wrapRemoteTrack(fakeNativeAudio('MT-a') as never)).toBeInstanceOf(RemoteAudioTrack);
-    expect(wrapRemoteTrack(fakeNativeData('MT-d') as never)).toBeInstanceOf(RemoteDataTrack);
+    expect(registry.wrapRemoteTrack(fakeNativeVideo('MT-v') as never)).toBeInstanceOf(
+      RemoteVideoTrack,
+    );
+    expect(registry.wrapRemoteTrack(fakeNativeAudio('MT-a') as never)).toBeInstanceOf(
+      RemoteAudioTrack,
+    );
+    expect(registry.wrapRemoteTrack(fakeNativeData('MT-d') as never)).toBeInstanceOf(
+      RemoteDataTrack,
+    );
   });
 
   it('replaces a cached wrapper whose kind does not match', () => {
-    const video = wrapRemoteTrack(fakeNativeVideo('MT-same') as never);
-    const audio = wrapRemoteTrack(fakeNativeAudio('MT-same') as never);
+    const video = registry.wrapRemoteTrack(fakeNativeVideo('MT-same') as never);
+    const audio = registry.wrapRemoteTrack(fakeNativeAudio('MT-same') as never);
     expect(video).not.toBe(audio);
     expect(audio).toBeInstanceOf(RemoteAudioTrack);
   });
 
   it('does not cache a track with no SID', () => {
-    const a = wrapRemoteTrack({ ...fakeNativeVideo(), sid: undefined } as never);
-    const b = wrapRemoteTrack({ ...fakeNativeVideo(), sid: undefined } as never);
+    const a = registry.wrapRemoteTrack({ ...fakeNativeVideo(), sid: undefined } as never);
+    const b = registry.wrapRemoteTrack({ ...fakeNativeVideo(), sid: undefined } as never);
     expect(a).not.toBe(b);
   });
 
   it('rejects an unknown track kind', () => {
-    expect(() => wrapRemoteTrack({ sid: 'MT-x', kind: 'haptic' } as never)).toThrow(
+    expect(() => registry.wrapRemoteTrack({ sid: 'MT-x', kind: 'haptic' } as never)).toThrow(
       /Unexpected remote track kind/,
     );
   });
 
   it('peek finds a wrapped track without creating one', () => {
-    expect(peekRemoteTrack('MT-absent')).toBeUndefined();
-    const t = wrapRemoteTrack(fakeNativeVideo('MT-peek') as never);
-    expect(peekRemoteTrack('MT-peek')).toBe(t);
+    expect(registry.peekRemoteTrack('MT-absent')).toBeUndefined();
+    const t = registry.wrapRemoteTrack(fakeNativeVideo('MT-peek') as never);
+    expect(registry.peekRemoteTrack('MT-peek')).toBe(t);
   });
 
   it('release ends the receiver and forgets the track', () => {
     const native = fakeNativeVideo('MT-rel');
-    const track = wrapRemoteTrack(native as never) as RemoteVideoTrack;
+    const track = registry.wrapRemoteTrack(native as never) as RemoteVideoTrack;
     track.frames();
-    releaseRemoteTrack('MT-rel');
+    registry.releaseRemoteTrack('MT-rel');
 
-    expect(peekRemoteTrack('MT-rel')).toBeUndefined();
+    expect(registry.peekRemoteTrack('MT-rel')).toBeUndefined();
     expect(native.detached).toBe(1);
   });
 
   it('release is a no-op for an unknown SID', () => {
-    expect(() => releaseRemoteTrack('MT-nope')).not.toThrow();
+    expect(() => registry.releaseRemoteTrack('MT-nope')).not.toThrow();
   });
 
   it('releaseAll ends every wrapper', () => {
     const v = fakeNativeVideo('MT-all-v');
-    wrapRemoteTrack(v as never);
-    (peekRemoteTrack('MT-all-v') as RemoteVideoTrack).frames();
-    wrapRemoteTrack(fakeNativeAudio('MT-all-a') as never);
+    registry.wrapRemoteTrack(v as never);
+    (registry.peekRemoteTrack('MT-all-v') as RemoteVideoTrack).frames();
+    registry.wrapRemoteTrack(fakeNativeAudio('MT-all-a') as never);
 
-    releaseAllRemoteTracks();
+    registry.releaseAllRemoteTracks();
 
-    expect(peekRemoteTrack('MT-all-v')).toBeUndefined();
-    expect(peekRemoteTrack('MT-all-a')).toBeUndefined();
+    expect(registry.peekRemoteTrack('MT-all-v')).toBeUndefined();
+    expect(registry.peekRemoteTrack('MT-all-a')).toBeUndefined();
     expect(v.detached).toBe(1);
+  });
+});
+
+describe('TrackRegistry isolation between Rooms', () => {
+  // Two Rooms in one process can subscribe to the same publication, which
+  // carries the same Track SID in both. A process-wide registry handed them one
+  // wrapper, so only one received that track's frames or messages, and one
+  // Room's teardown ended the other's receivers.
+  it('gives each registry its own wrapper for the same SID', () => {
+    const a = new TrackRegistry();
+    const b = new TrackRegistry();
+    const wrapA = a.wrapRemoteTrack(fakeNativeVideo('MT-shared') as never);
+    const wrapB = b.wrapRemoteTrack(fakeNativeVideo('MT-shared') as never);
+    expect(wrapA).not.toBe(wrapB);
+    // Identity still holds within one registry.
+    expect(a.wrapRemoteTrack(fakeNativeVideo('MT-shared') as never)).toBe(wrapA);
+  });
+
+  it("releasing one registry leaves the other registry's receivers running", async () => {
+    const a = new TrackRegistry();
+    const b = new TrackRegistry();
+    const wrapA = a.wrapRemoteTrack(fakeNativeVideo('MT-shared') as never);
+    const wrapB = b.wrapRemoteTrack(fakeNativeVideo('MT-shared') as never);
+    const iterA = (wrapA as RemoteVideoTrack).frames();
+    const iterB = (wrapB as RemoteVideoTrack).frames();
+
+    a.releaseAllRemoteTracks();
+
+    // A's iterator completes; B's is untouched and still awaiting a frame.
+    expect(await iterA.next()).toEqual({ value: undefined, done: true });
+    let bSettled = false;
+    void iterB.next().then(() => {
+      bSettled = true;
+    });
+    await new Promise(r => setTimeout(r, 20));
+    expect(bSettled).toBe(false);
+    await iterB.return?.();
   });
 });

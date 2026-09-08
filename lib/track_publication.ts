@@ -13,7 +13,7 @@ import type {
   RemoteDataTrack,
   RemoteTrack,
 } from './remote_track.js';
-import { wrapRemoteTrack } from './track_registry.js';
+import type { TrackRegistry } from './track_registry.js';
 
 /**
  * A snapshot of a published track's metadata. Base class for the local and
@@ -109,12 +109,12 @@ export class RemoteTrackPublication extends TrackPublication {
   readonly track: RemoteTrack | undefined;
 
   /** @internal */
-  constructor(raw: RawRemoteTrackPublication) {
+  constructor(raw: RawRemoteTrackPublication, registry: TrackRegistry) {
     super(raw);
     this.isSubscribed = raw.isSubscribed;
-    // Resolve through the registry so this publication hands back the same
-    // wrapper any frames() consumer is already iterating.
-    this.track = raw.track ? wrapRemoteTrack(raw.track) : undefined;
+    // Resolve through the owning Room's registry so this publication hands back
+    // the same wrapper any frames() consumer in that Room is already iterating.
+    this.track = raw.track ? registry.wrapRemoteTrack(raw.track) : undefined;
   }
 }
 

@@ -4,6 +4,7 @@
 #include <uv.h>
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <queue>
 
@@ -32,6 +33,8 @@ public:
 private:
     static void onAsync(uv_async_t* handle);
     void drain();
+    void requeueFront(std::queue<std::function<void(Napi::Env)>> pending);
+    static void reportFatal(Napi::Env env, Napi::Value error);
 
     uv_async_t* async_;
     mutable std::mutex mutex_;
@@ -40,6 +43,12 @@ private:
     std::atomic<bool> closed_{false};
     std::atomic<uint64_t> dropped_{0};
     size_t maxQueueDepth_;
+
+    // Cleared by the destructor. A queued callback can destroy the object it
+    // was dispatched from, for instance a listener that calls room.dispose(),
+    // so drain() holds a copy of this and stops touching members as soon as it
+    // reads false rather than continuing through a freed `this`.
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 };
 
 }

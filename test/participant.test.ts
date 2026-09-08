@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { LocalParticipant } from '../lib/local_participant.js';
 import { RemoteParticipant } from '../lib/remote_participant.js';
 import {
@@ -11,7 +11,7 @@ import {
   RemoteVideoTrackPublication,
 } from '../lib/track_publication.js';
 import { RemoteVideoTrack } from '../lib/remote_track.js';
-import { releaseAllRemoteTracks } from '../lib/track_registry.js';
+import { TrackRegistry } from '../lib/track_registry.js';
 import { TwilioError } from '../lib/errors.js';
 import type { LocalTrack } from '../lib/track_publication.js';
 import type {
@@ -90,7 +90,11 @@ function fakeNativeRemote() {
   return p as unknown as NativeRemoteParticipant & { emit: NativeCallback; videoTracks: unknown[] };
 }
 
-afterEach(() => releaseAllRemoteTracks());
+let registry: TrackRegistry;
+beforeEach(() => {
+  registry = new TrackRegistry();
+});
+afterEach(() => registry.releaseAllRemoteTracks());
 
 describe('TrackPublication', () => {
   it('snapshots the raw publication fields', () => {
@@ -148,7 +152,10 @@ describe('LocalTrackPublication.unpublish', () => {
 
 describe('RemoteTrackPublication', () => {
   it('reports subscription state and leaves track undefined when unsubscribed', () => {
-    const pub = new RemoteTrackPublication({ ...rawPub('cam', 'video'), isSubscribed: false });
+    const pub = new RemoteTrackPublication(
+      { ...rawPub('cam', 'video'), isSubscribed: false },
+      registry,
+    );
     expect(pub.isSubscribed).toBe(false);
     expect(pub.track).toBeUndefined();
   });
@@ -167,8 +174,8 @@ describe('RemoteTrackPublication', () => {
     };
     const raw = { ...rawPub('cam', 'video', 'MT-shared'), isSubscribed: true, track: nativeTrack };
 
-    const a = new RemoteVideoTrackPublication(raw as never);
-    const b = new RemoteVideoTrackPublication(raw as never);
+    const a = new RemoteVideoTrackPublication(raw as never, registry);
+    const b = new RemoteVideoTrackPublication(raw as never, registry);
     expect(a.track).toBeInstanceOf(RemoteVideoTrack);
     // Two publications built from the same native track must hand back one
     // wrapper, or a frames() loop would belong to a discarded object.
@@ -353,7 +360,7 @@ describe('LocalParticipant', () => {
 
 describe('TypedEventEmitter overrides', () => {
   it('supports once, off, addListener and removeListener', () => {
-    const p = new RemoteParticipant(fakeNativeRemote());
+    const p = new RemoteParticipant(fakeNativeRemote(), registry);
     const calls: number[] = [];
     const listener = () => calls.push(1);
 
@@ -411,7 +418,7 @@ describe('LocalParticipant publication resolution', () => {
 
 describe('RemoteParticipant', () => {
   it('reads through to the native participant', () => {
-    const p = new RemoteParticipant(fakeNativeRemote());
+    const p = new RemoteParticipant(fakeNativeRemote(), registry);
     expect(p.identity).toBe('bob');
     expect(p.sid).toBe('PA-bob');
     expect(p.state).toBe('connected');
@@ -420,7 +427,7 @@ describe('RemoteParticipant', () => {
 
   it('lifts a trackSubscriptionFailed payload', () => {
     const native = fakeNativeRemote();
-    const p = new RemoteParticipant(native);
+    const p = new RemoteParticipant(native, registry);
     const seen: Array<[TwilioError, unknown]> = [];
     p.on('trackSubscriptionFailed', (e, pub) => seen.push([e, pub]));
 
@@ -436,7 +443,7 @@ describe('RemoteParticipant', () => {
 
   it('tolerates a trackSubscriptionFailed payload with nothing in it', () => {
     const native = fakeNativeRemote();
-    const p = new RemoteParticipant(native);
+    const p = new RemoteParticipant(native, registry);
     const seen: unknown[] = [];
     p.on('trackSubscriptionFailed', e => seen.push(e));
     native.emit('trackSubscriptionFailed', undefined);
@@ -445,7 +452,7 @@ describe('RemoteParticipant', () => {
 
   it('passes through publication-shaped events untouched', () => {
     const native = fakeNativeRemote();
-    const p = new RemoteParticipant(native);
+    const p = new RemoteParticipant(native, registry);
     const seen: unknown[] = [];
     p.on('trackPublished', pub => seen.push(pub));
     native.emit('trackPublished', { trackSid: 'MT-y', trackName: 'y' });
@@ -463,7 +470,7 @@ describe('RemoteParticipant', () => {
       ...rawPub('chat', 'data'),
       isSubscribed: false,
     });
-    const p = new RemoteParticipant(native);
+    const p = new RemoteParticipant(native, registry);
 
     expect(p.videoTracks.size).toBe(1);
     expect(p.audioTracks.size).toBe(1);
@@ -473,7 +480,7 @@ describe('RemoteParticipant', () => {
   });
 
   it('dispose clears listeners', () => {
-    const p = new RemoteParticipant(fakeNativeRemote());
+    const p = new RemoteParticipant(fakeNativeRemote(), registry);
     p.on('trackPublished', () => {});
     p.dispose();
     expect(p.listenerCount('trackPublished')).toBe(0);

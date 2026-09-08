@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Room } from '../lib/room.js';
 import { RemoteParticipant } from '../lib/remote_participant.js';
 import { LocalParticipant } from '../lib/local_participant.js';
 import { RemoteVideoTrack } from '../lib/remote_track.js';
-import { releaseAllRemoteTracks, peekRemoteTrack } from '../lib/track_registry.js';
+
 import { TwilioError } from '../lib/errors.js';
 import type {
   NativeLocalParticipant,
@@ -13,6 +13,24 @@ import type {
 } from '../lib/types.js';
 
 type NativeCallback = (event: string, data?: unknown) => void;
+
+/** Native subscribe/unsubscribe payload: the track plus its raw publication. */
+function subscriptionPayload(
+  track: { sid: string; kind: string; name: string },
+  isSubscribed = true,
+) {
+  return {
+    track,
+    publication: {
+      trackSid: track.sid,
+      trackName: track.name,
+      kind: track.kind,
+      isTrackEnabled: true,
+      isSubscribed,
+      ...(isSubscribed ? { track } : {}),
+    },
+  };
+}
 
 function fakeNativeVideoTrack(sid = 'MT-v') {
   const t = {
@@ -107,8 +125,6 @@ function fakeRoom(
     disconnected: number;
   };
 }
-
-afterEach(() => releaseAllRemoteTracks());
 
 describe('Room properties', () => {
   it('reads through to the native room', () => {
@@ -215,7 +231,7 @@ describe('Room lifecycle events', () => {
     const subscribed = new Promise<RemoteVideoTrack>(resolve =>
       room.once('trackSubscribed', t => resolve(t as RemoteVideoTrack)),
     );
-    bob.emit('trackSubscribed', nativeTrack);
+    bob.emit('trackSubscribed', subscriptionPayload(nativeTrack));
     const track = await subscribed;
 
     const iterator = track.frames();
@@ -281,20 +297,24 @@ describe('Room lifecycle events', () => {
 });
 
 describe('Room track event bubbling', () => {
-  it('re-emits a participant track event with the participant appended', async () => {
+  it('re-emits a participant track event with the publication and participant appended', async () => {
     const bob = fakeRemoteParticipant('PA-bob');
     const native = fakeRoom([bob]);
     const room = new Room(native);
     native.emit('connected');
 
-    const seen: Array<[unknown, unknown]> = [];
-    room.on('trackSubscribed', (track, participant) => seen.push([track, participant]));
+    const seen: Array<[unknown, unknown, unknown]> = [];
+    room.on('trackSubscribed', (track, publication, participant) =>
+      seen.push([track, publication, participant]),
+    );
 
-    bob.emit('trackSubscribed', fakeNativeVideoTrack('MT-bubble'));
+    bob.emit('trackSubscribed', subscriptionPayload(fakeNativeVideoTrack('MT-bubble')));
 
+    // Room appends the participant to the participant-level (track, publication).
     expect(seen).toHaveLength(1);
     expect(seen[0][0]).toBeInstanceOf(RemoteVideoTrack);
-    expect((seen[0][1] as RemoteParticipant).sid).toBe('PA-bob');
+    expect((seen[0][1] as { trackSid: string }).trackSid).toBe('MT-bubble');
+    expect((seen[0][2] as RemoteParticipant).sid).toBe('PA-bob');
   });
 
   it('releases the track wrapper on unsubscribe', () => {
@@ -304,11 +324,11 @@ describe('Room track event bubbling', () => {
     native.emit('connected');
     room.on('trackSubscribed', () => {});
 
-    bob.emit('trackSubscribed', fakeNativeVideoTrack('MT-gone'));
-    expect(peekRemoteTrack('MT-gone')).toBeDefined();
+    bob.emit('trackSubscribed', subscriptionPayload(fakeNativeVideoTrack('MT-gone')));
+    expect(room._tracks.peekRemoteTrack('MT-gone')).toBeDefined();
 
-    bob.emit('trackUnsubscribed', fakeNativeVideoTrack('MT-gone'));
-    expect(peekRemoteTrack('MT-gone')).toBeUndefined();
+    bob.emit('trackUnsubscribed', subscriptionPayload(fakeNativeVideoTrack('MT-gone'), false));
+    expect(room._tracks.peekRemoteTrack('MT-gone')).toBeUndefined();
   });
 });
 
@@ -364,8 +384,8 @@ describe('Room teardown', () => {
     room.on('trackSubscribed', () => {});
 
     const nativeTrack = fakeNativeVideoTrack('MT-dispose');
-    bob.emit('trackSubscribed', nativeTrack);
-    const track = peekRemoteTrack('MT-dispose') as RemoteVideoTrack;
+    bob.emit('trackSubscribed', subscriptionPayload(nativeTrack));
+    const track = room._tracks.peekRemoteTrack('MT-dispose') as RemoteVideoTrack;
     const iterator = track.frames();
 
     room.dispose();
