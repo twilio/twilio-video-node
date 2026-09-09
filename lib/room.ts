@@ -1,14 +1,13 @@
 import { LocalParticipant } from './local_participant.js';
 import { RemoteParticipant, type RemoteParticipantEvents } from './remote_participant.js';
 import { TypedEventEmitter } from './typed_emitter.js';
+import type { RemoteVideoTrack, RemoteAudioTrack, RemoteDataTrack } from './remote_track.js';
+import { TrackRegistry } from './track_registry.js';
 import type { LocalTrack, RemoteTrackPublication } from './track_publication.js';
 import type {
   NativeRoom,
   NativeRemoteParticipant,
   RoomState,
-  RemoteVideoTrack,
-  RemoteAudioTrack,
-  RemoteDataTrack,
   RemoteTrackPublishEvent,
   RemoteTrackStateEvent,
   RemoteTrackSubscriptionFailedEvent,
@@ -226,6 +225,13 @@ const BUBBLED_TRACK_EVENTS = [
 export class Room extends TypedEventEmitter<RoomEvents> {
   /** @internal */
   readonly _native: NativeRoom;
+  /**
+   * @internal Remote-track wrappers for this Room only. Scoped here rather
+   * than module-wide so two Rooms in one process subscribed to the same
+   * publication each get their own wrapper, and so one Room's teardown does
+   * not end another Room's receivers.
+   */
+  readonly _tracks = new TrackRegistry();
   private _localParticipant: LocalParticipant | null = null;
   private _remoteParticipantCache = new Map<Participant.SID, RemoteParticipant>();
   private _seededTracks: ReadonlyArray<LocalTrack>;
@@ -255,6 +261,11 @@ export class Room extends TypedEventEmitter<RoomEvents> {
           wrapped.dispose();
           this._remoteParticipantCache.delete(wrapped.sid);
         }
+      } else if (event === 'disconnected') {
+        // End every active frames() iterator before surfacing the event, so a
+        // `for await` loop completes rather than hanging on a dead Room.
+        this._tracks.releaseAllRemoteTracks();
+        this.emit(event, data ? liftTwilioError(data) : undefined);
       } else if (ROOM_ERROR_EVENTS.has(event)) {
         this.emit(event, liftTwilioError(data));
       } else if (ROOM_OPTIONAL_ERROR_EVENTS.has(event)) {
@@ -381,6 +392,9 @@ export class Room extends TypedEventEmitter<RoomEvents> {
       participant.dispose();
     }
     this._remoteParticipantCache.clear();
+    // Ends every active frames() iterator; without this a `for await` loop on a
+    // subscribed track would hang after the Room goes away.
+    this._tracks.releaseAllRemoteTracks();
     this._native.dispose();
     this.removeAllListeners();
   }
@@ -408,7 +422,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     const sid = native.sid;
     let wrapped = this._remoteParticipantCache.get(sid);
     if (!wrapped) {
-      wrapped = new RemoteParticipant(native);
+      wrapped = new RemoteParticipant(native, this._tracks);
       this._bubbleTrackEvents(wrapped);
       this._remoteParticipantCache.set(sid, wrapped);
     }

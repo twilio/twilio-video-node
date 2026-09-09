@@ -15,6 +15,11 @@
 // emits silence to keep the track warm and the pacing clock continuous. clear()
 // drops queued audio instantly, which is what barge-in needs.
 //
+// write() returns false when a frame does not fit in the track's publish queue.
+// At this cadence that should never happen, so rejectedFrames() is a health
+// signal: a non-zero count means the publish queue is too small for the cushion
+// and refill burst configured here, and audio is being lost.
+//
 // Format is fixed to Twilio's LocalAudioTrack input: 48 kHz mono S16LE.
 
 const SAMPLE_RATE = 48000;
@@ -36,6 +41,7 @@ function createPacedWriter(audioTrack) {
   let playStartMs = null;
   let samplesWritten = 0; // total samples emitted (audio + silence) since start
   let audioSamplesPlayed = 0; // real (non-silence) samples since the last reset
+  let rejectedFrames = 0; // frames the track's publish queue would not take
 
   function writeOneFrame() {
     let frame;
@@ -52,7 +58,7 @@ function createPacedWriter(audioTrack) {
     } else {
       frame = silence; // keep the track alive when idle
     }
-    audioTrack.write({ pcm: frame, frames: FRAME_SAMPLES });
+    if (!audioTrack.write({ pcm: frame, frames: FRAME_SAMPLES })) rejectedFrames++;
   }
 
   function pump() {
@@ -112,6 +118,10 @@ function createPacedWriter(audioTrack) {
     /** Reset the played counter (call at the start of each new response). */
     resetPlayed() {
       audioSamplesPlayed = 0;
+    },
+    /** Frames the track refused because its publish queue was full. Should stay 0. */
+    rejectedFrames() {
+      return rejectedFrames;
     },
   };
 }

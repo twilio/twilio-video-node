@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
 import { connectToRoom } from './helpers/connect.js';
+import { generateToken, badTokens } from './helpers/token.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 import type {
   RemoteVideoTrack,
@@ -13,18 +14,22 @@ import type {
   RemoteTrackPublication,
   StatsReport,
   VideoContentPreferences,
-} from '../dist/index.mjs';
+} from '../lib/index.js';
 import {
   connect,
   createLocalVideoTrack,
   createLocalAudioTrack,
   createLocalDataTrack,
   LocalVideoTrackPublication,
-} from '../dist/index.mjs';
+  TwilioError,
+} from '../lib/index.js';
 import type { EventEmitter } from 'node:events';
 
 const TIMEOUT = {
-  subscribe: 15_000,
+  // 15s was tight enough to flake late in a full suite run, where the late-joiner
+  // case timed out at 15s but passes in isolation. vitest's testTimeout is 60s,
+  // so 30s still fails a genuinely broken subscribe rather than hanging.
+  subscribe: 30_000,
   mediaFlow: 10_000,
   // SDP renegotiation after publishTrack + trackSubscribed needs time to complete
   // before the encoder sink attaches and frames actually flow
@@ -33,6 +38,27 @@ const TIMEOUT = {
 
 function uniqueRoom(): string {
   return `test-${crypto.randomUUID()}`;
+}
+
+/**
+ * Resolve once `count` of a participant's publications report `isSubscribed`.
+ * Polls state rather than counting events, because a subscription completing
+ * before a listener attaches is never replayed.
+ */
+async function waitForSubscribed(
+  participant: RemoteParticipant,
+  count: number,
+  timeout: number,
+): Promise<void> {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const subscribed = [...participant.tracks.values()].filter(p => p.isSubscribed).length;
+    if (subscribed >= count) return;
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for ${count} subscribed tracks; got ${subscribed}`);
+    }
+    await sleep(250);
+  }
 }
 
 function waitForEvents<T = unknown>(
@@ -134,6 +160,253 @@ describe('Participant discovery', () => {
   });
 });
 
+describe('Error cases, provoked end to end', () => {
+  // These drive the real failure rather than constructing an error object, so
+  // they prove the whole path: server rejection -> native error payload ->
+  // liftTwilioError -> the typed subclass a consumer catches.
+
+  it.each([
+    ['a malformed token', () => badTokens.malformed(), 'AccessTokenInvalidError', 20101],
+    ['an expired token', () => badTokens.expired(), 'AccessTokenExpiredError', 20104],
+    [
+      'a token with no Video grant',
+      () => badTokens.noVideoGrant(),
+      'AccessTokenGrantsInvalidError',
+      20106,
+    ],
+    [
+      'a tampered signature',
+      () => badTokens.badSignature(),
+      'AccessTokenSignatureInvalidError',
+      20107,
+    ],
+  ])('rejects %s with %s', async (_label, makeToken, expectedName, expectedCode) => {
+    const error = await connect(makeToken(), {
+      name: uniqueRoom(),
+      connectionTimeout: 20_000,
+    }).then(
+      room => {
+        room.disconnect();
+        room.dispose();
+        throw new Error('connect unexpectedly succeeded');
+      },
+      (e: TwilioError) => e,
+    );
+
+    expect(error).toBeInstanceOf(TwilioError);
+    expect(error.name).toBe(expectedName);
+    expect(error.code).toBe(expectedCode);
+  });
+
+  it('disconnects the first participant when a duplicate identity joins', async () => {
+    const roomName = uniqueRoom();
+
+    const first = await connectToRoom('same-identity', roomName);
+    const evicted = waitForEvent<TwilioError | undefined>(
+      first.room,
+      'disconnected',
+      TIMEOUT.subscribe,
+    );
+
+    // The same identity joining evicts the earlier participant.
+    const second = await connectToRoom('same-identity', roomName);
+
+    try {
+      const error = await evicted;
+      expect(error).toBeInstanceOf(TwilioError);
+      expect(error?.code).toBe(53205);
+      expect(error?.name).toBe('ParticipantDuplicateIdentityError');
+    } finally {
+      await second.cleanup();
+      first.room.dispose();
+    }
+  });
+
+  it('rejects an oversize data-track message before it reaches the wire', async () => {
+    const roomName = uniqueRoom();
+    const dataTrack = createLocalDataTrack('oversize-probe');
+    const conn = await connectToRoom('sender', roomName, { dataTracks: [dataTrack] });
+
+    try {
+      // 64 KB is rtc-cpp's kMaxMessageSize. Over it, the message was previously
+      // discarded with no signal at all.
+      expect(() => dataTrack.send(Buffer.alloc(64 * 1024 + 1))).toThrow(RangeError);
+      // At the limit it is accepted, and reports its outcome.
+      const result = await Promise.race([
+        dataTrack.send(Buffer.alloc(64 * 1024)),
+        sleep(TIMEOUT.mediaFlow).then(() => ({ ok: 'timeout' })),
+      ]);
+      expect(result).toHaveProperty('ok');
+    } finally {
+      await conn.cleanup();
+    }
+  });
+
+  it('rejects invalid frame input against a live, publishing track', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('validation-probe');
+    const conn = await connectToRoom('publisher', roomName, { videoTracks: [videoTrack] });
+
+    try {
+      const base = generateI420Frame(320, 240);
+      // Validation applies on a connected, publishing track too - not only
+      // before the encoder sink attaches.
+      expect(() => videoTrack.write({ ...base, width: 321 })).toThrow(/must be even/);
+      expect(() => videoTrack.write({ ...base, y: { ...base.y, data: Buffer.alloc(4) } })).toThrow(
+        /smaller than stride/,
+      );
+      expect(() => videoTrack.write({ ...base, timestamp: -1 })).toThrow(/non-negative/);
+      // A valid frame still goes through afterwards, so validation did not wedge it.
+      expect(typeof videoTrack.write(base)).toBe('boolean');
+    } finally {
+      await conn.cleanup();
+    }
+  });
+});
+
+describe('Multiple participants', () => {
+  it('a third participant sees both existing publishers and their media', async () => {
+    const roomName = uniqueRoom();
+    const aliceVideo = createLocalVideoTrack('alice-cam');
+    const bobVideo = createLocalVideoTrack('bob-cam');
+
+    const { connA, connB } = await connectPair(roomName);
+    connA.room.localParticipant.publishTrack(aliceVideo);
+    connB.room.localParticipant.publishTrack(bobVideo);
+
+    // Carol joins after both are already publishing, which is the case that
+    // previously missed events for participants present before the join.
+    const carol = await connectToRoom('carol', roomName);
+
+    try {
+      const subscribed = new Map<string, RemoteVideoTrack>();
+      const done = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error(`Carol subscribed to ${subscribed.size} of 2 tracks`)),
+          TIMEOUT.subscribe,
+        );
+        carol.room.on('trackSubscribed', track => {
+          if (track.kind !== 'video') return;
+          subscribed.set(track.name, track as RemoteVideoTrack);
+          if (subscribed.size >= 2) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+      });
+
+      await done;
+      expect([...subscribed.keys()].sort()).toEqual(['alice-cam', 'bob-cam']);
+      expect(carol.room.participants.size).toBe(2);
+
+      // Each publisher's frames reach Carol independently.
+      await sleep(TIMEOUT.negotiate);
+      const pushInterval = setInterval(() => {
+        aliceVideo.write(generateI420Frame(640, 480));
+        bobVideo.write(generateI420Frame(640, 480));
+      }, 33);
+
+      try {
+        for (const [name, track] of subscribed) {
+          const iterator = track.frames({ mode: 'latest', maxQueue: 1 });
+          const first = await Promise.race([
+            iterator.next(),
+            sleep(TIMEOUT.mediaFlow).then(() => {
+              throw new Error(`No frames from ${name}`);
+            }),
+          ]);
+          expect((first as IteratorResult<VideoFrame>).done).toBe(false);
+          await iterator.return?.();
+        }
+      } finally {
+        clearInterval(pushInterval);
+      }
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup(), carol.cleanup()]);
+    }
+  });
+});
+
+describe('connectionTimeout', () => {
+  it('rejects with RoomConnectTimeoutError when the deadline passes first', async () => {
+    // A real token against a real room, but a deadline far shorter than any
+    // connect can complete in, so the timeout path is what settles the promise.
+    const token = generateToken('timeout-probe', uniqueRoom());
+    const started = Date.now();
+
+    await expect(connect(token, { connectionTimeout: 1 })).rejects.toThrow(/Timed out after 1 ms/);
+    // It must reject on the deadline, not after the full connect attempt.
+    expect(Date.now() - started).toBeLessThan(3_000);
+  });
+});
+
+describe('Backpressure under real media', () => {
+  it('a slow consumer sheds frames, and the loss is counted and reported', async () => {
+    const roomName = uniqueRoom();
+    const videoTrack = createLocalVideoTrack('backpressure-cam');
+
+    const { connA, connB, remoteA } = await connectPair(roomName);
+
+    const trackPromise = waitForEvent<RemoteVideoTrack>(
+      remoteA,
+      'trackSubscribed',
+      TIMEOUT.subscribe,
+    );
+    connA.room.localParticipant.publishTrack(videoTrack);
+    const remoteTrack = await trackPromise;
+
+    await sleep(TIMEOUT.negotiate);
+
+    const dropEvents: Array<{ count: number; sinceLastUs: number }> = [];
+    remoteTrack.on('frameDropped', (count, sinceLastUs) => dropEvents.push({ count, sinceLastUs }));
+
+    // maxQueue 1 with a consumer far slower than the 30fps publisher: frames
+    // arriving behind the in-flight one must be shed, not buffered.
+    const iterator = remoteTrack.frames({ mode: 'latest', maxQueue: 1 });
+
+    const pushInterval = setInterval(() => {
+      videoTrack.write(generateI420Frame(640, 480));
+    }, 33);
+
+    let consumed = 0;
+    const loop = (async () => {
+      for await (const frame of iterator) {
+        consumed++;
+        frame.close?.();
+        // Deliberately slower than the publisher.
+        await sleep(300);
+        if (consumed >= 4) break;
+      }
+    })();
+
+    try {
+      await Promise.race([
+        loop,
+        sleep(20_000).then(() => {
+          throw new Error(`Consumed only ${consumed} frames`);
+        }),
+      ]);
+
+      const stats = remoteTrack.getStats();
+      expect(stats.framesDelivered).toBeGreaterThanOrEqual(4);
+      // A ~3fps consumer against a 30fps publisher must have shed frames.
+      expect(stats.framesDropped).toBeGreaterThan(0);
+      // The queue never grows past its bound; that is the whole point.
+      expect(stats.queueDepth).toBeLessThanOrEqual(stats.maxQueue);
+      expect(stats.maxQueue).toBe(1);
+
+      // Loss is reported, not merely countable.
+      await sleep(700); // let the coalescing window elapse
+      expect(dropEvents.length).toBeGreaterThan(0);
+      expect(dropEvents[0].count).toBeGreaterThan(0);
+    } finally {
+      clearInterval(pushInterval);
+      await iterator.return?.();
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+});
+
 describe('Video publish + receive', () => {
   it('B receives video frames from A', async () => {
     const roomName = uniqueRoom();
@@ -153,40 +426,31 @@ describe('Video publish + receive', () => {
     await sleep(TIMEOUT.negotiate);
 
     // Register frame callback, then start pushing
+    // Read through the receive API: awaiting each frame is the
+    // backpressure. 'queue' mode so a slow assertion loop does not shed the
+    // frames this test is trying to count.
     const receivedFrames: VideoFrame[] = [];
-    const framesPromise = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error(`Only received ${receivedFrames.length} frames`));
-      }, TIMEOUT.mediaFlow);
-
-      remoteTrack.onFrame(frame => {
-        receivedFrames.push(frame);
-        if (receivedFrames.length >= 3) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      });
-    });
+    const iterator = remoteTrack.frames({ mode: 'queue', maxQueue: 8 });
 
     const pushInterval = setInterval(() => {
-      const { y, u, v } = generateI420Frame(640, 480);
-      videoTrack.write({
-        y,
-        u,
-        v,
-        width: 640,
-        height: 480,
-        yStride: 640,
-        uStride: 320,
-        vStride: 320,
-        timestampNs: process.hrtime.bigint(),
-      });
+      videoTrack.write(generateI420Frame(640, 480));
     }, 33);
 
-    await framesPromise;
-    clearInterval(pushInterval);
+    const framesPromise = (async () => {
+      for await (const frame of iterator) {
+        receivedFrames.push(frame);
+        if (receivedFrames.length >= 3) break;
+      }
+    })();
 
     try {
+      await Promise.race([
+        framesPromise,
+        sleep(TIMEOUT.mediaFlow).then(() => {
+          throw new Error(`Only received ${receivedFrames.length} frames`);
+        }),
+      ]);
+
       expect(receivedFrames.length).toBeGreaterThanOrEqual(3);
       const frame = receivedFrames[0];
       expect(frame.format).toBe('I420');
@@ -195,9 +459,26 @@ describe('Video publish + receive', () => {
       expect(Buffer.isBuffer(frame.v.data)).toBe(true);
       expect(frame.width).toBeGreaterThan(0);
       expect(frame.height).toBeGreaterThan(0);
-      expect(typeof frame.timestampNs).toBe('bigint');
+      // Microseconds as a plain number, per the frame contract.
+      expect(typeof frame.timestamp).toBe('number');
+      expect(Number.isFinite(frame.timestamp)).toBe(true);
+      // SDK-generated per-track counter: must advance, unlike libwebrtc's
+      // VideoFrame::id() which read 0 for every frame.
+      const ids = receivedFrames.map(f => f.frameId);
+      expect(ids[1]).toBeGreaterThan(ids[0]);
+      expect(new Set(ids).size).toBe(ids.length);
+
+      // Receive-side counters are populated.
+      const stats = remoteTrack.getStats();
+      expect(stats.framesDelivered).toBeGreaterThanOrEqual(3);
+      expect(stats.maxQueue).toBe(8);
+
+      // close() releases the planes and makes further reads throw.
+      frame.close?.();
+      expect(() => frame.y).toThrow(/closed/);
     } finally {
-      remoteTrack.removeFrameCallback();
+      clearInterval(pushInterval);
+      await iterator.return?.();
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
@@ -220,37 +501,34 @@ describe('Audio publish + receive', () => {
 
     await sleep(TIMEOUT.negotiate);
 
-    const receivedAudio: AudioFrame[] = [];
-    const audioPromise = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error(`Only received ${receivedAudio.length} audio callbacks`));
-      }, TIMEOUT.mediaFlow);
-
-      remoteTrack.onFrame(frame => {
-        receivedAudio.push(frame);
-        if (receivedAudio.length >= 5) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      });
-    });
-
     const SAMPLE_RATE = 48000;
     const CHANNELS = 1;
     const FRAME_SIZE = 480;
 
+    const receivedAudio: AudioFrame[] = [];
+    const iterator = remoteTrack.frames({ mode: 'queue', maxQueue: 16 });
+
     const pushInterval = setInterval(() => {
       const samples = generateAudioSamples(FRAME_SIZE, SAMPLE_RATE, CHANNELS);
-      audioTrack.write({
-        pcm: samples,
-        frames: FRAME_SIZE,
-      });
+      // Audio publish is bounded now; at real-time cadence it should never reject.
+      audioTrack.write({ pcm: samples, frames: FRAME_SIZE });
     }, 10);
 
-    await audioPromise;
-    clearInterval(pushInterval);
+    const audioPromise = (async () => {
+      for await (const frame of iterator) {
+        receivedAudio.push(frame);
+        if (receivedAudio.length >= 5) break;
+      }
+    })();
 
     try {
+      await Promise.race([
+        audioPromise,
+        sleep(TIMEOUT.mediaFlow).then(() => {
+          throw new Error(`Only received ${receivedAudio.length} audio frames`);
+        }),
+      ]);
+
       expect(receivedAudio.length).toBeGreaterThanOrEqual(5);
       const frame = receivedAudio[0];
       expect(frame.format).toBe('PCM_S16LE');
@@ -258,9 +536,20 @@ describe('Audio publish + receive', () => {
       expect(frame.sampleRate).toBe(48000);
       expect(frame.channels).toBe(1);
       expect(frame.frames).toBeGreaterThan(0);
-      expect(typeof frame.timestampNs).toBe('bigint');
+      expect(typeof frame.timestamp).toBe('number');
+
+      const ids = receivedAudio.map(f => f.frameId);
+      expect(ids[1]).toBeGreaterThan(ids[0]);
+
+      // Publishing at real-time cadence must not trip publish backpressure.
+      const writeStats = audioTrack.getWriteStats();
+      expect(writeStats.framesWritten).toBeGreaterThan(0);
+      expect(writeStats.framesDropped).toBe(0);
+      // Audio does have a real send queue, unlike video.
+      expect(writeStats.maxQueue).toBeGreaterThan(0);
     } finally {
-      remoteTrack.removeFrameCallback();
+      clearInterval(pushInterval);
+      await iterator.return?.();
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
@@ -389,7 +678,7 @@ describe('Data track send/receive', () => {
         reject(new Error(`Only received ${received.length}/2 messages`));
       }, TIMEOUT.mediaFlow);
 
-      remoteDataTrack.onMessage((data: string | Buffer) => {
+      remoteDataTrack.on('message', (data: string | Buffer) => {
         received.push(data);
         if (received.length >= 2) {
           clearTimeout(timeout);
@@ -410,7 +699,7 @@ describe('Data track send/receive', () => {
       expect((received[1] as Buffer)[0]).toBe(0xde);
       expect((received[1] as Buffer)[1]).toBe(0xad);
     } finally {
-      remoteDataTrack.removeMessageCallback();
+      remoteDataTrack.removeAllListeners('message');
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
@@ -438,7 +727,7 @@ describe('Data track send/receive', () => {
         () => reject(new Error('Timeout waiting for message')),
         TIMEOUT.mediaFlow,
       );
-      remoteDataTrack.onMessage(data => {
+      remoteDataTrack.on('message', (data: string | Buffer) => {
         received.push(data);
         clearTimeout(timeout);
         resolve();
@@ -453,7 +742,7 @@ describe('Data track send/receive', () => {
       await messageReceived;
       expect(received).toEqual(['still listening']);
     } finally {
-      remoteDataTrack.removeMessageCallback();
+      remoteDataTrack.removeAllListeners('message');
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
@@ -737,6 +1026,13 @@ describe('publishTracks / unpublishTracks', () => {
         });
       });
 
+      // trackPublished only confirms the local publish. Unpublishing before the
+      // subscriber has subscribed leaves nothing to unsubscribe, so wait for
+      // both subscriptions first. Wait on publication STATE, not on events: a
+      // subscription that completes before the listener attaches is not
+      // replayed, so counting events can never reach two.
+      await waitForSubscribed(remoteA, 2, TIMEOUT.subscribe);
+
       connA.room.localParticipant.unpublishTracks([videoTrack, audioTrack]);
       await unsubPromise;
 
@@ -915,18 +1211,7 @@ describe('Room.getStats()', () => {
 
     // Push media so stats accumulate
     const pushInterval = setInterval(() => {
-      const { y, u, v } = generateI420Frame(640, 480);
-      videoTrack.write({
-        y,
-        u,
-        v,
-        width: 640,
-        height: 480,
-        yStride: 640,
-        uStride: 320,
-        vStride: 320,
-        timestampNs: process.hrtime.bigint(),
-      });
+      videoTrack.write(generateI420Frame(640, 480));
       audioTrack.write({
         pcm: generateAudioSamples(480, 48000, 1),
         frames: 480,
@@ -997,18 +1282,7 @@ describe('Room.getStats()', () => {
     await sleep(TIMEOUT.negotiate);
 
     const pushInterval = setInterval(() => {
-      const { y, u, v } = generateI420Frame(640, 480);
-      videoTrack.write({
-        y,
-        u,
-        v,
-        width: 640,
-        height: 480,
-        yStride: 640,
-        uStride: 320,
-        vStride: 320,
-        timestampNs: process.hrtime.bigint(),
-      });
+      videoTrack.write(generateI420Frame(640, 480));
     }, 33);
 
     await sleep(3_000);
@@ -1323,12 +1597,18 @@ describe('Subscription to tracks published before joining', () => {
     const incumbent = await connectToRoom('alice', roomName);
     try {
       const [bob] = [...incumbent.room.participants.values()];
+      // Subscription has not completed when connect() resolves: the
+      // publications read here still report isSubscribed false. Disconnecting
+      // the peer before then leaves nothing to unsubscribe, so wait for both
+      // tracks to be subscribed before asserting the unsubscribe events.
+      const subscribed = waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 2, TIMEOUT.subscribe);
       const unsubscribed = waitForEvents<RemoteTrack>(
         bob,
         'trackUnsubscribed',
         2,
         TIMEOUT.subscribe,
       );
+      await subscribed;
 
       await peer.cleanup();
       const tracks = await unsubscribed;
@@ -1634,7 +1914,7 @@ describe('Subscription to tracks published before joining', () => {
 
       const received = tracks.map(track => {
         const messages: unknown[] = [];
-        track.onMessage(data => messages.push(data));
+        track.on('message', (data: string | Buffer) => messages.push(data));
         return messages;
       });
 
@@ -1650,12 +1930,12 @@ describe('Subscription to tracks published before joining', () => {
       // until this point, because both wraps then receive the one Room's
       // messages.
       await subscribers[0].cleanup();
-      tracks[0].removeMessageCallback();
+      tracks[0].removeAllListeners('message');
       dataTrack.send('to the remaining room');
       await sleep(TIMEOUT.negotiate);
 
       expect(received[1]).toEqual(['to both rooms', 'to the remaining room']);
-      tracks[1].removeMessageCallback();
+      tracks[1].removeAllListeners('message');
     } finally {
       await Promise.all([publisher.cleanup(), ...subscribers.map(s => s.cleanup())]);
     }
@@ -1688,7 +1968,7 @@ describe('Subscription to tracks published before joining', () => {
 
       let unsubscribed = false;
       const afterUnsubscribe: unknown[] = [];
-      track.onMessage(data => {
+      track.on('message', (data: string | Buffer) => {
         if (unsubscribed) afterUnsubscribe.push(data);
       });
       alice.once('trackUnsubscribed', () => {
@@ -1711,7 +1991,45 @@ describe('Subscription to tracks published before joining', () => {
       await sleep(TIMEOUT.negotiate);
 
       expect(afterUnsubscribe).toEqual([]);
-      track.removeMessageCallback();
+      track.removeAllListeners('message');
+    } finally {
+      await Promise.all([publisher.cleanup(), subscriber.cleanup()]);
+    }
+  });
+
+  // FRAME_CONTRACT.md documents send()'s promise as always settling. The
+  // failure this guards against is a send still in flight when the Room goes
+  // away: nothing else settles it, so the promise would hang forever.
+  it('settles every send() promise when the Room is torn down under it', async () => {
+    const roomName = uniqueRoom();
+    const dataTrack = createLocalDataTrack('chat');
+    const subscriber = await connectToRoom('bob', roomName);
+    const joined = waitForEvent<RemoteParticipant>(
+      subscriber.room,
+      'participantConnected',
+      TIMEOUT.subscribe,
+    );
+    const publisher = await connectToRoom('alice', roomName, { dataTracks: [dataTrack] });
+
+    try {
+      const alice = await joined;
+      await waitForEvent<RemoteDataTrack>(alice, 'trackSubscribed', TIMEOUT.subscribe);
+      await sleep(TIMEOUT.negotiate);
+
+      // Fire a batch and disconnect immediately, without awaiting any of them.
+      const sends = Array.from({ length: 20 }, (_, i) => dataTrack.send(`teardown-${i}`));
+      publisher.room.disconnect();
+
+      const settled = await Promise.race([
+        Promise.all(sends),
+        sleep(TIMEOUT.negotiate * 2).then(() => null),
+      ]);
+
+      expect(settled).not.toBeNull();
+      for (const result of settled as Array<{ ok: boolean; messageId: number }>) {
+        expect(typeof result.ok).toBe('boolean');
+        expect(typeof result.messageId).toBe('number');
+      }
     } finally {
       await Promise.all([publisher.cleanup(), subscriber.cleanup()]);
     }

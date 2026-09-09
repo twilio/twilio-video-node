@@ -7,6 +7,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "declaration": true,
+    // `@internal` members exist for the SDK's own layers; they are not API.
+    // Without this they still land in the shipped .d.ts and autocomplete for
+    // consumers, which contradicts the annotation.
+    "stripInternal": true,
     "outDir": "dist",
     "rootDir": "lib",
     "types": ["node"]

@@ -11,6 +11,7 @@ const {
   getPlatformDir,
   getPrebuiltPath,
   getPrebuiltName,
+  getSupportedPlatforms,
   getGitHubInfo,
   log,
 } = require('./common');
@@ -40,15 +41,18 @@ if (fs.existsSync(releasePath) || fs.existsSync(debugPath)) {
   process.exit(0);
 }
 
+const pkg = require(path.join(ROOT, 'package.json'));
+
 if (process.env.TWILIO_VIDEO_NODE_ALLOW_GH_DOWNLOAD !== '1') {
   exit(
     `No prebuilt binary for ${platformDir} in this package. ` +
-      'Supported platforms: linux-x64, and macOS x64 (Apple Silicon via `arch -x86_64 node`). ' +
-      'Contact the Twilio Video team for access to other platforms.',
+      'This SDK supports linux-x64; the addon can also be built for ' +
+      `${getSupportedPlatforms(pkg).join(', ')} ` +
+      '(there is no arm64 build, so on Apple Silicon run Node under Rosetta with ' +
+      '`arch -x86_64 node`). Contact the Twilio Video team for access to other platforms.',
   );
 }
 
-const pkg = require(path.join(ROOT, 'package.json'));
 const ghInfo = getGitHubInfo(pkg);
 
 if (!ghInfo) {

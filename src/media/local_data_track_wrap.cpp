@@ -14,6 +14,39 @@ Napi::Value RequestedOptionOrNull(Napi::Env env, int value) {
 
 }
 
+// --- LocalDataTrackSendObserver ---
+
+void LocalDataTrackSendObserver::detach() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    owner_ = nullptr;
+}
+
+void LocalDataTrackSendObserver::onSendProcessedWithFailure(
+    twilio::media::LocalDataTrack*,
+    twilio::media::LocalDataTrackMessageId message_id,
+    const twilio::video::Error twilio_error) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!owner_ || !owner_->asyncContext_) return;
+    const std::string message = twilio_error.getMessage();
+    LocalDataTrackWrap* owner = owner_;
+    owner_->asyncContext_->dispatch([owner, message_id, message](Napi::Env) {
+        owner->settleSend(static_cast<uint64_t>(message_id), false, message);
+    });
+}
+
+void LocalDataTrackSendObserver::onSendProcessedSuccessfully(
+    twilio::media::LocalDataTrack*,
+    twilio::media::LocalDataTrackMessageId message_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!owner_ || !owner_->asyncContext_) return;
+    LocalDataTrackWrap* owner = owner_;
+    owner_->asyncContext_->dispatch([owner, message_id](Napi::Env) {
+        owner->settleSend(static_cast<uint64_t>(message_id), true, std::string());
+    });
+}
+
+// --- LocalDataTrackWrap ---
+
 Napi::FunctionReference LocalDataTrackWrap::constructor_;
 
 bool LocalDataTrackWrap::IsInstance(Napi::Object obj) {
@@ -49,6 +82,13 @@ Napi::Object LocalDataTrackWrap::NewInstance(Napi::Env env,
     wrap->max_packet_life_time_ = options.getMaxPacketLifeTime();
     wrap->max_retransmits_ = options.getMaxRetransmits();
 
+    // Observe send completions so send() can report the outcome. Without this
+    // an oversize or undeliverable message is a silent no-op.
+    wrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0 /* unbounded: send
+        results are small and must not be dropped */);
+    wrap->observer_ = std::make_shared<LocalDataTrackSendObserver>(wrap);
+    track->setObserver(wrap->observer_);
+
     return scope.Escape(obj).ToObject();
 }
 
@@ -57,6 +97,52 @@ LocalDataTrackWrap::LocalDataTrackWrap(const Napi::CallbackInfo& info)
 }
 
 LocalDataTrackWrap::~LocalDataTrackWrap() {
+    if (observer_) observer_->detach();
+    // Settle before close(): close() discards whatever the observer already
+    // dispatched, so anything still pending here will never be reported by
+    // rtc-cpp. send() documents a promise that always settles, so every
+    // outstanding one is resolved with ok:false rather than left hanging.
+    settleAllPending("Local data track was destroyed before the send completed");
+    if (asyncContext_) asyncContext_->close();
+}
+
+void LocalDataTrackWrap::settleAllPending(const std::string& error) {
+    if (pendingSends_.empty()) return;
+
+    // Moved out first so the map is already empty while settling: Resolve()
+    // only schedules a microtask, but nothing here should depend on that.
+    std::map<uint64_t, Napi::Promise::Deferred> pending;
+    pending.swap(pendingSends_);
+
+    for (auto& entry : pending) {
+        Napi::Promise::Deferred deferred = entry.second;
+        Napi::Env env = deferred.Env();
+        Napi::HandleScope scope(env);
+        auto result = Napi::Object::New(env);
+        result.Set("ok", Napi::Boolean::New(env, false));
+        result.Set("messageId", Napi::Number::New(env, static_cast<double>(entry.first)));
+        result.Set("error", Napi::String::New(env, error));
+        // Resolve, never reject: same rule as settleSend().
+        deferred.Resolve(result);
+    }
+}
+
+void LocalDataTrackWrap::settleSend(uint64_t id, bool ok, const std::string& error) {
+    auto it = pendingSends_.find(id);
+    if (it == pendingSends_.end()) return;
+
+    Napi::Promise::Deferred deferred = it->second;
+    pendingSends_.erase(it);
+
+    Napi::Env env = deferred.Env();
+    Napi::HandleScope scope(env);
+    auto result = Napi::Object::New(env);
+    result.Set("ok", Napi::Boolean::New(env, ok));
+    result.Set("messageId", Napi::Number::New(env, static_cast<double>(id)));
+    if (!ok) result.Set("error", Napi::String::New(env, error));
+    // Always resolves, never rejects: a fire-and-forget send() must not produce
+    // an unhandled rejection.
+    deferred.Resolve(result);
 }
 
 Napi::Value LocalDataTrackWrap::GetKind(const Napi::CallbackInfo& info) {
@@ -99,18 +185,42 @@ Napi::Value LocalDataTrackWrap::Send(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
+    constexpr size_t kMaxMessageSize = twilio::media::LocalDataTrack::kMaxMessageSize;
+
+    twilio::media::LocalDataTrackMessageId id;
     if (info[0].IsString()) {
         std::string message = info[0].As<Napi::String>().Utf8Value();
-        track_->send(message);
+        // rtc-cpp drops an oversize message and reports it asynchronously;
+        // rejecting at the boundary makes it a programming error the caller
+        // sees immediately, with the actual size in the message.
+        if (message.size() > kMaxMessageSize) {
+            Napi::RangeError::New(env,
+                "Data track message is " + std::to_string(message.size()) +
+                " bytes, which exceeds the " + std::to_string(kMaxMessageSize) +
+                "-byte maximum")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        id = track_->send(message);
     } else if (info[0].IsBuffer()) {
         auto buffer = info[0].As<Napi::Buffer<uint8_t>>();
-        track_->send(buffer.Data(), buffer.Length());
+        if (buffer.Length() > kMaxMessageSize) {
+            Napi::RangeError::New(env,
+                "Data track message is " + std::to_string(buffer.Length()) +
+                " bytes, which exceeds the " + std::to_string(kMaxMessageSize) +
+                "-byte maximum")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        id = track_->send(buffer.Data(), buffer.Length());
     } else {
         Napi::TypeError::New(env, "Argument must be string or Buffer").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    return env.Undefined();
+    auto deferred = Napi::Promise::Deferred::New(env);
+    pendingSends_.emplace(static_cast<uint64_t>(id), deferred);
+    return deferred.Promise();
 }
 
 }
