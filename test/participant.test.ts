@@ -9,6 +9,8 @@ import {
   LocalDataTrackPublication,
   RemoteTrackPublication,
   RemoteVideoTrackPublication,
+  RemoteAudioTrackPublication,
+  RemoteDataTrackPublication,
 } from '../lib/track_publication.js';
 import { RemoteVideoTrack } from '../lib/remote_track.js';
 import { TrackRegistry } from '../lib/track_registry.js';
@@ -301,11 +303,28 @@ describe('LocalParticipant', () => {
   it('handles a publication-failed payload with no track name', () => {
     const native = fakeNativeLocal();
     const p = new LocalParticipant(native);
-    const errors: TwilioError[] = [];
-    p.on('trackPublicationFailed', e => errors.push(e));
+    const seen: Array<[TwilioError, LocalTrack | undefined]> = [];
+    p.on('trackPublicationFailed', (e, t) => seen.push([e, t]));
 
     native.emit('trackPublicationFailed', { code: 53300 });
-    expect(errors).toHaveLength(1);
+    expect(seen).toHaveLength(1);
+    // Nothing to attribute the failure to, so no track is handed back.
+    expect(seen[0][1]).toBeUndefined();
+  });
+
+  it('hands the failed track to trackPublicationFailed listeners', () => {
+    const native = fakeNativeLocal();
+    const p = new LocalParticipant(native);
+    const cam = localTrack('cam');
+    p.publishTrack(cam);
+
+    const seen: Array<[TwilioError, LocalTrack | undefined]> = [];
+    p.on('trackPublicationFailed', (e, t) => seen.push([e, t]));
+    native.emit('trackPublicationFailed', { code: 53300, trackName: 'cam' });
+
+    // Resolved before the name is freed for re-publish; reading it after the
+    // delete would hand the listener undefined.
+    expect(seen[0][1]).toBe(cam);
   });
 
   it('resolves a publication for a track it does not know, with a null track', () => {
@@ -438,6 +457,8 @@ describe('RemoteParticipant', () => {
 
     expect(seen[0][0]).toBeInstanceOf(TwilioError);
     expect(seen[0][0].code).toBe(53404);
+    // A publication, not the record the event used to carry.
+    expect(seen[0][1]).toBeInstanceOf(RemoteVideoTrackPublication);
     expect(seen[0][1]).toMatchObject({ trackSid: 'MT-x' });
   });
 
@@ -450,13 +471,28 @@ describe('RemoteParticipant', () => {
     expect(seen).toHaveLength(1);
   });
 
-  it('passes through publication-shaped events untouched', () => {
+  it('delivers publication instances typed by track kind', () => {
     const native = fakeNativeRemote();
     const p = new RemoteParticipant(native, registry);
-    const seen: unknown[] = [];
-    p.on('trackPublished', pub => seen.push(pub));
-    native.emit('trackPublished', { trackSid: 'MT-y', trackName: 'y' });
-    expect(seen).toEqual([{ trackSid: 'MT-y', trackName: 'y' }]);
+    const seen: RemoteTrackPublication[] = [];
+    for (const event of ['trackPublished', 'trackUnpublished', 'trackEnabled'] as const) {
+      p.on(event, pub => seen.push(pub));
+    }
+
+    native.emit('trackPublished', { ...rawPub('cam', 'video'), isSubscribed: false });
+    native.emit('trackUnpublished', { ...rawPub('chat', 'data'), isSubscribed: false });
+    native.emit('trackEnabled', { ...rawPub('mic', 'audio'), isSubscribed: true });
+
+    expect(seen[0]).toBeInstanceOf(RemoteVideoTrackPublication);
+    expect(seen[1]).toBeInstanceOf(RemoteDataTrackPublication);
+    expect(seen[2]).toBeInstanceOf(RemoteAudioTrackPublication);
+    // Fields the old plain-object payload did not carry.
+    expect(seen[0].trackSid).toBe('MT-cam');
+    expect(seen[0].isTrackEnabled).toBe(true);
+    expect(seen[0].isSubscribed).toBe(false);
+    // Unsubscribed, so there is no track to hand back.
+    expect(seen[0].track).toBeUndefined();
+    expect(seen[2].isSubscribed).toBe(true);
   });
 
   it('builds per-kind publication maps for all three kinds', () => {

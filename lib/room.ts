@@ -8,9 +8,6 @@ import type {
   NativeRoom,
   NativeRemoteParticipant,
   RoomState,
-  RemoteTrackPublishEvent,
-  RemoteTrackStateEvent,
-  RemoteTrackSubscriptionFailedEvent,
   StatsReport,
   Participant,
 } from './types.js';
@@ -30,10 +27,11 @@ export type RoomEvents = {
    * The local participant left the Room, either by calling
    * {@link Room.disconnect} or because the server ended the session.
    *
+   * @param room - The Room that was left.
    * @param error - Why the Room ended, or omitted after a local
    * {@link Room.disconnect}.
    */
-  disconnected: (error?: TwilioError) => void;
+  disconnected: (room: Room, error?: TwilioError) => void;
   /**
    * The Room could not be joined. Terminal: no further events follow.
    *
@@ -140,39 +138,40 @@ export type RoomEvents = {
    */
   trackSubscriptionFailed: (
     error: TwilioError,
-    publication: RemoteTrackSubscriptionFailedEvent,
+    publication: RemoteTrackPublication,
     participant: RemoteParticipant,
   ) => void;
   /**
    * A remote participant published a track. Subscription follows separately,
    * and `trackSubscribed` reports it.
    *
-   * @param publication - Metadata for the newly published track.
+   * @param publication - The new publication. Its `track` is set only once
+   * subscription completes.
    * @param participant - The participant that published it.
    */
-  trackPublished: (publication: RemoteTrackPublishEvent, participant: RemoteParticipant) => void;
+  trackPublished: (publication: RemoteTrackPublication, participant: RemoteParticipant) => void;
   /**
    * A remote participant unpublished a track.
    *
-   * @param publication - Metadata for the unpublished track.
+   * @param publication - The publication that was removed.
    * @param participant - The participant that unpublished it.
    */
-  trackUnpublished: (publication: RemoteTrackPublishEvent, participant: RemoteParticipant) => void;
+  trackUnpublished: (publication: RemoteTrackPublication, participant: RemoteParticipant) => void;
   /**
    * A remote participant unmuted a track they publish.
    *
-   * @param publication - Identifies the track that was enabled.
+   * @param publication - The publication whose track was enabled.
    * @param participant - The participant publishing it.
    */
-  trackEnabled: (publication: RemoteTrackStateEvent, participant: RemoteParticipant) => void;
+  trackEnabled: (publication: RemoteTrackPublication, participant: RemoteParticipant) => void;
   /**
    * A remote participant muted a track they publish. The track stays subscribed
    * but stops delivering media.
    *
-   * @param publication - Identifies the track that was disabled.
+   * @param publication - The publication whose track was disabled.
    * @param participant - The participant publishing it.
    */
-  trackDisabled: (publication: RemoteTrackStateEvent, participant: RemoteParticipant) => void;
+  trackDisabled: (publication: RemoteTrackPublication, participant: RemoteParticipant) => void;
   /**
    * The server stopped delivering a subscribed video track, typically to stay
    * within the Room's bandwidth profile. The track stays subscribed and its
@@ -265,7 +264,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
         // End every active frames() iterator before surfacing the event, so a
         // `for await` loop completes rather than hanging on a dead Room.
         this._tracks.releaseAllRemoteTracks();
-        this.emit(event, data ? liftTwilioError(data) : undefined);
+        this.emit(event, this, data ? liftTwilioError(data) : undefined);
       } else if (ROOM_ERROR_EVENTS.has(event)) {
         this.emit(event, liftTwilioError(data));
       } else if (ROOM_OPTIONAL_ERROR_EVENTS.has(event)) {

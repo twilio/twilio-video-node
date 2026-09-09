@@ -30,7 +30,7 @@ async function main() {
   console.log('Connected! Room:', room.name, 'SID:', room.sid);
   const publisher = startPublishing(videoTrack);
 
-  room.on('disconnected', error => {
+  room.on('disconnected', (_room, error) => {
     publisher.stop();
     console.log('Disconnected', error ? error.message : '');
     process.exit(0);

@@ -181,6 +181,51 @@ publish path.
 - An event listener that throws now surfaces the error instead of being silently ignored. An
   application relying on the previous behavior will start seeing `uncaughtException`.
 
+### Remote track events carry a `RemoteTrackPublication`
+
+These four events passed a plain `{ trackSid, trackName }` record (plus `isSubscribed` on the
+state events). They now pass the same `RemoteTrackPublication` the track collections return,
+matching twilio-video.js and the `trackSubscribed` events. `trackSubscriptionFailed` carries one
+too, in place of its own `{ trackSid, trackName, kind }` record. `RemoteTrackPublishEvent`,
+`RemoteTrackStateEvent` and `RemoteTrackSubscriptionFailedEvent` are no longer exported.
+
+```js
+// Before - a record, with no way to reach the track
+participant.on('trackPublished', pub => console.log(pub.trackSid));
+
+// After - a publication, with kind, enabled state and the track once subscribed
+participant.on('trackPublished', pub => {
+  console.log(pub.trackSid, pub.kind, pub.isTrackEnabled, pub.isSubscribed);
+  if (pub.isSubscribed) pub.track.frames();
+});
+```
+
+### `disconnected` passes the Room first
+
+Listeners receive `(room, error?)` instead of `(error?)`, matching twilio-video.js.
+
+```js
+// Before
+room.on('disconnected', error => { ... });
+
+// After
+room.on('disconnected', (room, error) => { ... });
+```
+
+### `trackPublicationFailed` passes the track that failed
+
+Listeners receive `(error, localTrack?)` instead of `(error)`. `localTrack` is the instance
+passed to `publishTrack()`, or `undefined` when the failure cannot be attributed to a track
+this participant still holds.
+
+```js
+// Before
+localParticipant.on('trackPublicationFailed', error => { ... });
+
+// After
+localParticipant.on('trackPublicationFailed', (error, localTrack) => { ... });
+```
+
 ## Features
 
 - `RemoteVideoTrack.getStats()` / `RemoteAudioTrack.getStats()` return
