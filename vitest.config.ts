@@ -14,7 +14,9 @@ export default defineConfig({
       reporter: ['text', 'lcov'],
       // A deleted or silently-skipped test file shows up here as a coverage
       // drop. Nothing else catches that: vitest exits 0 both when a named test
-      // file is missing and when one is simply removed.
+      // file is missing and when one is simply removed. Enforced by the
+      // build-and-test job in .github/workflows/ci.yml, which runs
+      // `test:coverage` rather than `test:unit`.
       thresholds: {
         statements: 90,
         branches: 90,

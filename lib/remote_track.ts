@@ -145,13 +145,21 @@ abstract class RemoteMediaTrack<
       cb: (frame: F) => void,
       maxQueueDepth?: number,
     ) => void;
-    attach.call(
-      this._native,
-      (frame: F) => {
-        stream.push(attachClose(frame as unknown as object, this.planeKeys) as F);
-      },
-      resolved.maxQueue,
-    );
+    try {
+      attach.call(
+        this._native,
+        (frame: F) => {
+          stream.push(attachClose(frame as unknown as object, this.planeKeys) as F);
+        },
+        resolved.maxQueue,
+      );
+    } catch (cause) {
+      // Without this the track is wedged: this.stream stays set, so every later
+      // frames() reports "a receiver is already active" for a receiver that was
+      // never attached.
+      this.stream = null;
+      throw cause;
+    }
 
     return stream;
   }
@@ -263,18 +271,90 @@ export class RemoteDataTrack extends TypedEventEmitter<RemoteDataTrackEvents> {
   }
 
   /**
-   * @internal Wires the native message callback the first time someone listens,
-   * so an unobserved track does not pay for message delivery.
+   * Wires the native message callback the first time someone listens, so an
+   * unobserved track does not pay for message delivery. Every listener-adding
+   * method routes through here; `on()` alone is not enough, because
+   * `addListener()` and the `prepend*` methods reach `EventEmitter` directly.
+   */
+  private ensureMessageSink(event: string): void {
+    if (event !== 'message' || this.attached) return;
+    this.attached = true;
+    this._native.onMessage((data: string | Buffer) => this.emit('message', data));
+  }
+
+  /**
+   * Add a listener invoked every time `event` is emitted.
+   *
+   * @param event - The event to listen for.
+   * @param listener - Called with the event's arguments.
+   * @returns This track, for chaining.
    */
   override on<K extends keyof RemoteDataTrackEvents & string>(
     event: K,
     listener: RemoteDataTrackEvents[K],
   ): this {
-    if (event === 'message' && !this.attached) {
-      this.attached = true;
-      this._native.onMessage((data: string | Buffer) => this.emit('message', data));
-    }
+    this.ensureMessageSink(event);
     return super.on(event, listener);
+  }
+
+  /**
+   * Add a listener invoked at most once, then removed.
+   *
+   * @param event - The event to listen for.
+   * @param listener - Called with the event's arguments.
+   * @returns This track, for chaining.
+   */
+  override once<K extends keyof RemoteDataTrackEvents & string>(
+    event: K,
+    listener: RemoteDataTrackEvents[K],
+  ): this {
+    this.ensureMessageSink(event);
+    return super.once(event, listener);
+  }
+
+  /**
+   * Alias for {@link RemoteDataTrack.on}.
+   *
+   * @param event - The event to listen for.
+   * @param listener - Called with the event's arguments.
+   * @returns This track, for chaining.
+   */
+  override addListener<K extends keyof RemoteDataTrackEvents & string>(
+    event: K,
+    listener: RemoteDataTrackEvents[K],
+  ): this {
+    this.ensureMessageSink(event);
+    return super.addListener(event, listener);
+  }
+
+  /**
+   * Add a listener at the front of the listener array.
+   *
+   * @param event - The event to listen for.
+   * @param listener - Called with the event's arguments.
+   * @returns This track, for chaining.
+   */
+  override prependListener<K extends keyof RemoteDataTrackEvents & string>(
+    event: K,
+    listener: RemoteDataTrackEvents[K],
+  ): this {
+    this.ensureMessageSink(event);
+    return super.prependListener(event, listener);
+  }
+
+  /**
+   * Add a one-shot listener at the front of the listener array.
+   *
+   * @param event - The event to listen for.
+   * @param listener - Called with the event's arguments.
+   * @returns This track, for chaining.
+   */
+  override prependOnceListener<K extends keyof RemoteDataTrackEvents & string>(
+    event: K,
+    listener: RemoteDataTrackEvents[K],
+  ): this {
+    this.ensureMessageSink(event);
+    return super.prependOnceListener(event, listener);
   }
 
   /** @internal Detaches the native callback on unsubscribe or Room teardown. */

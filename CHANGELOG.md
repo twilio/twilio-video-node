@@ -1,4 +1,5 @@
-This SDK is currently in beta. See the [README](README.md) for details.
+This SDK is currently in beta, and Linux x86-64 is the only supported platform.
+See the [README](README.md) for details.
 
 # 1.0.0-beta.1 (In Progress)
 
@@ -28,11 +29,16 @@ exported.
 
 ### `UnsupportedPlatformError` is now thrown
 
-Importing the SDK on a platform the addon is not built for throws
-`UnsupportedPlatformError` naming the platform, instead of a
-`NativeBindingLoadError` advising a build that cannot succeed. `TwilioErrorClass`,
-the constructor shape shared by every generated error subclass, is now exported
-as a type.
+Importing the SDK on a platform the addon is not built for, with no local build
+present, throws `UnsupportedPlatformError` naming the platform, instead of a
+`NativeBindingLoadError` advising a build that cannot succeed. A local build in
+`build/Release` or `build/Debug` is loaded first, so contributors who compiled
+the addon themselves on an unlisted platform are not blocked; an installed
+package never has one, because `files` excludes `build/`.
+
+`TwilioErrorClass`, the constructor shape shared by every error subclass, is now
+exported as a type, and every exported error class exposes the static `code`
+that shape requires - `NativeBindingLoadError` included.
 
 ### `frames()` replaces `onFrame()`
 
@@ -66,6 +72,9 @@ track.removeMessageCallback();
 // After
 track.on('message', data => handle(data));
 ```
+
+Any `EventEmitter` registration method works: `on`, `once`, `addListener`,
+`prependListener`, `prependOnceListener`.
 
 ### Timestamps are microseconds as `number`, not nanoseconds as `bigint`
 
@@ -119,21 +128,49 @@ track.write({
 `send()` previously returned `void` and silently discarded a message larger than
 `kMaxMessageSize`. It now throws a `RangeError` for an oversize message, and
 returns a promise describing the outcome. The promise **always resolves**, so a
-fire-and-forget `send()` cannot produce an unhandled rejection.
+fire-and-forget `send()` cannot produce an unhandled rejection. A send still in
+flight when the track is destroyed resolves with `ok: false` rather than being
+left pending.
 
 ```js
 const result = await track.send('hello');
 if (!result.ok) console.warn('send failed:', result.error);
 ```
 
-### Audio publish is bounded
+### Audio publish is bounded, and rejects rather than sheds
 
 `LocalAudioTrack.write()` previously buffered up to **45 seconds** of audio and
-always returned `true`. The queue is now bounded (~100 ms by default,
-configurable through `source.maxQueue` in 10 ms chunks) and `write()` returns
-`false` when it had to shed. A producer running at real-time cadence is
-unaffected; one running faster now learns it is outrunning the wire instead of
-silently accumulating latency.
+always returned `true`. The queue is now bounded (~500 ms by default,
+configurable through `source.maxQueue` in 10 ms chunks) and a write is accepted
+only if it fits whole in the remaining space. When it does not fit, nothing is
+buffered and `write()` returns `false`. A producer running at real-time cadence
+is unaffected; one running faster now learns it is outrunning the wire instead
+of silently accumulating latency.
+
+A single `write()` larger than `maxQueue` can never fit and is always rejected,
+so size `maxQueue` to the largest burst you intend to publish. A caller that
+handed `write()` a whole utterance at once previously had the front of it
+discarded silently; it now gets `false` and can resize the queue or split the
+write.
+
+### `source.mode` and `source.drop` are removed from audio track options
+
+`RawAudioSourceOptions` no longer accepts `mode` or `drop`. Both were validated
+and then discarded: the publish queue lives in the process-wide audio device,
+which has one policy and cannot express a per-track one. `source.maxQueue` is
+kept and now documents that it binds that shared device, so the most recent
+value passed to `createLocalAudioTrack` applies to every local audio track in
+the process. `mode`, `maxQueue` and `drop` on the receive side (`frames()`) are
+unchanged and remain per-track.
+
+### `AudioFrameInput.timestamp` is observability-only
+
+Audio publish is FIFO: the audio device emits queued samples on its own 10 ms
+cadence. The `timestamp` on a published audio frame feeds
+`WriteStats.lastTimestamp` and `WriteStats.timestampRegressions` and does not
+change what is sent or when. Video publish still carries the timestamp through
+to the encoded frame. This documents existing behavior; nothing changed in the
+publish path.
 
 - `trackSubscribed` and `trackUnsubscribed` now pass the track's `RemoteTrackPublication`.
   Listeners receive `(track, publication)` on a `RemoteParticipant` and
@@ -157,6 +194,10 @@ silently accumulating latency.
   (`'oldest'` | `'newest'`). Defaults are media-aware: video keeps only the
   newest frame, audio buffers a little to smooth jitter. `maxQueue` is capped so
   a misconfiguration cannot exhaust memory.
+- The published type declarations no longer carry the SDK's `@internal`
+  members. `_native`, `_attachFrameSink`, `_end` and the rest were annotated
+  `@internal` but still landed in `index.d.ts`, so they appeared in consumer
+  autocomplete as though they were API. None was documented or supported.
 - `VideoFrame.close()` / `AudioFrame.close()` release the buffers promptly.
   Optional - the frame is an owned copy and GC reclaims it. Idempotent; reading
   plane data after `close()` throws.
@@ -166,7 +207,7 @@ silently accumulating latency.
 - `ConnectOptions.connectionTimeout` (default 30s) rejects with
   `RoomConnectTimeoutError`. There was previously no timeout at any layer, so a
   wedged connect hung the caller indefinitely.
-- One error subclass per known Twilio code, 25 in all, plus typed SDK-local
+- One error subclass per known Twilio code, 26 in all, plus typed SDK-local
   errors (`NativeBindingLoadError`, `UnsupportedPlatformError`,
   `RoomConnectTimeoutError`, `DataTrackSendError`). Previously only 5 of the 26
   codes had a class.

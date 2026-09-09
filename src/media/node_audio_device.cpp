@@ -22,19 +22,19 @@ rtc::scoped_refptr<NodeAudioDevice> NodeAudioDevice::Create(
 bool NodeAudioDevice::PushRecordingData(const int16_t* data, size_t num_frames) {
     std::lock_guard<std::mutex> lock(rec_mutex_);
 
-    rec_buffer_.insert(rec_buffer_.end(), data, data + num_frames);
-
-    // Bounded publish queue. A producer pushing faster than the 10 ms drain
-    // sheds the oldest samples rather than accumulating latency; every shed
-    // chunk is counted so the loss is observable through getWriteStats().
+    // Bounded publish queue, enforced before the copy so a write is never
+    // partially applied. A producer pushing faster than the 10 ms drain has
+    // the offending write rejected whole rather than having the oldest audio
+    // shed out from under it. The caller counts the false return per track, so
+    // the loss stays observable through getWriteStats(). A single write larger
+    // than the bound can never fit and is always rejected.
     const size_t max_samples =
         max_queue_chunks_.load(std::memory_order_relaxed) * kSamplesPer10Ms;
-    if (rec_buffer_.size() > max_samples) {
-        size_t excess = rec_buffer_.size() - max_samples;
-        rec_buffer_.erase(rec_buffer_.begin(), rec_buffer_.begin() + excess);
-        dropped_chunks_.fetch_add(1, std::memory_order_relaxed);
+    if (rec_buffer_.size() + num_frames > max_samples) {
         return false;
     }
+
+    rec_buffer_.insert(rec_buffer_.end(), data, data + num_frames);
     return true;
 }
 

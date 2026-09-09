@@ -115,12 +115,21 @@ describe('module loading in a clean process', () => {
     // process.arch is a plain value property, so it can be redefined before the
     // module under test reads it. Apple Silicon is the real-world case: npm
     // refuses to install under arm64 because package.json declares cpu x64.
+    // Run from a directory with no build output, which is what a consumer has:
+    // `files` excludes build/, so an installed package never carries one.
     const out = runNode([
       '--input-type=module',
       '-e',
       `Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+       const fs = await import('node:fs');
+       const os = await import('node:os');
+       const path = await import('node:path');
+       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-unsupported-'));
+       fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ version: '0.0.0-test' }));
+       fs.mkdirSync(path.join(tmp, 'dist'));
+       fs.copyFileSync('dist/index.mjs', path.join(tmp, 'dist', 'index.mjs'));
        try {
-         await import('./dist/index.mjs');
+         await import(path.join(tmp, 'dist', 'index.mjs'));
          throw new Error('expected an unsupported-platform failure');
        } catch (err) {
          const msg = String(err && err.message);
@@ -131,5 +140,33 @@ describe('module loading in a clean process', () => {
        }`,
     ]);
     expect(out).toBe('unsupported-platform-ok');
+  });
+
+  it('loads a local build even on a platform the package does not list', () => {
+    // A contributor who compiled the addon themselves must be able to load it.
+    // The platform gate runs only after the prebuilt and local-build paths, so
+    // an unlisted process.arch is not, on its own, a refusal to load.
+    const out = runNode([
+      '--input-type=module',
+      '-e',
+      `Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+       const fs = await import('node:fs');
+       const os = await import('node:os');
+       const path = await import('node:path');
+       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-localbuild-'));
+       fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ version: '0.0.0-test' }));
+       fs.mkdirSync(path.join(tmp, 'dist'));
+       fs.copyFileSync('dist/index.mjs', path.join(tmp, 'dist', 'index.mjs'));
+       fs.mkdirSync(path.join(tmp, 'build', 'Release'), { recursive: true });
+       // Symlinked, not copied: the addon is tens of megabytes.
+       fs.symlinkSync(
+         path.resolve('build/Release/twilio_video_sdk_node.node'),
+         path.join(tmp, 'build', 'Release', 'twilio_video_sdk_node.node'),
+       );
+       const sdk = await import(path.join(tmp, 'dist', 'index.mjs'));
+       if (typeof sdk.getVersion() !== 'string') throw new Error('addon did not load');
+       console.log('local-build-ok');`,
+    ]);
+    expect(out).toBe('local-build-ok');
   });
 });

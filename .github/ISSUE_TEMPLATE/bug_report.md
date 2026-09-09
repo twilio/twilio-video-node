@@ -34,4 +34,4 @@ TODO
 - `@twilio/video-node-sdk`:
 - Node.js (`node -v`):
 - Operating system and version:
-- Architecture (`node -p process.arch`): <!-- The native binary is x64-only. On Apple Silicon, Node must report x64 (run under Rosetta). -->
+- Architecture (`node -p process.arch`): <!-- Linux x86-64 is the supported platform. The binary is x86-64 only, with no arm64 build, so on Apple Silicon Node must report x64 (run under Rosetta). -->

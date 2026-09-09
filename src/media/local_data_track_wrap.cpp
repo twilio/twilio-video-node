@@ -98,7 +98,33 @@ LocalDataTrackWrap::LocalDataTrackWrap(const Napi::CallbackInfo& info)
 
 LocalDataTrackWrap::~LocalDataTrackWrap() {
     if (observer_) observer_->detach();
+    // Settle before close(): close() discards whatever the observer already
+    // dispatched, so anything still pending here will never be reported by
+    // rtc-cpp. send() documents a promise that always settles, so every
+    // outstanding one is resolved with ok:false rather than left hanging.
+    settleAllPending("Local data track was destroyed before the send completed");
     if (asyncContext_) asyncContext_->close();
+}
+
+void LocalDataTrackWrap::settleAllPending(const std::string& error) {
+    if (pendingSends_.empty()) return;
+
+    // Moved out first so the map is already empty while settling: Resolve()
+    // only schedules a microtask, but nothing here should depend on that.
+    std::map<uint64_t, Napi::Promise::Deferred> pending;
+    pending.swap(pendingSends_);
+
+    for (auto& entry : pending) {
+        Napi::Promise::Deferred deferred = entry.second;
+        Napi::Env env = deferred.Env();
+        Napi::HandleScope scope(env);
+        auto result = Napi::Object::New(env);
+        result.Set("ok", Napi::Boolean::New(env, false));
+        result.Set("messageId", Napi::Number::New(env, static_cast<double>(entry.first)));
+        result.Set("error", Napi::String::New(env, error));
+        // Resolve, never reject: same rule as settleSend().
+        deferred.Resolve(result);
+    }
 }
 
 void LocalDataTrackWrap::settleSend(uint64_t id, bool ok, const std::string& error) {

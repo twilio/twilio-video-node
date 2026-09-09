@@ -20,7 +20,8 @@ public:
     explicit PushableAudioSource(rtc::scoped_refptr<NodeAudioDevice> adm);
     ~PushableAudioSource() override = default;
 
-    // Returns false when the bounded publish queue shed samples to make room.
+    // Returns false when the samples did not fit in the bounded publish queue.
+    // A rejected write buffers nothing.
     bool PushSamples(const int16_t* data, int bits_per_sample,
                      int sample_rate, size_t number_of_channels,
                      size_t number_of_frames);

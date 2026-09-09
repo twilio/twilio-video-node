@@ -161,6 +161,28 @@ describe('RemoteVideoTrack.frames', () => {
     expect(() => track.frames({ maxQueue: 0 })).toThrow(RangeError);
   });
 
+  it('does not wedge the track when the native attach throws', () => {
+    // The failure this guards against: frames() set this.stream before calling
+    // attach, so a throwing attach left the track claiming an active receiver
+    // that was never wired, and every later frames() call reported
+    // "a receiver is already active" forever.
+    const native = fakeNativeVideo();
+    let fail = true;
+    native._attachFrameSink = (cb: (f: VideoFrame) => void, depth?: number) => {
+      if (fail) throw new Error('native attach failed');
+      native.attached++;
+      native.lastDepth = depth;
+      native.emit = cb;
+    };
+    const track = new RemoteVideoTrack(native as never);
+
+    expect(() => track.frames()).toThrow(/native attach failed/);
+
+    fail = false;
+    expect(() => track.frames()).not.toThrow();
+    expect(native.attached).toBe(1);
+  });
+
   it('delivers frames pushed by the native sink', async () => {
     const native = fakeNativeVideo();
     const track = new RemoteVideoTrack(native as never);
@@ -390,6 +412,25 @@ describe('RemoteDataTrack', () => {
     native.emit?.('hello');
     expect(seen).toEqual(['hello', 'hello']);
   });
+
+  it.each(['on', 'once', 'addListener', 'prependListener', 'prependOnceListener'] as const)(
+    'attaches the native callback from %s',
+    method => {
+      // Regression: the attach used to live only in on(). once() happened to
+      // work because EventEmitter.once delegates to this.on, but addListener
+      // and the prepend* methods reach EventEmitter directly and registered a
+      // listener that could never fire.
+      const native = fakeNativeData();
+      const track = new RemoteDataTrack(native as never);
+      const seen: unknown[] = [];
+
+      track[method]('message', d => seen.push(d));
+      expect(native.emit).toBeDefined();
+
+      native.emit?.('hello');
+      expect(seen).toEqual(['hello']);
+    },
+  );
 
   it('_end detaches the native callback exactly once', () => {
     const native = fakeNativeData();

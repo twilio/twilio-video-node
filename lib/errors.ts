@@ -43,6 +43,12 @@ export interface TwilioErrorClass {
  * Generated rather than hand-written: there are two dozen of these, they differ
  * only in name, code and message, and each hand-rolled copy is a place for the
  * code and the class to drift apart.
+ *
+ * Each error is declared as `export class X extends defineError(...) {}` rather
+ * than `export const X = defineError(...)`. A `const` binds only a value, so
+ * `function handle(e: RoomNotFoundError)` would not compile; a class declaration
+ * binds the type name as well, which is what callers had before this was
+ * generated.
  */
 function defineError(name: string, code: number, defaultMessage: string): TwilioErrorClass {
   const cls = class extends TwilioError {
@@ -61,162 +67,176 @@ function defineError(name: string, code: number, defaultMessage: string): Twilio
 // --- Access token (201xx) ---
 
 /** The access token passed to {@link connect} is malformed or otherwise invalid. Code `20101`. */
-export const AccessTokenInvalidError = defineError(
+export class AccessTokenInvalidError extends defineError(
   'AccessTokenInvalidError',
   20101,
   'Invalid Access Token',
-);
+) {}
 /** The access token's header is invalid. Code `20102`. */
-export const AccessTokenHeaderInvalidError = defineError(
+export class AccessTokenHeaderInvalidError extends defineError(
   'AccessTokenHeaderInvalidError',
   20102,
   'Invalid Access Token header',
-);
+) {}
 /** The access token's issuer or subject is invalid. Code `20103`. */
-export const AccessTokenIssuerInvalidError = defineError(
+export class AccessTokenIssuerInvalidError extends defineError(
   'AccessTokenIssuerInvalidError',
   20103,
   'Invalid Access Token issuer/subject',
-);
+) {}
 /** The access token has expired. Code `20104`. */
-export const AccessTokenExpiredError = defineError(
+export class AccessTokenExpiredError extends defineError(
   'AccessTokenExpiredError',
   20104,
   'Access Token expired or expiration date invalid',
-);
+) {}
 /** The access token is not yet valid. Code `20105`. */
-export const AccessTokenNotYetValidError = defineError(
+export class AccessTokenNotYetValidError extends defineError(
   'AccessTokenNotYetValidError',
   20105,
   'Access Token not yet valid',
-);
+) {}
 /** The access token has no Video grant. Code `20106`. */
-export const AccessTokenGrantsInvalidError = defineError(
+export class AccessTokenGrantsInvalidError extends defineError(
   'AccessTokenGrantsInvalidError',
   20106,
   'Invalid Access Token grants',
-);
+) {}
 /** The access token signature is invalid. Code `20107`. */
-export const AccessTokenSignatureInvalidError = defineError(
+export class AccessTokenSignatureInvalidError extends defineError(
   'AccessTokenSignatureInvalidError',
   20107,
   'Invalid Access Token signature',
-);
+) {}
 
 // --- Signaling (530xx) ---
 
 /** The client cannot establish or maintain the signaling connection. Code `53000`. */
-export const SignalingConnectionError = defineError(
+export class SignalingConnectionError extends defineError(
   'SignalingConnectionError',
   53000,
   'Signaling connection error',
-);
+) {}
 /** The signaling connection was disconnected. Code `53001`. */
-export const SignalingConnectionDisconnectedError = defineError(
+export class SignalingConnectionDisconnectedError extends defineError(
   'SignalingConnectionDisconnectedError',
   53001,
   'Signaling connection disconnected',
-);
+) {}
 /** The signaling connection timed out. Code `53002`. */
-export const SignalingConnectionTimeoutError = defineError(
+export class SignalingConnectionTimeoutError extends defineError(
   'SignalingConnectionTimeoutError',
   53002,
   'Signaling connection timed out',
-);
+) {}
 
 // --- Room (531xx) ---
 
 /** Connecting to the Room failed. Code `53104`. */
-export const RoomConnectFailedError = defineError(
+export class RoomConnectFailedError extends defineError(
   'RoomConnectFailedError',
   53104,
   'Unable to connect to Room',
-);
+) {}
 /** The Room already holds its maximum number of participants. Code `53105`. */
-export const RoomMaxParticipantsExceededError = defineError(
+export class RoomMaxParticipantsExceededError extends defineError(
   'RoomMaxParticipantsExceededError',
   53105,
   'Room contains too many Participants',
-);
+) {}
 /** {@link connect} targeted a Room that does not exist and cannot be created. Code `53106`. */
-export const RoomNotFoundError = defineError('RoomNotFoundError', 53106, 'Room not found');
+export class RoomNotFoundError extends defineError('RoomNotFoundError', 53106, 'Room not found') {}
 /** The Room has already completed. Code `53118`. */
-export const RoomCompletedError = defineError('RoomCompletedError', 53118, 'Room completed');
+export class RoomCompletedError extends defineError(
+  'RoomCompletedError',
+  53118,
+  'Room completed',
+) {}
 
 // --- Participant (532xx) ---
 
 /** Publishing would exceed the Room's maximum simultaneously published tracks. Code `53203`. */
-export const ParticipantMaxTracksExceededError = defineError(
+export class ParticipantMaxTracksExceededError extends defineError(
   'ParticipantMaxTracksExceededError',
   53203,
   'The maximum number of published tracks allowed in the Room at the same time has been reached',
-);
+) {}
 /** Another participant is already connected with this identity. Code `53205`. */
-export const ParticipantDuplicateIdentityError = defineError(
+export class ParticipantDuplicateIdentityError extends defineError(
   'ParticipantDuplicateIdentityError',
   53205,
   'Participant disconnected because of duplicate identity',
-);
+) {}
 
 // --- Track (533xx) ---
 
 /** The track is invalid. Code `53300`. */
-export const TrackInvalidError = defineError('TrackInvalidError', 53300, 'Track is invalid');
-/** The track name is too long. Code `53301`. */
-export const TrackNameTooLongError = defineError(
-  'TrackNameTooLongError',
+export class TrackInvalidError extends defineError(
+  'TrackInvalidError',
+  53300,
+  'Track is invalid',
+) {}
+/** The track name is invalid. Code `53301`. */
+export class TrackNameInvalidError extends defineError(
+  'TrackNameInvalidError',
   53301,
+  'Track name is invalid',
+) {}
+/** The track name is too long. Code `53302`. */
+export class TrackNameTooLongError extends defineError(
+  'TrackNameTooLongError',
+  53302,
   'Track name is too long',
-);
+) {}
 /** The track name contains invalid characters. Code `53303`. */
-export const TrackNameCharsInvalidError = defineError(
+export class TrackNameCharsInvalidError extends defineError(
   'TrackNameCharsInvalidError',
   53303,
   'Track name contains invalid characters',
-);
+) {}
 
 // --- Media (534xx) ---
 
 /** The client could not create a local media description. Code `53400`. */
-export const MediaClientLocalDescFailedError = defineError(
+export class MediaClientLocalDescFailedError extends defineError(
   'MediaClientLocalDescFailedError',
   53400,
   'Client is unable to create or apply a local media description',
-);
+) {}
 /** The server could not create a local media description. Code `53401`. */
-export const MediaServerLocalDescFailedError = defineError(
+export class MediaServerLocalDescFailedError extends defineError(
   'MediaServerLocalDescFailedError',
   53401,
   'Server is unable to create or apply a local media description',
-);
+) {}
 /** The client could not apply a remote media description. Code `53402`. */
-export const MediaClientRemoteDescFailedError = defineError(
+export class MediaClientRemoteDescFailedError extends defineError(
   'MediaClientRemoteDescFailedError',
   53402,
   'Client is unable to apply a remote media description',
-);
+) {}
 /** The server could not apply a remote media description. Code `53403`. */
-export const MediaServerRemoteDescFailedError = defineError(
+export class MediaServerRemoteDescFailedError extends defineError(
   'MediaServerRemoteDescFailedError',
   53403,
   'Server is unable to apply a remote media description',
-);
+) {}
 /**
  * No codec the peers both support could be negotiated. Surfaced through
  * `trackSubscriptionFailed` when a remote track cannot be decoded - notably an
  * H.264-only track, which this SDK does not decode. Code `53404`.
  */
-export const MediaNoSupportedCodecError = defineError(
+export class MediaNoSupportedCodecError extends defineError(
   'MediaNoSupportedCodecError',
   53404,
   'No supported codec',
-);
+) {}
 /** The media connection failed or media activity ceased. Code `53405`. */
-export const MediaConnectionError = defineError(
+export class MediaConnectionError extends defineError(
   'MediaConnectionError',
   53405,
   'Media connection failed or Media activity ceased',
-);
+) {}
 
 // --- SDK-local conditions ---
 //
@@ -225,8 +245,17 @@ export const MediaConnectionError = defineError(
 // was deliberately avoided: a future Twilio code could collide with one, and
 // adding codes later is additive while changing them is not.
 
-/** The native addon could not be loaded for this platform. */
+/**
+ * The native addon could not be loaded for this platform.
+ *
+ * Hand-written rather than generated, because it is the only error that takes a
+ * `cause`. The static `code` is declared so it satisfies the same
+ * {@link TwilioErrorClass} contract as every generated subclass.
+ */
 export class NativeBindingLoadError extends TwilioError {
+  /** The code every instance carries: {@link SDK_LOCAL_CODE}. */
+  static readonly code = SDK_LOCAL_CODE;
+
   constructor(message?: string, options?: { cause?: unknown }) {
     super(SDK_LOCAL_CODE, message || 'Failed to load the native addon');
     this.name = 'NativeBindingLoadError';
@@ -237,25 +266,25 @@ export class NativeBindingLoadError extends TwilioError {
 }
 
 /** The current platform, architecture, or Node version is not supported. */
-export const UnsupportedPlatformError = defineError(
+export class UnsupportedPlatformError extends defineError(
   'UnsupportedPlatformError',
   SDK_LOCAL_CODE,
   'Unsupported platform',
-);
+) {}
 
 /** {@link connect} did not settle within `connectionTimeout`. */
-export const RoomConnectTimeoutError = defineError(
+export class RoomConnectTimeoutError extends defineError(
   'RoomConnectTimeoutError',
   SDK_LOCAL_CODE,
   'Timed out connecting to the Room',
-);
+) {}
 
 /** A `LocalDataTrack.send()` message could not be delivered. */
-export const DataTrackSendError = defineError(
+export class DataTrackSendError extends defineError(
   'DataTrackSendError',
   SDK_LOCAL_CODE,
   'Failed to send data track message',
-);
+) {}
 
 const SUBCLASSES_BY_CODE: Record<number, TwilioErrorClass> = {};
 for (const cls of [
@@ -276,6 +305,7 @@ for (const cls of [
   ParticipantMaxTracksExceededError,
   ParticipantDuplicateIdentityError,
   TrackInvalidError,
+  TrackNameInvalidError,
   TrackNameTooLongError,
   TrackNameCharsInvalidError,
   MediaClientLocalDescFailedError,

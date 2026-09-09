@@ -510,7 +510,7 @@ describe('Audio publish + receive', () => {
 
     const pushInterval = setInterval(() => {
       const samples = generateAudioSamples(FRAME_SIZE, SAMPLE_RATE, CHANNELS);
-      // Audio publish is bounded now; at real-time cadence it should never shed.
+      // Audio publish is bounded now; at real-time cadence it should never reject.
       audioTrack.write({ pcm: samples, frames: FRAME_SIZE });
     }, 10);
 
@@ -1992,6 +1992,44 @@ describe('Subscription to tracks published before joining', () => {
 
       expect(afterUnsubscribe).toEqual([]);
       track.removeAllListeners('message');
+    } finally {
+      await Promise.all([publisher.cleanup(), subscriber.cleanup()]);
+    }
+  });
+
+  // FRAME_CONTRACT.md documents send()'s promise as always settling. The
+  // failure this guards against is a send still in flight when the Room goes
+  // away: nothing else settles it, so the promise would hang forever.
+  it('settles every send() promise when the Room is torn down under it', async () => {
+    const roomName = uniqueRoom();
+    const dataTrack = createLocalDataTrack('chat');
+    const subscriber = await connectToRoom('bob', roomName);
+    const joined = waitForEvent<RemoteParticipant>(
+      subscriber.room,
+      'participantConnected',
+      TIMEOUT.subscribe,
+    );
+    const publisher = await connectToRoom('alice', roomName, { dataTracks: [dataTrack] });
+
+    try {
+      const alice = await joined;
+      await waitForEvent<RemoteDataTrack>(alice, 'trackSubscribed', TIMEOUT.subscribe);
+      await sleep(TIMEOUT.negotiate);
+
+      // Fire a batch and disconnect immediately, without awaiting any of them.
+      const sends = Array.from({ length: 20 }, (_, i) => dataTrack.send(`teardown-${i}`));
+      publisher.room.disconnect();
+
+      const settled = await Promise.race([
+        Promise.all(sends),
+        sleep(TIMEOUT.negotiate * 2).then(() => null),
+      ]);
+
+      expect(settled).not.toBeNull();
+      for (const result of settled as Array<{ ok: boolean; messageId: number }>) {
+        expect(typeof result.ok).toBe('boolean');
+        expect(typeof result.messageId).toBe('number');
+      }
     } finally {
       await Promise.all([publisher.cleanup(), subscriber.cleanup()]);
     }

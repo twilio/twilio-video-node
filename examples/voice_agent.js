@@ -20,7 +20,7 @@
  *   OPENAI_REALTIME_MODEL          — optional (default: gpt-realtime-2.1)
  *   VOICE_AGENT_VOICE              — optional (default: alloy)
  *
- * Requirements: Node.js >= 24 (uses the global WebSocket), x64 (see README).
+ * Requirements: Node.js >= 24 (uses the global WebSocket), Linux x86-64 (see README).
  *
  * Usage: node examples/voice_agent.js [room-name]
  */

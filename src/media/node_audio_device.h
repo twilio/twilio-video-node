@@ -28,21 +28,26 @@ public:
     static rtc::scoped_refptr<NodeAudioDevice> Create(
         webrtc::TaskQueueFactory* task_queue_factory);
 
-    // Default publish-queue bound, in 10 ms chunks. Matches the audio default
-    // of mode 'queue' / maxQueue 10, i.e. ~100 ms of smoothing.
-    static constexpr size_t kDefaultMaxQueueChunks = 10;
+    // Default publish-queue bound, in 10 ms chunks: 50 chunks = ~500 ms.
+    // Sized against the shipped pacing helper, which holds ~80 ms of lead and
+    // can refill up to 160 ms in a single tick after a stall; 500 ms leaves
+    // roughly 2x headroom over that worst case while still bounding latency.
+    static constexpr size_t kDefaultMaxQueueChunks = 50;
 
     // Feed 48kHz mono audio data into the ADM recording path. Called from
-    // PushableAudioSource. Returns false when the bounded queue had to shed
-    // samples to make room, so write() can report the drop to the caller.
+    // PushableAudioSource. The write is all-or-nothing: it is accepted only if
+    // it fits whole within the bound, otherwise nothing is buffered and false
+    // is returned so write() can report the rejection to the caller. Audio is
+    // never partially discarded.
     bool PushRecordingData(const int16_t* data, size_t num_frames);
 
     // Bound the publish queue, in 10 ms chunks. Applied on the next push.
     void SetMaxQueueChunks(size_t chunks);
 
-    // Publish-queue observability. Counters are per-ADM; because the ADM is
-    // shared by every local audio track, these aggregate across them.
-    uint64_t droppedChunks() const { return dropped_chunks_.load(std::memory_order_relaxed); }
+    // Publish-queue observability. Depth and bound are per-ADM, and the ADM is
+    // shared by every local audio track, so they describe the process rather
+    // than one track. Rejected-write counts are kept per track in
+    // LocalAudioTrackWrap and reported through getWriteStats().
     size_t queueDepthChunks() const;
     size_t maxQueueChunks() const { return max_queue_chunks_.load(std::memory_order_relaxed); }
 
@@ -135,7 +140,6 @@ private:
     mutable std::mutex rec_mutex_;
     std::deque<int16_t> rec_buffer_;
     std::atomic<size_t> max_queue_chunks_{kDefaultMaxQueueChunks};
-    std::atomic<uint64_t> dropped_chunks_{0};
 };
 
 }  // namespace twilio_video_node

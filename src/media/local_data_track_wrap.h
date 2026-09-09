@@ -61,6 +61,11 @@ private:
 
     /** @internal Resolves the pending promise for `id`. JS thread only. */
     void settleSend(uint64_t id, bool ok, const std::string& error);
+    /**
+     * @internal Resolves every still-pending send with `ok:false`. Used on
+     * teardown, where rtc-cpp will never report the outcome. JS thread only.
+     */
+    void settleAllPending(const std::string& error);
     friend class LocalDataTrackSendObserver;
     Napi::Value GetMaxPacketLifeTime(const Napi::CallbackInfo& info);
     Napi::Value GetMaxRetransmits(const Napi::CallbackInfo& info);

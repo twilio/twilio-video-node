@@ -173,13 +173,21 @@ export interface DeliveryStats {
  * encoder - so there is no SDK-side send queue and `sendQueueDepth`/`maxQueue`
  * are `0`; a `framesDropped` there means libwebrtc's adapter rejected the
  * frame. Audio publish does have a bounded queue, drained at 10 ms, so its
- * depth and bound are real. Audio counters are per audio device, which is
- * shared across local audio tracks in this process.
+ * depth and bound are real.
+ *
+ * For audio, `framesWritten`, `framesDropped`, `lastTimestamp` and
+ * `timestampRegressions` count this track's own `write()` calls, while
+ * `sendQueueDepth` and `maxQueue` describe the audio device shared by every
+ * local audio track in the process. With one local audio track - the normal
+ * case - the distinction does not arise.
  */
 export interface WriteStats {
   /** Frames accepted. */
   framesWritten: number;
-  /** Cumulative frames dropped by publish backpressure. */
+  /**
+   * Frames `write()` returned `false` for: for video, rejected by libwebrtc's
+   * adapter; for audio, they did not fit in the bounded publish queue.
+   */
   framesDropped: number;
   /** Current buffered frames. Always `0` for video. */
   sendQueueDepth: number;
@@ -222,12 +230,20 @@ export interface RawAudioSourceOptions {
   sampleRate: 48000;
   /** Always 1. */
   channels: 1;
-  /** Publish queue policy. Defaults to `queue`. */
-  mode?: BackpressureMode;
-  /** Publish queue bound, in 10 ms chunks. Defaults to 10 (~100 ms). */
+  /**
+   * Publish queue bound, in 10 ms chunks. Defaults to 50 (~500 ms).
+   *
+   * A {@link LocalAudioTrack.write} is accepted only if it fits whole within
+   * this bound; otherwise nothing is buffered and `write()` returns `false`.
+   * A single `write()` larger than the bound can never fit and is always
+   * rejected, so size this to the largest burst you intend to publish.
+   *
+   * @remarks
+   * The publish queue lives in the process-wide audio device shared by every
+   * local audio track, so this setting is **not per-track**: the most recent
+   * value passed to any `createLocalAudioTrack` applies to all of them.
+   */
   maxQueue?: number;
-  /** Which chunk to shed when full. Defaults to `oldest`. */
-  drop?: 'oldest' | 'newest';
 }
 
 /** Options for {@link createLocalVideoTrack}. */
@@ -460,9 +476,15 @@ export interface LocalAudioTrack {
    * non-integer `frames`, `pcm` shorter than `frames`, non-numeric timestamp).
    * Throws `Error` if the track is not bound to a source.
    *
-   * Returns `true` when the samples were enqueued, `false` when the bounded
-   * publish queue had to shed the oldest samples to make room. Every `false` is
-   * counted in {@link LocalAudioTrack.getWriteStats}.
+   * Returns `true` when the samples were enqueued, `false` when they did not
+   * fit in the bounded publish queue. A rejected write buffers nothing, so a
+   * write is never partially published; a single write larger than
+   * `source.maxQueue` can never fit. Every `false` is counted in
+   * {@link LocalAudioTrack.getWriteStats}.
+   *
+   * `timestamp` is observability-only on this path: audio publish is FIFO, so
+   * it feeds {@link WriteStats.lastTimestamp} and
+   * {@link WriteStats.timestampRegressions} without changing what is sent.
    */
   write(frame: AudioFrameInput): boolean;
   /** Publish-side counters for this track. */

@@ -19,6 +19,7 @@ import {
   ParticipantMaxTracksExceededError,
   ParticipantDuplicateIdentityError,
   TrackInvalidError,
+  TrackNameInvalidError,
   TrackNameTooLongError,
   TrackNameCharsInvalidError,
   MediaClientLocalDescFailedError,
@@ -54,7 +55,8 @@ const CODED = [
   [ParticipantMaxTracksExceededError, 53203],
   [ParticipantDuplicateIdentityError, 53205],
   [TrackInvalidError, 53300],
-  [TrackNameTooLongError, 53301],
+  [TrackNameInvalidError, 53301],
+  [TrackNameTooLongError, 53302],
   [TrackNameCharsInvalidError, 53303],
   [MediaClientLocalDescFailedError, 53400],
   [MediaServerLocalDescFailedError, 53401],
@@ -134,6 +136,19 @@ describe('SDK-local errors', () => {
     const err = new NativeBindingLoadError();
     expect(err.message).toBe('Failed to load the native addon');
     expect('cause' in err).toBe(false);
+  });
+
+  it.each([
+    ['UnsupportedPlatformError', UnsupportedPlatformError],
+    ['RoomConnectTimeoutError', RoomConnectTimeoutError],
+    ['DataTrackSendError', DataTrackSendError],
+    ['NativeBindingLoadError', NativeBindingLoadError],
+  ] as const)('%s exposes a static code, like every other exported error', (_name, Cls) => {
+    // NativeBindingLoadError is hand-written rather than generated, and used to
+    // be the one exported error with no static `code`, so it silently failed
+    // the TwilioErrorClass contract callers can otherwise rely on.
+    expect(Cls.code).toBe(SDK_LOCAL_CODE);
+    expect(new Cls().code).toBe(Cls.code);
   });
 
   it('are not reachable via twilioErrorFromCode, since code 0 is not a Twilio code', () => {

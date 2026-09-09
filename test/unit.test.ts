@@ -16,6 +16,7 @@ import {
   twilioErrorFromCode,
   LocalVideoTrackPublication,
   Room,
+  ErrorCode,
 } from '../lib/index.js';
 import type { ConnectOptions, BandwidthProfileMode } from '../lib/index.js';
 
@@ -556,7 +557,7 @@ describe('Track source option validation', () => {
     expect(() =>
       createLocalAudioTrack({
         name: 'a-ok',
-        source: { ...audioSource, mode: 'queue', maxQueue: 20, drop: 'oldest' },
+        source: { ...audioSource, maxQueue: 20 },
       }),
     ).not.toThrow();
   });
@@ -584,15 +585,6 @@ describe('Track source option validation', () => {
     ).toThrow(/channels must be 1/);
   });
 
-  it('rejects an invalid audio mode or drop policy', () => {
-    expect(() =>
-      createLocalAudioTrack({ name: 'a6', source: { ...audioSource, mode: 'fastest' as never } }),
-    ).toThrow(/mode must be/);
-    expect(() =>
-      createLocalAudioTrack({ name: 'a7', source: { ...audioSource, drop: 'middle' as never } }),
-    ).toThrow(/drop must be/);
-  });
-
   it('rejects an out-of-range audio maxQueue', () => {
     for (const bad of [0, -1, 2.5]) {
       expect(() =>
@@ -604,11 +596,11 @@ describe('Track source option validation', () => {
     ).toThrow(/must be at most/);
   });
 
-  it('sheds a burst that exceeds the audio publish queue, and says so', () => {
-    // Documents a real tradeoff rather than asserting it is fine. The audio
-    // default of 10 chunks is ~100ms, so a producer that emits a
-    // whole utterance at once - a common TTS integration - loses most of it
-    // unless it paces its writes or raises maxQueue.
+  it('rejects a burst that exceeds the audio publish queue, and says so', () => {
+    // Documents a real tradeoff rather than asserting it is fine. A producer
+    // that emits a whole utterance at once - a common TTS integration - has
+    // the writes past the bound rejected outright unless it paces its writes
+    // or raises maxQueue. Rejected writes are never partially published.
     const track = createLocalAudioTrack({
       name: 'burst-default',
       source: { ...audioSource, maxQueue: 10 },
@@ -620,10 +612,52 @@ describe('Track source option validation', () => {
       if (track.write({ pcm, frames: 480 })) accepted++;
     }
 
-    // Only the queue's worth is taken; the rest is shed and counted.
+    // Only the queue's worth is taken; the rest is rejected and counted.
     expect(accepted).toBeLessThan(50);
     expect(track.getWriteStats().framesDropped).toBeGreaterThan(0);
     expect(accepted + track.getWriteStats().framesDropped).toBe(50);
+  });
+
+  it('rejects a single write larger than the bound instead of truncating it', () => {
+    // Item 1a: insert-then-trim used to publish only the tail of an oversized
+    // write. Now the whole write is refused so the caller can resize or split.
+    const track = createLocalAudioTrack({
+      name: 'burst-oversized',
+      source: { ...audioSource, maxQueue: 10 },
+    });
+    track.clearBuffer();
+    const oneSecond = generateAudioSamples(48000, 48000, 1);
+
+    expect(track.write({ pcm: oneSecond, frames: 48000 })).toBe(false);
+    const stats = track.getWriteStats();
+    expect(stats.framesWritten).toBe(0);
+    expect(stats.framesDropped).toBe(1);
+    expect(stats.sendQueueDepth).toBe(0);
+  });
+
+  it('keeps write stats advancing while writes are being rejected', () => {
+    // Item 1c: framesWritten and lastTimestamp must not freeze once the queue
+    // is full - a later accepted write has to move them again.
+    const track = createLocalAudioTrack({
+      name: 'burst-stats',
+      source: { ...audioSource, maxQueue: 10 },
+    });
+    track.clearBuffer();
+    const pcm = generateAudioSamples(480, 48000, 1);
+
+    // The ADM drains on its own 10 ms thread, so exact counts are not stable;
+    // what must hold is that both counters move and neither one freezes.
+    for (let i = 0; i < 200; i++) track.write({ pcm, frames: 480, timestamp: i * 10_000 });
+    const saturated = track.getWriteStats();
+    expect(saturated.framesWritten).toBeGreaterThan(0);
+    expect(saturated.framesDropped).toBeGreaterThan(0);
+    expect(saturated.framesWritten + saturated.framesDropped).toBe(200);
+
+    track.clearBuffer();
+    expect(track.write({ pcm, frames: 480, timestamp: 500 * 10_000 })).toBe(true);
+    const resumed = track.getWriteStats();
+    expect(resumed.framesWritten).toBe(saturated.framesWritten + 1);
+    expect(resumed.lastTimestamp).toBe(500 * 10_000);
   });
 
   it('accepts the same burst when the queue is sized for it', () => {
@@ -639,6 +673,25 @@ describe('Track source option validation', () => {
     }
     expect(accepted).toBe(50);
     expect(track.getWriteStats().framesDropped).toBe(0);
+  });
+
+  it('scopes audio write counters per track and the queue bound per process', () => {
+    // FRAME_CONTRACT.md splits these: framesWritten/framesDropped are this
+    // track's own write() calls, while sendQueueDepth/maxQueue come from the
+    // audio device every local audio track shares.
+    const a = createLocalAudioTrack({ name: 'scope-a', source: { ...audioSource, maxQueue: 30 } });
+    const b = createLocalAudioTrack({ name: 'scope-b', source: { ...audioSource, maxQueue: 40 } });
+    a.clearBuffer();
+    const pcm = generateAudioSamples(480, 48000, 1);
+
+    a.write({ pcm, frames: 480 });
+    a.write({ pcm, frames: 480 });
+
+    expect(a.getWriteStats().framesWritten).toBe(2);
+    expect(b.getWriteStats().framesWritten).toBe(0);
+    // Last writer wins on the shared device, so both report the same bound.
+    expect(a.getWriteStats().maxQueue).toBe(40);
+    expect(b.getWriteStats().maxQueue).toBe(40);
   });
 
   it('applies the configured audio maxQueue to the publish queue', () => {
@@ -711,8 +764,8 @@ describe('Data Track send limits', () => {
     const result = track.send('hello');
     expect(result).toBeInstanceOf(Promise);
     // Never rejects, so a fire-and-forget send cannot cause an unhandled
-    // rejection. Unpublished, the result simply never settles, so this only
-    // asserts the shape.
+    // rejection. Unpublished, the result settles only when the track is
+    // destroyed, so this only asserts the shape.
     result.catch(() => expect.unreachable('send() must not reject'));
   });
 
@@ -1036,3 +1089,30 @@ describe('Participants already in the Room at connect', () => {
     expect(seen).toEqual([[53106, 'MT-video']]);
   });
 });
+
+describe('ErrorCode and the error subclasses agree', () => {
+  // The two lists are maintained by hand in different files, so they drift:
+  // TrackNameTooLongError shipped pinned to 53301 (TRACK_NAME_INVALID) with
+  // 53302 unrepresented, and the subclass table's own test restated the wrong
+  // code rather than checking it. This checks against ErrorCode instead.
+  it.each(Object.entries(ErrorCode))('%s (%i) has a matching subclass', (_name, code) => {
+    const err = twilioErrorFromCode(code);
+    expect(err.code).toBe(code);
+    expect(err.constructor).not.toBe(TwilioError);
+    expect(err.message.length).toBeGreaterThan(0);
+  });
+
+  it('registers no subclass for a code ErrorCode does not list', () => {
+    const known = new Set<number>(Object.values(ErrorCode));
+    // Walk the whole range the SDK's codes live in rather than a fixed list.
+    for (const code of [...range(20100, 20120), ...range(53000, 53420)]) {
+      const err = twilioErrorFromCode(code);
+      const isSubclass = err.constructor !== TwilioError;
+      expect(isSubclass).toBe(known.has(code));
+    }
+  });
+});
+
+function range(from: number, to: number): number[] {
+  return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+}

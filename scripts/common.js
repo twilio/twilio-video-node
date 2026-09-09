@@ -12,6 +12,16 @@ function getPlatformDir(override) {
   return `${process.platform}-${process.arch}`;
 }
 
+/**
+ * Platforms the native addon is built for, derived from the `os` and `cpu`
+ * fields npm enforces at install time. Derived rather than restated so this
+ * cannot drift from what the package declares; lib/index.ts derives the same
+ * list for its runtime check.
+ */
+function getSupportedPlatforms(pkg) {
+  return (pkg.os || ['darwin', 'linux']).flatMap(o => (pkg.cpu || ['x64']).map(c => `${o}-${c}`));
+}
+
 function getPrebuiltName(platformDir) {
   return `${ADDON_NAME.replace('.node', '')}-${platformDir}.node`;
 }
@@ -50,6 +60,7 @@ module.exports = {
   getPlatformDir,
   getPrebuiltName,
   getPrebuiltPath,
+  getSupportedPlatforms,
   getGitHubInfo,
   log,
 };

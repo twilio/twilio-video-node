@@ -39,11 +39,15 @@ jobs:
               npm run build:ts
               npm run typecheck
           - name: build-and-test
-            # The unit tests require the native addon.
+            # The unit tests require the native addon. Run them under coverage
+            # so the thresholds in vitest.config.ts are actually enforced: a
+            # deleted or silently-skipped test file shows up here as a coverage
+            # drop, and vitest exits 0 both when a named test file is missing
+            # and when one is removed.
             native: true
             run: |
               npm run build:ts
-              npm run test:unit
+              npm run test:coverage
           - name: unit-pure
             # The suites that do not load the addon, so they run without rtc-cpp.
             run: |

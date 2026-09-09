@@ -152,6 +152,7 @@ export {
   ParticipantDuplicateIdentityError,
   // Track
   TrackInvalidError,
+  TrackNameInvalidError,
   TrackNameTooLongError,
   TrackNameCharsInvalidError,
   // Media
@@ -208,20 +209,6 @@ function loadAddon(): NativeAddon {
   const platformDir = getPlatformDir();
   const prebuiltPath = getPrebuiltPath(platformDir);
 
-  // Fail with the real reason rather than advising a build that cannot succeed.
-  // Apple Silicon is the common case: package.json declares cpu x64, so npm
-  // refuses to install under an arm64 Node in the first place.
-  if (!SUPPORTED_PLATFORMS.includes(platformDir)) {
-    throw new UnsupportedPlatformError(
-      `${platformDir} is not a supported platform. The native addon is built for ` +
-        `${SUPPORTED_PLATFORMS.join(' and ')}. ` +
-        (process.platform === 'darwin' && process.arch === 'arm64'
-          ? 'On Apple Silicon, run Node under Rosetta so process.arch reports x64 ' +
-            '(install once with `softwareupdate --install-rosetta`, then use an x64 Node).'
-          : 'Contact the Twilio Video team for access to other platforms.'),
-    );
-  }
-
   if (fs.existsSync(prebuiltPath)) {
     // A prebuilt that exists but will not load is a different failure from one
     // that is absent: an ABI mismatch or a missing shared library, not a
@@ -239,25 +226,54 @@ function loadAddon(): NativeAddon {
     }
   }
 
-  try {
-    return nativeRequire(path.join(ROOT, 'build/Release/twilio_video_sdk_node.node'));
-  } catch {
+  // A local build is tried before the platform check, so someone who compiled
+  // the addon themselves on a platform this package does not list can load it.
+  // Consumers never reach this: `files` excludes build/, so an installed
+  // package has no local build and falls through to the checks below.
+  for (const buildType of ['Release', 'Debug']) {
+    const localPath = path.join(ROOT, 'build', buildType, 'twilio_video_sdk_node.node');
+    if (!fs.existsSync(localPath)) continue;
     try {
-      return nativeRequire(path.join(ROOT, 'build/Debug/twilio_video_sdk_node.node'));
+      return nativeRequire(localPath);
     } catch (cause) {
-      const depsPresent = fs.existsSync(path.join(ROOT, 'deps', 'twilio-video'));
       throw new NativeBindingLoadError(
-        `No prebuilt binary for ${platformDir}, and no local build in build/Release or ` +
-          'build/Debug. ' +
-          (depsPresent
-            ? 'Build it with `npm run build`.'
-            : 'Fetch the native dependencies first with `npm run fetch-deps`, then build with ' +
-              '`npm run build`. On Linux the build also needs the X11 development packages ' +
-              '(see DEVELOPER_GUIDE.md).'),
+        `The local build at ${localPath} failed to load. This usually means it was built ` +
+          `for a different Node ABI (this is Node ${process.version}, modules ` +
+          `${process.versions.modules}) or a required system library is missing. ` +
+          'Rebuild with `npm run build`.',
         { cause },
       );
     }
   }
+
+  // Nothing to load. Fail with the real reason rather than advising a build
+  // that cannot succeed. Apple Silicon is the common case: package.json
+  // declares cpu x64, so npm refuses to install under an arm64 Node in the
+  // first place. SUPPORTED_PLATFORMS is what the addon is built for, which is
+  // wider than what is supported: Linux x86-64 is the supported platform,
+  // macOS x64 is for local development.
+  if (!SUPPORTED_PLATFORMS.includes(platformDir)) {
+    throw new UnsupportedPlatformError(
+      `${platformDir} is not a supported platform. This SDK supports linux-x64; ` +
+        `the native addon can also load on ${SUPPORTED_PLATFORMS.join(' and ')}. ` +
+        (process.platform === 'darwin' && process.arch === 'arm64'
+          ? 'There is no arm64 build. On Apple Silicon, run Node under Rosetta so ' +
+            'process.arch reports x64 (install once with `softwareupdate --install-rosetta`, ' +
+            'then use an x64 Node).'
+          : 'Contact the Twilio Video team for access to other platforms.'),
+    );
+  }
+
+  const depsPresent = fs.existsSync(path.join(ROOT, 'deps', 'twilio-video'));
+  throw new NativeBindingLoadError(
+    `No prebuilt binary for ${platformDir}, and no local build in build/Release or ` +
+      'build/Debug. ' +
+      (depsPresent
+        ? 'Build it with `npm run build`.'
+        : 'Fetch the native dependencies first with `npm run fetch-deps`, then build with ' +
+          '`npm run build`. On Linux the build also needs the X11 development packages ' +
+          '(see DEVELOPER_GUIDE.md).'),
+  );
 }
 
 const addon = loadAddon();
@@ -562,12 +578,6 @@ function validateAudioSource(source: RawAudioSourceOptions): void {
   }
   if (source.channels !== 1) {
     throw new RangeError(`source.channels must be 1; got ${String(source.channels)}`);
-  }
-  if (source.mode !== undefined && source.mode !== 'latest' && source.mode !== 'queue') {
-    throw new TypeError(`source.mode must be 'latest' or 'queue'; got ${String(source.mode)}`);
-  }
-  if (source.drop !== undefined && source.drop !== 'oldest' && source.drop !== 'newest') {
-    throw new TypeError(`source.drop must be 'oldest' or 'newest'; got ${String(source.drop)}`);
   }
   if (source.maxQueue !== undefined) {
     if (!Number.isInteger(source.maxQueue) || source.maxQueue <= 0) {

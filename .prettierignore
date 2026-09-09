@@ -10,3 +10,4 @@ package-lock.json
 dist/
 docs/
 resources/
+pr-reviews/

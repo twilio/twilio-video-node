@@ -229,6 +229,34 @@ describe('FrameStream statistics', () => {
     expect(stats.lastTimestamp).toBe(2000);
   });
 
+  it('counts frames still queued at end() as dropped', async () => {
+    // "Loss is never silent": frames the stream received but discarded on
+    // teardown have to appear somewhere, or framesDelivered + framesDropped
+    // stops adding up to what arrived.
+    const s = makeStream({ maxQueue: 5 });
+    s.push(frame(1));
+    s.push(frame(2));
+    s.push(frame(3));
+    await s.next();
+
+    expect(s.getStats()).toMatchObject({ framesDelivered: 1, framesDropped: 0, queueDepth: 2 });
+    s.end();
+
+    const stats = s.getStats();
+    expect(stats.framesDropped).toBe(2);
+    expect(stats.queueDepth).toBe(0);
+    expect(stats.framesDelivered + stats.framesDropped).toBe(3);
+  });
+
+  it('end() adds nothing when the queue is already empty', async () => {
+    const s = makeStream({ maxQueue: 5 });
+    s.push(frame(1));
+    await s.next();
+    s.end();
+    s.end();
+    expect(s.getStats()).toMatchObject({ framesDelivered: 1, framesDropped: 0 });
+  });
+
   it('records the timestamp of a frame handed directly to a waiter', async () => {
     const s = makeStream();
     const pending = s.next();
@@ -256,7 +284,11 @@ describe('FrameStream statistics', () => {
     s.push(frame(1));
     s.push(frame(2));
     s.end();
-    expect(s.getStats().framesDropped).toBe(1);
+    // Two frames arrived and none was delivered: one shed by the bound, one
+    // discarded by end(). Both are drops.
+    const stats = s.getStats();
+    expect(stats.framesDropped).toBe(2);
+    expect(stats.framesDelivered).toBe(0);
   });
 });
 

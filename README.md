@@ -19,9 +19,9 @@ The native binary is prebuilt and bundled — no build step required. Import it 
 **Requirements:**
 
 - Node.js >= 24
-- Linux x64, or macOS on x64 Node
+- Linux x86-64
 
-> **Apple Silicon (M-series) Macs:** The native binary is x64-only. Install Rosetta once (`softwareupdate --install-rosetta`) and run an x64 Node so `process.arch` is `x64` (e.g. `arch -x86_64 node ...`, or an x64 Node selected via `nvm`). Installing under native arm64 Node fails with `npm error code EBADPLATFORM`.
+Linux x86-64 is the only supported platform for the beta. The SDK also builds and runs on macOS x64 for local development, but macOS is not a supported target and is not tested as one; see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
 ### Access Token
 
@@ -132,6 +132,8 @@ conferencing. Key differences:
 | `twilioErrorFromCode(code, message?)`    | Build a `TwilioError` (or matching subclass) from a numeric error code.                                                                                                                                                                                                                      |
 | `setLogLevel(level)`                     | Set native log level. Accepts a name (`'off'` \| `'fatal'` \| `'error'` \| `'warning'` \| `'info'` \| `'debug'` \| `'trace'` \| `'all'`) or the equivalent number `0` (off) through `7` (all).                                                                                               |
 | `getVersion()`                           | Returns the native SDK version string.                                                                                                                                                                                                                                                       |
+| `MAX_QUEUE_CEILING`                      | Upper bound (`1024`) accepted for any `maxQueue`, on `frames()` and on `source.maxQueue`.                                                                                                                                                                                                    |
+| `SDK_LOCAL_CODE`                         | The `code` (`0`) carried by errors the SDK raises locally, which Twilio never assigns a code to. Match on the error class instead.                                                                                                                                                           |
 
 ### Key Classes
 
@@ -286,21 +288,29 @@ const accepted = track.write({
 ```
 
 Unlike video, audio publish has a real send queue, drained one 10 ms chunk at a
-time. It is bounded (~100 ms by default) so a producer running faster than real
-time sheds the oldest samples instead of accumulating latency. `write()` returns
-`false` for a chunk that caused shedding, and every drop is counted:
+time. It is bounded (~500 ms by default) so a producer running faster than real
+time cannot accumulate latency. A `write()` is accepted only if it fits whole in
+the remaining space; otherwise nothing is buffered, `write()` returns `false`,
+and the rejection is counted. A single `write()` larger than the bound can never
+fit, so size `maxQueue` to the largest burst you intend to publish:
 
 ```js
 const track = createLocalAudioTrack({
   name: 'mic',
-  // maxQueue is in 10ms chunks: 20 => ~200ms of smoothing.
-  source: { type: 'raw', format: 'PCM_S16LE', sampleRate: 48000, channels: 1, maxQueue: 20 },
+  // maxQueue is in 10ms chunks: 200 => ~2s of smoothing. It binds the
+  // process-wide audio device, so it applies to every local audio track.
+  source: { type: 'raw', format: 'PCM_S16LE', sampleRate: 48000, channels: 1, maxQueue: 200 },
 });
 const { framesWritten, framesDropped, sendQueueDepth, maxQueue } = track.getWriteStats();
 ```
 
 Publishing at real-time cadence should never drop. A non-zero `framesDropped`
-means the producer is outrunning the wire.
+means the producer is outrunning the wire, or that a single `write()` was larger
+than `maxQueue`.
+
+The `timestamp` on an audio frame is observability-only. Audio publish is FIFO:
+the device emits queued samples on its own 10 ms cadence, so the timestamp feeds
+`lastTimestamp` and `timestampRegressions` and does not change what is sent.
 
 `clearBuffer()` discards whatever is still queued and not yet sent. Use it when
 the queued audio has become stale rather than merely late - barge-in, where the
@@ -493,9 +503,10 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
 
 ## Platform Support
 
-- **macOS** x64 (Apple Silicon via Rosetta)
-- **Linux** x64
+- **Linux** x86-64 - the only supported platform for the beta
 - **Node.js** >= 24.0.0
+
+macOS x64 builds and runs for local development, but is not a supported target and is not tested as one. There is no arm64 build on either platform: the native binary is x86-64 only, so on Apple Silicon Node must run under Rosetta. See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
 ## Examples
 

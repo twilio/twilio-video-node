@@ -4,6 +4,11 @@ import type { BackpressureMode, DeliveryStats, FrameDeliveryOptions } from './ty
  * Upper bound on any configured queue depth. A misconfigured `maxQueue` must
  * not be able to exhaust memory: at 720p an I420 frame is ~1.3 MB, so 1024
  * frames is already well past any useful buffering.
+ *
+ * `_attachFrameSink` clamps to the same value natively
+ * (`remote_video_track_wrap.cpp`, `remote_audio_track_wrap.cpp`). That clamp is
+ * a backstop only - validation happens here - but the two have to move
+ * together if this ever changes.
  */
 export const MAX_QUEUE_CEILING = 1024;
 
@@ -174,6 +179,11 @@ export class FrameStream<T extends { timestamp: number }> implements AsyncIterab
   end(): void {
     if (this.ended) return;
     this.ended = true;
+    // Queued frames are discarded here, so they are drops: framesDelivered plus
+    // framesDropped has to stay equal to everything the stream received.
+    // Counted directly rather than through countDrop(), which would arm a
+    // report timer this method is about to clear.
+    this.dropped += this.queue.length;
     this.queue.length = 0;
     if (this.dropTimer) {
       clearTimeout(this.dropTimer);
