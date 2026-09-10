@@ -70,7 +70,7 @@ track.onMessage(data => handle(data));
 track.removeMessageCallback();
 
 // After
-track.on('message', data => handle(data));
+track.on('message', (data, track) => handle(data, track));
 ```
 
 Any `EventEmitter` registration method works: `on`, `once`, `addListener`,
