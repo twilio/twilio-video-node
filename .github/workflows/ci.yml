@@ -88,6 +88,14 @@ jobs:
       - name: Fetch rtc-cpp
         if: ${{ matrix.native }}
         run: npm run fetch-deps
+      # CMakeLists links these on Linux; the runner image does not carry them.
+      - name: Install X11 development libraries
+        if: ${{ matrix.native }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxext-dev libxdamage-dev libxfixes-dev \
+            libxcomposite-dev libxrandr-dev libxtst-dev
       - name: Build native addon
         if: ${{ matrix.native }}
         run: npm run build
