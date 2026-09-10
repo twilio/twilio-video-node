@@ -80,8 +80,9 @@ function withRetries(attemptFetch) {
   return lastErr;
 }
 
-// Fetch with an Artifactory access token instead of Maven credentials. CI mints
-// a short-lived one via OIDC; locally a personal token works.
+// Fetch with an Artifactory access token instead of Maven credentials. Separate
+// from npm's token so it can be scoped to this artifact's repository. CI mints a
+// short-lived one via OIDC; locally a personal token works.
 function curlGet(token) {
   const version = resolveVersion();
   // The artifact the Maven coordinates in mvnGet resolve to, addressed directly.
@@ -148,7 +149,7 @@ function mvnGet() {
     return;
   }
   console.error(
-    `[fetch-deps] Tip: you can bypass Maven by setting ARTIFACTORY_TOKEN, or ` +
+    `[fetch-deps] Tip: you can bypass Maven by setting RTC_CPP_ARTIFACTORY_TOKEN, or ` +
       `RTC_CPP_ARCHIVE=/path/to/twilio-video-${platform}.tar.bz2`,
   );
   throw new Error(`Maven fetch failed after ${RETRIES} attempts`, { cause: err });
@@ -167,8 +168,8 @@ function main() {
       }
       log(`Using local archive: ${resolved}`);
       fs.copyFileSync(resolved, tmpFile);
-    } else if (process.env.ARTIFACTORY_TOKEN) {
-      curlGet(process.env.ARTIFACTORY_TOKEN);
+    } else if (process.env.RTC_CPP_ARTIFACTORY_TOKEN) {
+      curlGet(process.env.RTC_CPP_ARTIFACTORY_TOKEN);
     } else {
       mvnGet();
     }

@@ -66,7 +66,7 @@ The native addon links against rtc-cpp (Twilio's C++ Video library).
 The simplest option is an access token. Get one from [twilio.jfrog.io](https://twilio.jfrog.io) under your user profile, then:
 
 ```sh
-ARTIFACTORY_TOKEN=YOUR_ARTIFACTORY_TOKEN npm run fetch-deps
+RTC_CPP_ARTIFACTORY_TOKEN=YOUR_ARTIFACTORY_TOKEN npm run fetch-deps
 ```
 
 This downloads the artifact directly, with no Maven setup. CI uses the same path, with a short-lived token from OIDC.
@@ -110,11 +110,11 @@ Optional vars: `RTC_CPP_VERSION` (overrides the pin), `RTC_CPP_BUILD_TYPE` (defa
 
 #### Maven auth troubleshooting
 
-If Maven authentication fails, set `ARTIFACTORY_TOKEN` as shown above. To download the artifact by hand instead and pass it via `RTC_CPP_ARCHIVE`:
+If Maven authentication fails, set `RTC_CPP_ARTIFACTORY_TOKEN` as shown above. To download the artifact by hand instead and pass it via `RTC_CPP_ARCHIVE`:
 
 ```sh
 VERSION=$(cat .rtc-cpp-version)
-curl -L -H "Authorization: Bearer $ARTIFACTORY_TOKEN" \
+curl -L -H "Authorization: Bearer $RTC_CPP_ARTIFACTORY_TOKEN" \
   "https://twilio.jfrog.io/artifactory/releases/com/twilio/sdk/twilio-video/$VERSION/twilio-video-$VERSION-darwin.tar.bz2" \
   -o /tmp/twilio-video-darwin.tar.bz2
 
