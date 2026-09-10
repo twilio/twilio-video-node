@@ -206,6 +206,29 @@ function loadAddon(): NativeAddon {
   const platformDir = getPlatformDir();
   const prebuiltPath = getPrebuiltPath(platformDir);
 
+  // A local build wins over the prebuilt. `npm run build` in a checkout that
+  // also has a prebuilt must run the code that was just compiled, otherwise a
+  // stale prebuilt silently shadows it and the test suite reports on a binary
+  // nobody built. Trying it before the platform check also lets someone who
+  // compiled the addon on a platform this package does not list load it.
+  // Consumers never reach this: `files` excludes build/, so an installed
+  // package has no local build.
+  for (const buildType of ['Release', 'Debug']) {
+    const localPath = path.join(ROOT, 'build', buildType, 'twilio_video_sdk_node.node');
+    if (!fs.existsSync(localPath)) continue;
+    try {
+      return nativeRequire(localPath);
+    } catch (cause) {
+      throw new NativeBindingLoadError(
+        `The local build at ${localPath} failed to load. This usually means it was built ` +
+          `for a different Node ABI (this is Node ${process.version}, modules ` +
+          `${process.versions.modules}) or a required system library is missing. ` +
+          'Rebuild with `npm run build`.',
+        { cause },
+      );
+    }
+  }
+
   if (fs.existsSync(prebuiltPath)) {
     // A prebuilt that exists but will not load is a different failure from one
     // that is absent: an ABI mismatch or a missing shared library, not a
@@ -218,26 +241,6 @@ function loadAddon(): NativeAddon {
           `built for a different Node ABI (this is Node ${process.version}, modules ` +
           `${process.versions.modules}) or a required system library is missing. ` +
           'Rebuild from source with `npm run build`.',
-        { cause },
-      );
-    }
-  }
-
-  // A local build is tried before the platform check, so someone who compiled
-  // the addon themselves on a platform this package does not list can load it.
-  // Consumers never reach this: `files` excludes build/, so an installed
-  // package has no local build and falls through to the checks below.
-  for (const buildType of ['Release', 'Debug']) {
-    const localPath = path.join(ROOT, 'build', buildType, 'twilio_video_sdk_node.node');
-    if (!fs.existsSync(localPath)) continue;
-    try {
-      return nativeRequire(localPath);
-    } catch (cause) {
-      throw new NativeBindingLoadError(
-        `The local build at ${localPath} failed to load. This usually means it was built ` +
-          `for a different Node ABI (this is Node ${process.version}, modules ` +
-          `${process.versions.modules}) or a required system library is missing. ` +
-          'Rebuild with `npm run build`.',
         { cause },
       );
     }
