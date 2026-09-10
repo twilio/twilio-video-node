@@ -1,5 +1,5 @@
 name: 'Artifactory OIDC Auth'
-description: 'Exchange GitHub OIDC token for Artifactory access token, configure npm, and export RTC_CPP_ARTIFACTORY_TOKEN'
+description: 'Exchange GitHub OIDC token for an Artifactory access token and point npm at the Artifactory registry'
 
 runs:
   using: 'composite'
@@ -66,13 +66,9 @@ runs:
         fi
         echo "::add-mask::$ART_TOKEN"
 
-        # 3. Expose the token to later steps in this job so they can pull
-        #    non-npm artifacts (the rtc-cpp tarball). Masked in logs, and it
-        #    lives only for the duration of the job. Named for the artifact so
-        #    it can differ from npm's token below.
-        echo "RTC_CPP_ARTIFACTORY_TOKEN=$ART_TOKEN" >> "$GITHUB_ENV"
-
-        # 4. Point npm/yarn at the curated Artifactory registry for this job.
+        # 3. Point npm/yarn at the curated Artifactory registry for this job.
+        #    This token is npm's only; the rtc-cpp tarball gets its own from the
+        #    credential vendor, so the two can be scoped separately.
         #    Written project-local rather than to ~/.npmrc so the credential is
         #    scoped to the checkout instead of every later step's home directory.
         REGISTRY="${BASE_URL}/artifactory/api/npm/virtual-npm-thirdparty/"
