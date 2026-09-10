@@ -1,0 +1,105 @@
+name: 'Artifactory Token (vendor)'
+description: 'Exchange a GitHub OIDC token with the credential vendor for a short-lived Artifactory token'
+
+inputs:
+  vendor-url:
+    description: 'Vendor Function URL, e.g. https://<service>.twil.io/vendor'
+    required: true
+  audience:
+    description: 'OIDC audience the vendor expects. Must equal its GITHUB_OIDC_AUDIENCE.'
+    required: true
+
+outputs:
+  token:
+    description: 'Short-lived Artifactory token. Pass it to the one step that needs it.'
+    value: ${{ steps.mint.outputs.token }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Exchange OIDC token with the credential vendor
+      id: mint
+      shell: bash
+      env:
+        VENDOR_URL: ${{ inputs.vendor-url }}
+        VENDOR_AUDIENCE: ${{ inputs.audience }}
+      run: |
+        set -euo pipefail
+
+        # Timeouts on every request: a stalled vendor would otherwise hold the
+        # job until GitHub's own limit.
+        CONNECT_TIMEOUT=10
+        MAX_TIME=30
+
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "::error::jq is required by the artifactory-token-vendor action but was not found on the runner."
+          exit 1
+        fi
+        # Checked with :- so an unset variable reports itself rather than
+        # aborting under `set -u` with no explanation.
+        for var in ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN; do
+          if [ -z "${!var:-}" ]; then
+            echo "::error::${var} is not set. The job needs permissions: id-token: write."
+            exit 1
+          fi
+        done
+        for var in VENDOR_URL VENDOR_AUDIENCE; do
+          if [ -z "${!var:-}" ]; then
+            echo "::error::${var} is empty."
+            exit 1
+          fi
+        done
+
+        # 1. A GitHub OIDC JWT for the vendor's audience. The vendor checks the
+        #    repository, workflow and ref claims before it mints anything. curl
+        #    encodes and appends the audience: interpolating it into the query
+        #    would truncate one containing & or #, minting the wrong aud.
+        if ! JWT_RESPONSE=$(curl -sSf -G \
+          --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIME" \
+          --data-urlencode "audience=${VENDOR_AUDIENCE}" \
+          -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}"); then
+          echo "::error::Could not obtain a GitHub OIDC JWT."
+          exit 1
+        fi
+
+        GITHUB_JWT=$(printf '%s' "$JWT_RESPONSE" | jq -r '.value // empty')
+        # Validated before masking: masking the literal "null" would redact that
+        # word everywhere else in the job's logs.
+        if [ -z "$GITHUB_JWT" ]; then
+          echo "::error::The OIDC response carried no token value."
+          exit 1
+        fi
+        echo "::add-mask::$GITHUB_JWT"
+
+        # 2. Ask the vendor to mint. The JWT goes in through a curl config file
+        #    on stdin rather than argv, so it cannot reach a process listing.
+        #    --fail is omitted so a 4xx body can be reported; the redaction
+        #    below is what makes printing it safe. A transport failure is
+        #    caught here so that diagnostic still runs for HTTP errors.
+        if ! RAW=$(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_JWT" | curl -sS -w '\n%{http_code}' \
+          --config - \
+          --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIME" \
+          -H 'Content-Type: application/json' \
+          -d '{"action":"mint-artifactory-token"}' \
+          "${VENDOR_URL}"); then
+          echo "::error::Could not reach the token vendor at ${VENDOR_URL}."
+          exit 1
+        fi
+
+        HTTP_CODE=$(printf '%s' "$RAW" | tail -n 1)
+        RESP=$(printf '%s' "$RAW" | sed '$d')
+        ART_TOKEN=$(printf '%s' "$RESP" | jq -r '.token // empty' 2>/dev/null || true)
+
+        if [ -z "$ART_TOKEN" ]; then
+          echo "::error::Vendor did not return a token (HTTP ${HTTP_CODE}). Redacted response below:"
+          echo "$RESP" | jq 'walk(if type == "object" then with_entries(if (.key | test("token"; "i")) then .value = "<redacted>" else . end) else . end)' 2>/dev/null \
+            || echo "::error::(response withheld — not valid JSON)"
+          exit 1
+        fi
+        echo "::add-mask::$ART_TOKEN"
+
+        # 3. A step output, not $GITHUB_ENV: the caller hands it to the one step
+        #    that fetches, instead of it sitting in the environment of every
+        #    later step in the job.
+        echo "token=$ART_TOKEN" >> "$GITHUB_OUTPUT"
