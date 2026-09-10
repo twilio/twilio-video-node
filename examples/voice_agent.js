@@ -364,6 +364,7 @@ async function main() {
   room.on('disconnected', (_room, error) => {
     console.log('Disconnected', error ? error.message : '');
     agent.stop();
+    room.dispose();
     process.exit(error ? 1 : 0);
   });
 
