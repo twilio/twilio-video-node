@@ -293,6 +293,8 @@ private:
     template <typename TrackWrap, typename Publication>
     void dispatchPublicationEvent(const std::string& eventName,
                                   const std::shared_ptr<Publication>& pub, const char* kind) {
+        // onVideoTrackEnabled calls the observer even when the publication is gone.
+        if (!pub) return;
         dispatchEvent(eventName, [snapshot = SnapshotPublication(pub),
                                   track = pub->getRemoteTrack(), kind](Napi::Env env) {
             Napi::Value trackValue;

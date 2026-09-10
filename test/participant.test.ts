@@ -471,6 +471,18 @@ describe('RemoteParticipant', () => {
     expect(seen).toHaveLength(1);
   });
 
+  it('tolerates a publication event with no payload', () => {
+    const native = fakeNativeRemote();
+    const p = new RemoteParticipant(native, registry);
+    const seen: unknown[] = [];
+    p.on('trackPublished', pub => seen.push(pub));
+
+    // An empty payload must not throw out of the native callback, and must not
+    // reach listeners as an event with no publication.
+    expect(() => native.emit('trackPublished', undefined)).not.toThrow();
+    expect(seen).toEqual([]);
+  });
+
   it('delivers publication instances typed by track kind', () => {
     const native = fakeNativeRemote();
     const p = new RemoteParticipant(native, registry);

@@ -196,7 +196,7 @@ participant.on('trackPublished', pub => console.log(pub.trackSid));
 // After - a publication, with kind, enabled state and the track once subscribed
 participant.on('trackPublished', pub => {
   console.log(pub.trackSid, pub.kind, pub.isTrackEnabled, pub.isSubscribed);
-  if (pub.isSubscribed) pub.track.frames();
+  if (pub.kind === 'video' && pub.track) pub.track.frames();
 });
 ```
 

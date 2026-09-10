@@ -192,7 +192,8 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
           registry.releaseRemoteTrack(wrapped.sid);
         }
       } else if (PUBLICATION_EVENTS.has(event)) {
-        this.emit(event, remoteTrackPublicationFor(data as RawRemoteTrackPublication, registry));
+        const publication = data as RawRemoteTrackPublication | undefined;
+        if (publication) this.emit(event, remoteTrackPublicationFor(publication, registry));
       } else if (TRACK_OBJECT_EVENTS.has(event)) {
         // Switched-off/on still carry the track alone.
         this.emit(event, registry.wrapRemoteTrack(data as NativeAnyRemoteTrack));

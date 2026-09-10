@@ -36,6 +36,8 @@ export type LocalParticipantEvents = {
    * @param error - Why publishing failed.
    * @param localTrack - The track that failed to publish, or `undefined` if the
    * failure could not be attributed to a track this participant still holds.
+   * Resolved by name, since a failed publication has no SID. If the name was
+   * re-published while the failure was in flight, this is the newer track.
    */
   trackPublicationFailed: (error: TwilioError, localTrack?: LocalTrack) => void;
   /**
@@ -75,8 +77,9 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'trackPublicationFailed') {
         // The native publish only failed asynchronously; drop the entry inserted
-        // by publishTrack so the name is free to re-publish. Safe to key by name:
-        // _assertUniqueName guarantees one instance per name.
+        // by publishTrack so the name is free to re-publish. Keyed by name
+        // because a failed publication has no SID, with the ambiguity noted on
+        // the event.
         const trackName = (data as { trackName?: string } | undefined)?.trackName;
         // Read the track out before dropping it, so the listener still receives
         // the instance that failed.
