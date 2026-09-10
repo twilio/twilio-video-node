@@ -1,0 +1,202 @@
+/**
+ * Computer Vision — face analysis (presence + attention).
+ *
+ * Analyzes the first participant's webcam and reports, drawn on the re-published
+ * video (no data track):
+ *   - whether a face is on screen,
+ *   - an attention estimate ("Attentive" vs "Looking away"): a head-orientation
+ *     heuristic from the RTMO pose model's face keypoints — turning away (yaw),
+ *     head tilt (roll), or looking up/down (pitch) all read as looking away. Not
+ *     true gaze tracking. The keypoints it uses (nose, eyes, ears) are drawn on
+ *     the frame so the scoring is visible.
+ *
+ * It runs a single ONNX model (pose). Download it to examples/.models/ before
+ * running (the program prints instructions if it is missing; see the README).
+ * Requires Node.js >= 24, x64 (see README).
+ *
+ * The attention scoring is a plain geometric heuristic — see the "Attention
+ * scoring" section at the bottom of this file.
+ *
+ * Usage: node examples/cv_face_analysis.js [room-name]
+ */
+
+const { runCvExample } = require('./helpers/cv-runner');
+const { loadModel, runModelOutputs } = require('./helpers/onnx-model');
+const { letterbox, decodeRtmo } = require('./helpers/cv-postprocess');
+const { rgbaToI420 } = require('./helpers/yuv');
+const {
+  desaturateRgba,
+  canvasFromRgba,
+  rgbaFromCanvas,
+  drawFaceBox,
+  drawFaceKeypoints,
+  drawBanner,
+} = require('./helpers/draw');
+
+const POSE_CONF = 0.4;
+const ATTENTIVE = '#00ff88';
+const INATTENTIVE = '#ff9500';
+
+// COCO pose keypoint indices for the face.
+const KP = { nose: 0, leftEye: 1, rightEye: 2, leftEar: 3, rightEar: 4 };
+
+// Neutral (looking straight at the camera) reference values, in eye-widths, for
+// the pitch heuristic. Uncalibrated averages — tune per your camera if needed.
+const NEUTRAL_NOSE_DROP = 0.62; // nose tip below the eye line
+const NEUTRAL_EAR_OFFSET = 0.1; // ears below the eye line
+const PITCH_DOWN = -0.22; // pitch below this reads as looking down
+const PITCH_UP = 0.3; // pitch above this reads as looking up
+
+runCvExample({
+  roomName: process.argv[2] || 'cv-face-analysis-room',
+  trackName: 'cv-face-analysis',
+  async createProcessor() {
+    const poseModel = await loadModel('pose');
+    let lastLogged = 0;
+
+    return async function process(rgba, width, height) {
+      // Pose runs on the color frame. RTMO outputs already-decoded, NMS'd
+      // person boxes (`dets`) and keypoints, so no extra suppression is needed.
+      const { tensor, scale, padX, padY } = letterbox(rgba, width, height);
+      const { dets, keypoints } = await runModelOutputs(poseModel, tensor);
+      const persons = decodeRtmo(dets, keypoints, { scale, padX, padY, scoreThreshold: POSE_CONF });
+
+      // Grayscale for display, then draw the analysis on top so it stands out.
+      desaturateRgba(rgba);
+      const ctx = canvasFromRgba(rgba, width, height);
+
+      // A face is "on screen" for any person whose face keypoints are visible.
+      let primary = null;
+      for (const person of persons) {
+        if (!isFaceVisible(person.keypoints)) continue;
+        const box = faceBoxFromKeypoints(person.keypoints);
+        if (!box) continue;
+        const attention = estimateAttention(person.keypoints);
+        const color = attention.state === 'Attentive' ? ATTENTIVE : INATTENTIVE;
+        // Show the keypoints the score is built from, then the box + label.
+        drawFaceKeypoints(ctx, person.keypoints);
+        drawFaceBox(ctx, box, [`${attention.state} ${attention.score}`], color);
+        if (!primary || person.score > primary.person.score) primary = { person, attention };
+      }
+
+      if (primary) {
+        const a = primary.attention;
+        drawBanner(ctx, width, `Face: yes | ${a.state} (${a.score})`);
+      } else {
+        drawBanner(ctx, width, 'No face on screen');
+      }
+
+      if (Date.now() - lastLogged > 1000) {
+        lastLogged = Date.now();
+        const a = primary && primary.attention;
+        console.log(
+          primary
+            ? `[cv] face: yes | attention: ${a.state} (${a.score})`
+            : '[cv] face: none on screen',
+        );
+      }
+
+      return rgbaToI420(rgbaFromCanvas(ctx, width, height), width, height);
+    };
+  },
+});
+
+// --- Attention scoring (head-orientation heuristic) -------------------------
+//
+// All derived from the five face keypoints (nose, eyes, ears) that the RTMO pose
+// model emits per person. This is head orientation, not gaze — it detects
+// turning away and looking up/down, but not where the eyes point within a facing
+// head.
+
+// A face is considered on screen when the nose, or both eyes, are visible.
+function isFaceVisible(keypoints, minScore = 0.3) {
+  const seen = i => keypoints[i].score >= minScore;
+  return seen(KP.nose) || (seen(KP.leftEye) && seen(KP.rightEye));
+}
+
+// Build an approximate head box from the visible face keypoints, padded up for
+// the forehead and down for the chin (the keypoints only span eyes-to-ears).
+function faceBoxFromKeypoints(keypoints, minScore = 0.3) {
+  const pts = [KP.nose, KP.leftEye, KP.rightEye, KP.leftEar, KP.rightEar]
+    .map(i => keypoints[i])
+    .filter(p => p.score >= minScore);
+  if (pts.length < 2) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of pts) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const w = maxX - minX;
+  const h = maxY - minY;
+  const padX = w * 0.35 + 10;
+  const padTop = h * 1.2 + 12; // forehead sits above the eyes
+  const padBottom = h * 1.6 + 12; // chin sits below the nose
+  return {
+    x: minX - padX,
+    y: minY - padTop,
+    w: w + 2 * padX,
+    h: h + padTop + padBottom,
+  };
+}
+
+// Estimate attention from the five face keypoints. Scores how frontal the head
+// is from ear visibility, the nose's horizontal offset within the eyes (yaw),
+// the tilt of the eye line (roll), and a coarse up/down estimate (pitch). A
+// strong turn or up/down tilt reads as "Looking away". Returns { state, score }.
+function estimateAttention(keypoints, minScore = 0.3) {
+  const nose = keypoints[KP.nose];
+  const le = keypoints[KP.leftEye];
+  const re = keypoints[KP.rightEye];
+  const lEar = keypoints[KP.leftEar];
+  const rEar = keypoints[KP.rightEar];
+  const seen = p => p.score >= minScore;
+
+  let score = 100;
+  let pitchAway = false;
+
+  // Ear visibility: one ear hidden means the head is turned to that side; both
+  // hidden is ambiguous but usually not frontal.
+  if (seen(lEar) !== seen(rEar)) score -= 45;
+  else if (!seen(lEar) && !seen(rEar)) score -= 25;
+
+  if (seen(le) && seen(re)) {
+    const eyeMidX = (le.x + re.x) / 2;
+    const eyeMidY = (le.y + re.y) / 2;
+    const eyeDist = Math.hypot(le.x - re.x, le.y - re.y) || 1;
+
+    // Yaw: how far the nose sits from the eye midline, measured in eye-widths.
+    const yaw = seen(nose) ? Math.abs(nose.x - eyeMidX) / eyeDist : 1;
+    score -= Math.min(50, yaw * 80);
+
+    // Roll: tilt of the line between the eyes, in radians.
+    const roll = Math.abs(Math.atan2(re.y - le.y, re.x - le.x));
+    score -= Math.min(20, roll * 40);
+
+    // Pitch (coarse up/down): the nose foreshortens toward the eyes when looking
+    // down and drops away when looking up; the ears mirror this against the eye
+    // line. Both cues are normalized by eye spacing and offset from neutral. A
+    // strong tilt counts the same as looking away.
+    if (seen(nose)) {
+      let pitch = (nose.y - eyeMidY) / eyeDist - NEUTRAL_NOSE_DROP;
+      if (seen(lEar) && seen(rEar)) {
+        const earOffset = (lEar.y + rEar.y) / 2 - eyeMidY;
+        pitch = (pitch + (earOffset / eyeDist - NEUTRAL_EAR_OFFSET)) / 2;
+      }
+      if (pitch < PITCH_DOWN || pitch > PITCH_UP) {
+        pitchAway = true;
+        score -= 40;
+      }
+    }
+  } else {
+    score -= 40; // can't see both eyes -> not facing forward
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  return { state: score >= 60 && !pitchAway ? 'Attentive' : 'Looking away', score };
+}
