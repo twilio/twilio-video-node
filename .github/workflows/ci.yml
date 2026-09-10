@@ -78,15 +78,19 @@ jobs:
       # The tarball's token is minted by the credential vendor, separately from
       # npm's, so it can be scoped to the repository holding it.
       - name: Artifactory token for rtc-cpp
+        id: rtc-cpp-token
         if: ${{ matrix.native }}
         uses: ./.github/actions/artifactory-token-vendor
         with:
           vendor-url: ${{ vars.RTC_CPP_TOKEN_VENDOR_URL }}
           audience: ${{ vars.RTC_CPP_TOKEN_VENDOR_AUDIENCE }}
       # Not cached: rtc-cpp is not redistributable, and GitHub caches are
-      # readable by any workflow run on the repository.
+      # readable by any workflow run on the repository. The token is scoped to
+      # this step so it is not in the environment of the build and test steps.
       - name: Fetch rtc-cpp
         if: ${{ matrix.native }}
+        env:
+          RTC_CPP_ARTIFACTORY_TOKEN: ${{ steps.rtc-cpp-token.outputs.token }}
         run: npm run fetch-deps
       # CMakeLists links these on Linux; the runner image does not carry them.
       - name: Install X11 development libraries
