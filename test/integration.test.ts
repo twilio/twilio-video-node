@@ -21,6 +21,7 @@ import {
   createLocalAudioTrack,
   createLocalDataTrack,
   LocalVideoTrackPublication,
+  RemoteVideoTrackPublication,
   TwilioError,
 } from '../lib/index.js';
 import type { EventEmitter } from 'node:events';
@@ -202,11 +203,18 @@ describe('Error cases, provoked end to end', () => {
     const roomName = uniqueRoom();
 
     const first = await connectToRoom('same-identity', roomName);
-    const evicted = waitForEvent<TwilioError | undefined>(
-      first.room,
-      'disconnected',
-      TIMEOUT.subscribe,
-    );
+    // waitForEvent resolves the event's first argument, which for `disconnected`
+    // is the Room; the error is the second.
+    const evicted = new Promise<TwilioError | undefined>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("Timeout waiting for 'disconnected'")),
+        TIMEOUT.subscribe,
+      );
+      first.room.once('disconnected', (_room, error) => {
+        clearTimeout(timer);
+        resolve(error);
+      });
+    });
 
     // The same identity joining evicts the earlier participant.
     const second = await connectToRoom('same-identity', roomName);
@@ -805,7 +813,7 @@ describe('RemoteParticipant trackPublished/trackUnpublished', () => {
 
     const { connA, connB, remoteA } = await connectPair(roomName);
 
-    const publishedPromise = waitForEvent<{ trackName: string; trackSid: string }>(
+    const publishedPromise = waitForEvent<RemoteVideoTrackPublication>(
       remoteA,
       'trackPublished',
       TIMEOUT.subscribe,
@@ -817,6 +825,10 @@ describe('RemoteParticipant trackPublished/trackUnpublished', () => {
 
     expect(publication.trackName).toBe('pub-event-cam');
     expect(publication.trackSid).toBeTruthy();
+    // The kind is what routes the payload to a typed publication, so this
+    // fails if the native layer stops sending a full publication.
+    expect(publication).toBeInstanceOf(RemoteVideoTrackPublication);
+    expect(publication.isTrackEnabled).toBe(true);
 
     // Wait for subscription to complete before unpublishing
     await subscribedPromise;
@@ -1136,9 +1148,9 @@ describe('Late joiner into a populated room', () => {
 
     try {
       videoTrack.enabled = false;
-      await disabled;
+      expect(await disabled).toBeInstanceOf(RemoteVideoTrackPublication);
       videoTrack.enabled = true;
-      await enabled;
+      expect(await enabled).toBeInstanceOf(RemoteVideoTrackPublication);
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }

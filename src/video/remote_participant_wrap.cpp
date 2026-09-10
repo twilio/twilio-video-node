@@ -25,14 +25,13 @@ PublicationSnapshot SnapshotPublication(const std::shared_ptr<Publication>& pub)
     return {pub->getTrackSid(), pub->getTrackName(), pub->isTrackEnabled(), pub->isTrackSubscribed()};
 }
 
-// Builds the `{ track, publication }` payload the subscribe/unsubscribe events
-// carry. The publication mirrors the shape the track collection getters return,
-// and shares the track object rather than wrapping it twice.
-template <typename TrackWrap, typename Track>
-Napi::Object MakeSubscriptionPayload(Napi::Env env, const PublicationSnapshot& snapshot,
-                                     const char* kind, const std::shared_ptr<Track>& track) {
-    Napi::Value trackValue = TrackWrap::NewInstance(env, track);
-
+// Builds the publication object every publication-carrying event ships. It
+// mirrors the shape the track collection getters return. `trackValue` is empty
+// when the caller has no track to attach; when it is present it is the same
+// object the surrounding payload exposes, so a listener never sees two wrappers
+// for one track.
+Napi::Object MakePublicationObject(Napi::Env env, const PublicationSnapshot& snapshot,
+                                   const char* kind, Napi::Value trackValue) {
     auto publication = Napi::Object::New(env);
     publication.Set("trackSid", Napi::String::New(env, snapshot.trackSid));
     publication.Set("trackName", Napi::String::New(env, snapshot.trackName));
@@ -43,13 +42,22 @@ Napi::Object MakeSubscriptionPayload(Napi::Env env, const PublicationSnapshot& s
     // RemoteTrackPublication.track. On trackUnsubscribed the publication
     // reports isSubscribed false, so its track has to be absent; the event's
     // own track argument is how a listener reaches the track it just lost.
-    if (snapshot.subscribed) {
+    if (snapshot.subscribed && !trackValue.IsEmpty()) {
         publication.Set("track", trackValue);
     }
+    return publication;
+}
+
+// Builds the `{ track, publication }` payload the subscribe/unsubscribe events
+// carry, sharing the track object rather than wrapping it twice.
+template <typename TrackWrap, typename Track>
+Napi::Object MakeSubscriptionPayload(Napi::Env env, const PublicationSnapshot& snapshot,
+                                     const char* kind, const std::shared_ptr<Track>& track) {
+    Napi::Value trackValue = TrackWrap::NewInstance(env, track);
 
     auto payload = Napi::Object::New(env);
     payload.Set("track", trackValue);
-    payload.Set("publication", publication);
+    payload.Set("publication", MakePublicationObject(env, snapshot, kind, trackValue));
     return payload;
 }
 
@@ -120,17 +128,17 @@ public:
     // Audio track events
     void onAudioTrackPublished(twilio::video::RemoteParticipant*,
                                std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
-        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchPublicationEvent<RemoteAudioTrackWrap>("trackPublished", pub, "audio");
     }
     void onAudioTrackUnpublished(twilio::video::RemoteParticipant*,
                                  std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
-        dispatchTrackEvent("trackUnpublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchPublicationEvent<RemoteAudioTrackWrap>("trackUnpublished", pub, "audio");
     }
     void onAudioTrackEnabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
-        dispatchPubStateEvent("trackEnabled", pub->getTrackSid(), pub->getTrackName(), pub->isTrackSubscribed());
+        dispatchPublicationEvent<RemoteAudioTrackWrap>("trackEnabled", pub, "audio");
     }
     void onAudioTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub) override {
-        dispatchPubStateEvent("trackDisabled", pub->getTrackSid(), pub->getTrackName(), pub->isTrackSubscribed());
+        dispatchPublicationEvent<RemoteAudioTrackWrap>("trackDisabled", pub, "audio");
     }
     void onAudioTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
@@ -140,8 +148,7 @@ public:
     }
     void onAudioTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                         const twilio::video::Error error) override {
-        dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "audio",
-                                        error.getCode(), error.getMessage());
+        dispatchSubscriptionFailedEvent(pub, "audio", error.getCode(), error.getMessage());
     }
     void onAudioTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteAudioTrackPublication> pub,
                                   std::shared_ptr<twilio::media::RemoteAudioTrack> track) override {
@@ -155,17 +162,17 @@ public:
     // Video track events
     void onVideoTrackPublished(twilio::video::RemoteParticipant*,
                                std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
-        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchPublicationEvent<RemoteVideoTrackWrap>("trackPublished", pub, "video");
     }
     void onVideoTrackUnpublished(twilio::video::RemoteParticipant*,
                                  std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
-        dispatchTrackEvent("trackUnpublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchPublicationEvent<RemoteVideoTrackWrap>("trackUnpublished", pub, "video");
     }
     void onVideoTrackEnabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
-        dispatchPubStateEvent("trackEnabled", pub->getTrackSid(), pub->getTrackName(), pub->isTrackSubscribed());
+        dispatchPublicationEvent<RemoteVideoTrackWrap>("trackEnabled", pub, "video");
     }
     void onVideoTrackDisabled(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub) override {
-        dispatchPubStateEvent("trackDisabled", pub->getTrackSid(), pub->getTrackName(), pub->isTrackSubscribed());
+        dispatchPublicationEvent<RemoteVideoTrackWrap>("trackDisabled", pub, "video");
     }
     void onVideoTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
@@ -175,8 +182,7 @@ public:
     }
     void onVideoTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                         const twilio::video::Error error) override {
-        dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "video",
-                                        error.getCode(), error.getMessage());
+        dispatchSubscriptionFailedEvent(pub, "video", error.getCode(), error.getMessage());
     }
     void onVideoTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteVideoTrackPublication> pub,
                                   std::shared_ptr<twilio::media::RemoteVideoTrack> track) override {
@@ -202,11 +208,11 @@ public:
     // Data track events
     void onDataTrackPublished(twilio::video::RemoteParticipant*,
                               std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub) override {
-        dispatchTrackEvent("trackPublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchPublicationEvent<RemoteDataTrackWrap>("trackPublished", pub, "data");
     }
     void onDataTrackUnpublished(twilio::video::RemoteParticipant*,
                                 std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub) override {
-        dispatchTrackEvent("trackUnpublished", pub->getTrackSid(), pub->getTrackName());
+        dispatchPublicationEvent<RemoteDataTrackWrap>("trackUnpublished", pub, "data");
     }
     void onDataTrackSubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
                                 std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
@@ -216,8 +222,7 @@ public:
     }
     void onDataTrackSubscriptionFailed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
                                        const twilio::video::Error error) override {
-        dispatchSubscriptionFailedEvent(pub->getTrackSid(), pub->getTrackName(), "data",
-                                        error.getCode(), error.getMessage());
+        dispatchSubscriptionFailedEvent(pub, "data", error.getCode(), error.getMessage());
     }
     void onDataTrackUnsubscribed(twilio::video::RemoteParticipant*, std::shared_ptr<twilio::media::RemoteDataTrackPublication> pub,
                                  std::shared_ptr<twilio::media::RemoteDataTrack> track) override {
@@ -281,39 +286,35 @@ private:
         });
     }
 
-    void dispatchTrackEvent(const std::string& eventName, std::string sid, std::string name) {
-        dispatchEvent(eventName, [sid = std::move(sid), name = std::move(name)](Napi::Env env) {
-            auto obj = Napi::Object::New(env);
-            obj.Set("trackSid", Napi::String::New(env, sid));
-            obj.Set("trackName", Napi::String::New(env, name));
-            return obj;
+    // Ships the publication for the publish/unpublish/enable/disable events.
+    // Both the state snapshot and getRemoteTrack() are read here, on the
+    // signaling thread, because the publication must not be touched once the
+    // lambda runs on the JS thread.
+    template <typename TrackWrap, typename Publication>
+    void dispatchPublicationEvent(const std::string& eventName,
+                                  const std::shared_ptr<Publication>& pub, const char* kind) {
+        // onVideoTrackEnabled calls the observer even when the publication is gone.
+        if (!pub) return;
+        dispatchEvent(eventName, [snapshot = SnapshotPublication(pub),
+                                  track = pub->getRemoteTrack(), kind](Napi::Env env) {
+            Napi::Value trackValue;
+            if (track) trackValue = TrackWrap::NewInstance(env, track);
+            return MakePublicationObject(env, snapshot, kind, trackValue);
         });
     }
 
-    void dispatchPubStateEvent(const std::string& eventName, std::string sid, std::string name, bool subscribed) {
-        dispatchEvent(eventName, [sid = std::move(sid), name = std::move(name), subscribed](Napi::Env env) {
-            auto obj = Napi::Object::New(env);
-            obj.Set("trackSid", Napi::String::New(env, sid));
-            obj.Set("trackName", Napi::String::New(env, name));
-            obj.Set("isSubscribed", Napi::Boolean::New(env, subscribed));
-            return obj;
-        });
-    }
-
-    // The JS callback takes a single payload, so the error and publication ship as one object.
-    void dispatchSubscriptionFailedEvent(std::string sid, std::string name, const char* kind,
+    // The JS callback takes a single payload, so the error and publication ship
+    // as one object. The snapshot is read here, on the signaling thread, for the
+    // same reason dispatchPublicationEvent reads it here.
+    template <typename Publication>
+    void dispatchSubscriptionFailedEvent(const std::shared_ptr<Publication>& pub, const char* kind,
                                          uint32_t code, std::string message) {
-        dispatchEvent("trackSubscriptionFailed", [sid = std::move(sid), name = std::move(name),
-                                                  kind, code,
+        dispatchEvent("trackSubscriptionFailed", [snapshot = SnapshotPublication(pub), kind, code,
                                                   message = std::move(message)](Napi::Env env) {
-            auto publication = Napi::Object::New(env);
-            publication.Set("trackSid", Napi::String::New(env, sid));
-            publication.Set("trackName", Napi::String::New(env, name));
-            publication.Set("kind", Napi::String::New(env, kind));
-
             auto obj = Napi::Object::New(env);
             obj.Set("error", createTwilioErrorObject(env, code, message));
-            obj.Set("publication", publication);
+            // Subscription failed, so the publication carries no track.
+            obj.Set("publication", MakePublicationObject(env, snapshot, kind, Napi::Value()));
             return obj;
         });
     }

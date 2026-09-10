@@ -168,7 +168,7 @@ Subscriptions that completed before the listener was attached are not replayed, 
 
 | Event                     | Handler Signature                                  |
 | ------------------------- | -------------------------------------------------- |
-| `disconnected`            | `(error?: TwilioError) => void`                    |
+| `disconnected`            | `(room: Room, error?: TwilioError) => void`        |
 | `connectFailure`          | `(error: TwilioError) => void`                     |
 | `reconnecting`            | `(error?: TwilioError) => void`                    |
 | `reconnected`             | `() => void`                                       |
@@ -191,22 +191,22 @@ participant's tracks from one place instead of attaching a listener to each part
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `trackSubscribed`            | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack, publication: RemoteTrackPublication) => void` |
 | `trackUnsubscribed`          | `(track: RemoteVideoTrack \| RemoteAudioTrack \| RemoteDataTrack, publication: RemoteTrackPublication) => void` |
-| `trackSubscriptionFailed`    | `(error: TwilioError, publication: RemoteTrackSubscriptionFailedEvent) => void`                                 |
-| `trackPublished`             | `(publication: RemoteTrackPublishEvent) => void`                                                                |
-| `trackUnpublished`           | `(publication: RemoteTrackPublishEvent) => void`                                                                |
-| `trackEnabled`               | `(publication: RemoteTrackStateEvent) => void`                                                                  |
-| `trackDisabled`              | `(publication: RemoteTrackStateEvent) => void`                                                                  |
+| `trackSubscriptionFailed`    | `(error: TwilioError, publication: RemoteTrackPublication) => void`                                             |
+| `trackPublished`             | `(publication: RemoteTrackPublication) => void`                                                                 |
+| `trackUnpublished`           | `(publication: RemoteTrackPublication) => void`                                                                 |
+| `trackEnabled`               | `(publication: RemoteTrackPublication) => void`                                                                 |
+| `trackDisabled`              | `(publication: RemoteTrackPublication) => void`                                                                 |
 | `videoTrackSwitchedOff`      | `(track: RemoteVideoTrack) => void`                                                                             |
 | `videoTrackSwitchedOn`       | `(track: RemoteVideoTrack) => void`                                                                             |
 | `networkQualityLevelChanged` | `(level: number) => void`                                                                                       |
 
 ### LocalParticipant Events
 
-| Event                        | Handler Signature                              |
-| ---------------------------- | ---------------------------------------------- |
-| `trackPublished`             | `(publication: LocalTrackPublication) => void` |
-| `trackPublicationFailed`     | `(error: TwilioError) => void`                 |
-| `networkQualityLevelChanged` | `(level: number) => void`                      |
+| Event                        | Handler Signature                                       |
+| ---------------------------- | ------------------------------------------------------- |
+| `trackPublished`             | `(publication: LocalTrackPublication) => void`          |
+| `trackPublicationFailed`     | `(error: TwilioError, localTrack?: LocalTrack) => void` |
+| `networkQualityLevelChanged` | `(level: number) => void`                               |
 
 ### TrackPublication
 

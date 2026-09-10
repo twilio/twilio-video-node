@@ -678,30 +678,6 @@ export interface RemoteTrackPublication extends TrackPublication {
   track?: NativeRemoteVideoTrack | NativeRemoteAudioTrack | NativeRemoteDataTrack;
 }
 
-/** Payload for the `trackPublished`/`trackUnpublished` events. */
-export interface RemoteTrackPublishEvent {
-  /** SID of the track this event is about. */
-  trackSid: Track.SID;
-  /** Name of the track this event is about. */
-  trackName: string;
-}
-
-/** Payload for the `trackEnabled`/`trackDisabled` events. */
-export interface RemoteTrackStateEvent extends RemoteTrackPublishEvent {
-  /** Whether the local client is subscribed to the track. */
-  isSubscribed: boolean;
-}
-
-/**
- * Payload for the `trackSubscriptionFailed` event, identifying the publication that
- * could not be subscribed to. Includes `kind` so a listener can route the failure
- * without looking `trackSid` up in the participant's track collections.
- */
-export interface RemoteTrackSubscriptionFailedEvent extends RemoteTrackPublishEvent {
-  /** Whether the track is `video`, `audio`, or `data`. */
-  kind: TrackKind;
-}
-
 /** Width/height in pixels reported in track stats. */
 export interface StatsVideoDimensions {
   /** Frame width in pixels. */

@@ -209,16 +209,20 @@ describe('Room lifecycle events', () => {
     expect((seen[0] as TwilioError).code).toBe(53106);
   });
 
-  it('emits disconnected with an error, or without one', () => {
+  it('emits disconnected with the Room, and with an error only when one is given', () => {
     const native = fakeRoom();
     const room = new Room(native);
-    const seen: unknown[] = [];
-    room.on('disconnected', e => seen.push(e));
+    const seen: Array<[unknown, unknown]> = [];
+    room.on('disconnected', (r, e) => seen.push([r, e]));
 
     native.emit('disconnected');
     native.emit('disconnected', { code: 53118 });
-    expect(seen[0]).toBeUndefined();
-    expect(seen[1]).toBeInstanceOf(TwilioError);
+
+    expect(seen[0][0]).toBe(room);
+    expect(seen[0][1]).toBeUndefined();
+    expect(seen[1][0]).toBe(room);
+    expect(seen[1][1]).toBeInstanceOf(TwilioError);
+    expect((seen[1][1] as TwilioError).code).toBe(53118);
   });
 
   it('ends active frame receivers when the Room disconnects', async () => {

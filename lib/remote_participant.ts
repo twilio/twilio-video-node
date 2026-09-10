@@ -1,9 +1,6 @@
 import type {
   NativeRemoteParticipant,
   ParticipantState,
-  RemoteTrackPublishEvent,
-  RemoteTrackStateEvent,
-  RemoteTrackSubscriptionFailedEvent,
   RemoteTrackPublication as RawRemoteTrackPublication,
   Participant,
   Track,
@@ -32,6 +29,14 @@ type NativeAnyRemoteTrack = NativeRemoteVideoTrack | NativeRemoteAudioTrack | Na
  * track registry.
  */
 const TRACK_OBJECT_EVENTS = new Set(['videoTrackSwitchedOff', 'videoTrackSwitchedOn']);
+
+/** Events whose sole argument is the publication the native layer sent. */
+const PUBLICATION_EVENTS = new Set([
+  'trackPublished',
+  'trackUnpublished',
+  'trackEnabled',
+  'trackDisabled',
+]);
 
 /** Wraps a raw publication from the native layer in the class matching its kind. */
 function remoteTrackPublicationFor(
@@ -88,28 +93,29 @@ export type RemoteParticipantEvents = {
    * This participant published a track. Subscription follows separately, and
    * `trackSubscribed` reports it.
    *
-   * @param publication - Metadata for the newly published track.
+   * @param publication - The new publication. Its `track` is set only once
+   * subscription completes.
    */
-  trackPublished: (publication: RemoteTrackPublishEvent) => void;
+  trackPublished: (publication: RemoteTrackPublication) => void;
   /**
    * This participant unpublished a track.
    *
-   * @param publication - Metadata for the unpublished track.
+   * @param publication - The publication that was removed.
    */
-  trackUnpublished: (publication: RemoteTrackPublishEvent) => void;
+  trackUnpublished: (publication: RemoteTrackPublication) => void;
   /**
    * This participant unmuted a track they publish.
    *
-   * @param publication - Identifies the track that was enabled.
+   * @param publication - The publication whose track was enabled.
    */
-  trackEnabled: (publication: RemoteTrackStateEvent) => void;
+  trackEnabled: (publication: RemoteTrackPublication) => void;
   /**
    * This participant muted a track they publish. The track stays subscribed but
    * stops delivering media.
    *
-   * @param publication - Identifies the track that was disabled.
+   * @param publication - The publication whose track was disabled.
    */
-  trackDisabled: (publication: RemoteTrackStateEvent) => void;
+  trackDisabled: (publication: RemoteTrackPublication) => void;
   /**
    * Subscribing to one of this participant's tracks failed. The track stays
    * unsubscribed.
@@ -117,10 +123,7 @@ export type RemoteParticipantEvents = {
    * @param error - Why the subscription failed.
    * @param publication - Identifies the track that could not be subscribed to.
    */
-  trackSubscriptionFailed: (
-    error: TwilioError,
-    publication: RemoteTrackSubscriptionFailedEvent,
-  ) => void;
+  trackSubscriptionFailed: (error: TwilioError, publication: RemoteTrackPublication) => void;
   /**
    * The server stopped delivering a subscribed video track, typically to stay
    * within the Room's bandwidth profile. The track stays subscribed and its
@@ -165,9 +168,13 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
       if (event === 'trackSubscriptionFailed') {
         const { error, publication } = (data ?? {}) as {
           error?: unknown;
-          publication?: RemoteTrackSubscriptionFailedEvent;
+          publication?: RawRemoteTrackPublication;
         };
-        this.emit(event, liftTwilioError(error), publication);
+        this.emit(
+          event,
+          liftTwilioError(error),
+          publication ? remoteTrackPublicationFor(publication, registry) : publication,
+        );
       } else if (event === 'trackSubscribed' || event === 'trackUnsubscribed') {
         // The native layer sends { track, publication }, and mints a fresh
         // track object per event. Resolve the track through the registry so
@@ -184,6 +191,9 @@ export class RemoteParticipant extends TypedEventEmitter<RemoteParticipantEvents
           // rather than hanging on a track that will never produce again.
           registry.releaseRemoteTrack(wrapped.sid);
         }
+      } else if (PUBLICATION_EVENTS.has(event)) {
+        const publication = data as RawRemoteTrackPublication | undefined;
+        if (publication) this.emit(event, remoteTrackPublicationFor(publication, registry));
       } else if (TRACK_OBJECT_EVENTS.has(event)) {
         // Switched-off/on still carry the track alone.
         this.emit(event, registry.wrapRemoteTrack(data as NativeAnyRemoteTrack));

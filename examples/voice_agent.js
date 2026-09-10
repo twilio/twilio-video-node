@@ -361,7 +361,7 @@ async function main() {
   room.participants.forEach(handleParticipant);
   room.on('participantConnected', handleParticipant);
 
-  room.on('disconnected', error => {
+  room.on('disconnected', (_room, error) => {
     console.log('Disconnected', error ? error.message : '');
     agent.stop();
     process.exit(error ? 1 : 0);

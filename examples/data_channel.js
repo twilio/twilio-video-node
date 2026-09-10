@@ -38,7 +38,7 @@ async function main() {
     console.log(`[${IDENTITY}] Participant left: ${participant.identity}`);
   });
 
-  room.on('disconnected', error => {
+  room.on('disconnected', (_room, error) => {
     console.log(`[${IDENTITY}] Disconnected`, error ? error.message : '');
     process.exit(0);
   });

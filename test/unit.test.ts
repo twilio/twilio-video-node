@@ -15,6 +15,8 @@ import {
   ParticipantMaxTracksExceededError,
   twilioErrorFromCode,
   LocalVideoTrackPublication,
+  RemoteTrackPublication,
+  RemoteVideoTrackPublication,
   Room,
   ErrorCode,
 } from '../lib/index.js';
@@ -29,8 +31,7 @@ import {
 import type {
   NativeRoom,
   NativeRemoteParticipant,
-  RemoteTrackPublication,
-  RemoteTrackSubscriptionFailedEvent,
+  RemoteTrackPublication as RawRemoteTrackPublication,
 } from '../lib/types.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 
@@ -986,8 +987,8 @@ describe('Participants already in the Room at connect', () => {
   }
 
   function makeNativeParticipant(
-    videoTracks: RemoteTrackPublication[] = [],
-    audioTracks: RemoteTrackPublication[] = [],
+    videoTracks: RawRemoteTrackPublication[] = [],
+    audioTracks: RawRemoteTrackPublication[] = [],
   ): FakeParticipant {
     const participant = {
       sid: 'PA1',
@@ -1062,7 +1063,7 @@ describe('Participants already in the Room at connect', () => {
   it('bubbles trackSubscriptionFailed with the publication and the participant appended', () => {
     const alice = makeNativeParticipant();
     const room = connectFake([alice]);
-    const seen: [TwilioErrorSrc, RemoteTrackSubscriptionFailedEvent, string][] = [];
+    const seen: [TwilioErrorSrc, RemoteTrackPublication, string][] = [];
     room.on('trackSubscriptionFailed', (error, publication, participant) =>
       seen.push([error, publication, participant.identity]),
     );
@@ -1074,6 +1075,9 @@ describe('Participants already in the Room at connect', () => {
     expect(identity).toBe('alice');
     expect(publication.trackSid).toBe('MT-video');
     expect(publication.kind).toBe('video');
+    expect(publication).toBeInstanceOf(RemoteVideoTrackPublication);
+    // Subscription failed, so there is no track to reach.
+    expect(publication.track).toBeUndefined();
   });
 
   it('reports the failing publication on the participant', () => {

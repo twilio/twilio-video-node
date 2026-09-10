@@ -43,7 +43,7 @@ async function main() {
   console.log('Connected! Room:', room.name, 'SID:', room.sid);
   const pusher = startPushingAudio(audioTrack);
 
-  room.on('disconnected', error => {
+  room.on('disconnected', (_room, error) => {
     pusher.stop();
     console.log('Disconnected', error ? error.message : '');
     process.exit(0);

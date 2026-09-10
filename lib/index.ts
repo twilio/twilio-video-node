@@ -121,9 +121,6 @@ export type {
   NetworkQualityConfiguration,
   VideoRenderDimensions,
   VideoContentPreferences,
-  RemoteTrackPublishEvent,
-  RemoteTrackStateEvent,
-  RemoteTrackSubscriptionFailedEvent,
   DataTrackSendResult,
 } from './types.js';
 
