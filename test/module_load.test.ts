@@ -169,4 +169,36 @@ describe('module loading in a clean process', () => {
     ]);
     expect(out).toBe('local-build-ok');
   });
+
+  it('prefers a local build over a prebuilt for the same platform', () => {
+    // A stale prebuilt must not shadow a fresh `npm run build`, or the suite
+    // reports on a binary nobody just built. The prebuilt here is deliberately
+    // not loadable, so reaching for it at all fails the import.
+    const out = runNode([
+      '--input-type=module',
+      '-e',
+      `const fs = await import('node:fs');
+       const os = await import('node:os');
+       const path = await import('node:path');
+       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-precedence-'));
+       fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ version: '0.0.0-test' }));
+       fs.mkdirSync(path.join(tmp, 'dist'));
+       fs.copyFileSync('dist/index.mjs', path.join(tmp, 'dist', 'index.mjs'));
+       fs.mkdirSync(path.join(tmp, 'build', 'Release'), { recursive: true });
+       fs.symlinkSync(
+         path.resolve('build/Release/twilio_video_sdk_node.node'),
+         path.join(tmp, 'build', 'Release', 'twilio_video_sdk_node.node'),
+       );
+       const platformDir = process.platform + '-' + process.arch;
+       fs.mkdirSync(path.join(tmp, 'prebuilds', platformDir), { recursive: true });
+       fs.writeFileSync(
+         path.join(tmp, 'prebuilds', platformDir, 'twilio_video_sdk_node-' + platformDir + '.node'),
+         'not a loadable addon',
+       );
+       const sdk = await import(path.join(tmp, 'dist', 'index.mjs'));
+       if (typeof sdk.getVersion() !== 'string') throw new Error('addon did not load');
+       console.log('precedence-ok');`,
+    ]);
+    expect(out).toBe('precedence-ok');
+  });
 });
