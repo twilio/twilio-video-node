@@ -214,8 +214,13 @@ export class RemoteAudioTrack extends RemoteMediaTrack<NativeRemoteAudioTrack, A
 
 /** Events emitted by {@link RemoteDataTrack}. */
 export type RemoteDataTrackEvents = {
-  /** A message from the publisher. `string` for text, `Buffer` for binary. */
-  message: (data: string | Buffer) => void;
+  /**
+   * A message from the publisher. `string` for text, `Buffer` for binary.
+   *
+   * @param data - The message.
+   * @param track - The track it arrived on, so one listener can serve several.
+   */
+  message: (data: string | Buffer, track: RemoteDataTrack) => void;
 };
 
 /**
@@ -279,7 +284,7 @@ export class RemoteDataTrack extends TypedEventEmitter<RemoteDataTrackEvents> {
   private ensureMessageSink(event: string): void {
     if (event !== 'message' || this.attached) return;
     this.attached = true;
-    this._native.onMessage((data: string | Buffer) => this.emit('message', data));
+    this._native.onMessage((data: string | Buffer) => this.emit('message', data, this));
   }
 
   /**

@@ -399,6 +399,16 @@ describe('RemoteDataTrack', () => {
     expect(track.maxRetransmits).toBeNull();
   });
 
+  it('passes the track alongside the message', () => {
+    const native = fakeNativeData();
+    const track = new RemoteDataTrack(native as never);
+    const seen: Array<[unknown, unknown]> = [];
+    track.on('message', (data, from) => seen.push([data, from]));
+
+    native.emit?.('hello');
+    expect(seen).toEqual([['hello', track]]);
+  });
+
   it('attaches the native callback lazily, only once', () => {
     const native = fakeNativeData();
     const track = new RemoteDataTrack(native as never);

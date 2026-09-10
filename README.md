@@ -407,8 +407,8 @@ for await (const frame of track.frames()) {
 Receive string or binary messages from a remote participant.
 
 ```js
-track.on('message', data => {
-  /* string | Buffer */
+track.on('message', (data, track) => {
+  /* data is string | Buffer; track is the RemoteDataTrack it arrived on */
 });
 ```
 
