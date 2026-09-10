@@ -34,8 +34,12 @@ export type LocalParticipantEvents = {
    * participants never see it.
    *
    * @param error - Why publishing failed.
+   * @param localTrack - The track that failed to publish, or `undefined` if the
+   * failure could not be attributed to a track this participant still holds.
+   * Resolved by name, since a failed publication has no SID. If the name was
+   * re-published while the failure was in flight, this is the newer track.
    */
-  trackPublicationFailed: (error: TwilioError) => void;
+  trackPublicationFailed: (error: TwilioError, localTrack?: LocalTrack) => void;
   /**
    * The local participant's network quality changed. Emitted only when the Room
    * was joined with network quality enabled for the local participant.
@@ -73,11 +77,15 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'trackPublicationFailed') {
         // The native publish only failed asynchronously; drop the entry inserted
-        // by publishTrack so the name is free to re-publish. Safe to key by name:
-        // _assertUniqueName guarantees one instance per name.
+        // by publishTrack so the name is free to re-publish. Keyed by name
+        // because a failed publication has no SID, with the ambiguity noted on
+        // the event.
         const trackName = (data as { trackName?: string } | undefined)?.trackName;
+        // Read the track out before dropping it, so the listener still receives
+        // the instance that failed.
+        const failedTrack = trackName ? this._publishedTracks.get(trackName) : undefined;
         if (trackName) this._publishedTracks.delete(trackName);
-        this.emit(event, liftTwilioError(data));
+        this.emit(event, liftTwilioError(data), failedTrack);
       } else if (event === 'trackPublished') {
         const pub = this._resolvePublishedTrack(data as RawTrackPublication | undefined);
         if (pub) this.emit(event, pub);

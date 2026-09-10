@@ -1,5 +1,5 @@
-import type { Room, ConnectOptions } from '../../dist/index.mjs';
-import { connect } from '../../dist/index.mjs';
+import type { Room, ConnectOptions } from '../../lib/index.js';
+import { connect } from '../../lib/index.js';
 import { generateToken } from './token.js';
 
 const CONNECTION_TIMEOUT = 15_000;

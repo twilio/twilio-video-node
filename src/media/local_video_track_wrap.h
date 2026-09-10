@@ -56,10 +56,31 @@ private:
     Napi::Value IsEnabled(const Napi::CallbackInfo& info);
     void SetEnabled(const Napi::CallbackInfo& info, const Napi::Value& value);
     Napi::Value Write(const Napi::CallbackInfo& info);
+    Napi::Value GetWriteStats(const Napi::CallbackInfo& info);
+    Napi::Value ConfigureSource(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::media::LocalVideoTrack> track_;
     std::shared_ptr<twilio::media::MediaFactory> factory_;
     rtc::scoped_refptr<PushableVideoSource> videoSource_;
+
+    // Publish-side counters backing getWriteStats(). Video publish is
+    // synchronous (write == send), so there is no SDK-side send queue and
+    // sendQueueDepth is always 0; a drop here means the frame was rejected by
+    // libwebrtc's adapter, not shed from a queue.
+    // Set from CreateLocalVideoTrackOptions.source. When present, write()
+    // rejects frames whose dimensions disagree, so a mismatch surfaces at the
+    // call site instead of as a silently rescaled stream.
+    int32_t expectedWidth_{0};
+    int32_t expectedHeight_{0};
+
+    uint64_t framesWritten_{0};
+    uint64_t framesDropped_{0};
+    bool hasLastTimestamp_{false};
+    int64_t lastTimestampUs_{0};
+    // A timestamp that does not advance is accepted and counted rather than
+    // rejected: a legitimate producer can restart a loop, and silently
+    // reordering or dropping would be worse than making it visible.
+    uint64_t timestampRegressions_{0};
 };
 
 }

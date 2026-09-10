@@ -1,4 +1,8 @@
 node_modules
+resources
+# Local tool state and PR review notes; both are already in .prettierignore
+.claude/
+pr-reviews
 
 # Build artifacts
 build/

@@ -38,7 +38,7 @@ async function main() {
     console.log(`[${IDENTITY}] Participant left: ${participant.identity}`);
   });
 
-  room.on('disconnected', error => {
+  room.on('disconnected', (_room, error) => {
     console.log(`[${IDENTITY}] Disconnected`, error ? error.message : '');
     room.dispose();
     process.exit(0);
@@ -65,11 +65,13 @@ async function main() {
   });
 }
 
+/** @param {import('../dist/index.cjs').RemoteParticipant} participant */
 function handleRemoteParticipant(participant) {
   participant.on('trackSubscribed', track => {
-    if (typeof track.onMessage === 'function') {
+    // Messages arrive as an event; there is no onMessage() registration.
+    if (track.kind === 'data') {
       console.log(`[${IDENTITY}] Subscribed to data track: ${track.name}`);
-      track.onMessage(data => {
+      track.on('message', data => {
         if (typeof data === 'string') {
           console.log(`[${IDENTITY}] Received string from ${participant.identity}: ${data}`);
         } else {

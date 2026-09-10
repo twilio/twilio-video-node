@@ -24,8 +24,11 @@ private:
     Napi::Value GetSid(const Napi::CallbackInfo& info);
     Napi::Value IsEnabled(const Napi::CallbackInfo& info);
     Napi::Value IsSwitchedOff(const Napi::CallbackInfo& info);
-    Napi::Value OnFrame(const Napi::CallbackInfo& info);
-    Napi::Value RemoveFrameCallback(const Napi::CallbackInfo& info);
+    // Internal plumbing for the JS frames() iterator in lib/. Not public API:
+    // lib/remote_track.ts owns the policy queue and exposes frames()/getStats().
+    Napi::Value AttachFrameSink(const Napi::CallbackInfo& info);
+    Napi::Value DetachFrameSink(const Napi::CallbackInfo& info);
+    Napi::Value SinkStats(const Napi::CallbackInfo& info);
     Napi::Value SetContentPreferences(const Napi::CallbackInfo& info);
 
     void detachSink();

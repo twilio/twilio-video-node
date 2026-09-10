@@ -14,8 +14,9 @@ void RemoteVideoTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("sid", &RemoteVideoTrackWrap::GetSid, nullptr),
         InstanceAccessor("enabled", &RemoteVideoTrackWrap::IsEnabled, nullptr),
         InstanceAccessor("isSwitchedOff", &RemoteVideoTrackWrap::IsSwitchedOff, nullptr),
-        InstanceMethod("onFrame", &RemoteVideoTrackWrap::OnFrame),
-        InstanceMethod("removeFrameCallback", &RemoteVideoTrackWrap::RemoveFrameCallback),
+        InstanceMethod("_attachFrameSink", &RemoteVideoTrackWrap::AttachFrameSink),
+        InstanceMethod("_detachFrameSink", &RemoteVideoTrackWrap::DetachFrameSink),
+        InstanceMethod("_sinkStats", &RemoteVideoTrackWrap::SinkStats),
         InstanceMethod("setContentPreferences", &RemoteVideoTrackWrap::SetContentPreferences),
     });
 
@@ -83,7 +84,7 @@ Napi::Value RemoteVideoTrackWrap::IsSwitchedOff(const Napi::CallbackInfo& info) 
     return Napi::Boolean::New(info.Env(), track_->isSwitchedOff());
 }
 
-Napi::Value RemoteVideoTrackWrap::OnFrame(const Napi::CallbackInfo& info) {
+Napi::Value RemoteVideoTrackWrap::AttachFrameSink(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     if (info.Length() < 1 || !info[0].IsFunction()) {
@@ -91,10 +92,19 @@ Napi::Value RemoteVideoTrackWrap::OnFrame(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
+    // Optional transfer-queue depth. The JS layer derives it from the caller's
+    // FrameDeliveryOptions so a 'latest' consumer keeps at most one ~1.3 MB
+    // frame queued in native memory.
+    size_t depth = AsyncContext::kDefaultMaxQueueDepth;
+    if (info.Length() > 1 && info[1].IsNumber()) {
+        double d = info[1].As<Napi::Number>().DoubleValue();
+        if (d >= 1 && d <= 1024) depth = static_cast<size_t>(d);
+    }
+
     detachSink();
 
     auto callback = info[0].As<Napi::Function>();
-    frameSink_ = std::make_unique<VideoFrameSink>(env, callback);
+    frameSink_ = std::make_unique<VideoFrameSink>(env, callback, depth);
 
     if (track_) {
         auto webrtcTrack = track_->getWebRtcTrack();
@@ -107,7 +117,17 @@ Napi::Value RemoteVideoTrackWrap::OnFrame(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
-Napi::Value RemoteVideoTrackWrap::RemoveFrameCallback(const Napi::CallbackInfo& info) {
+Napi::Value RemoteVideoTrackWrap::SinkStats(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto out = Napi::Object::New(env);
+    out.Set("nativeDropped",
+            Napi::Number::New(env, frameSink_ ? static_cast<double>(frameSink_->droppedCount()) : 0));
+    out.Set("nativeQueueDepth",
+            Napi::Number::New(env, frameSink_ ? static_cast<double>(frameSink_->queueDepth()) : 0));
+    return out;
+}
+
+Napi::Value RemoteVideoTrackWrap::DetachFrameSink(const Napi::CallbackInfo& info) {
     detachSink();
     return info.Env().Undefined();
 }

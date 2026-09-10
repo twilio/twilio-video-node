@@ -2,6 +2,11 @@
 
 > This guide is for Twilio employees working on the SDK. If you're an external developer, the best way to contribute is by building with the SDK, reporting issues, and sharing feedback. See [README.md](README.md) for API docs and usage.
 
+**Linux x86-64 is the only supported platform for the beta.** The macOS x64 build
+described below exists for local development. It is not a supported target, CI
+does not exercise it, and results there do not stand in for Linux: verify changes
+on Linux x86-64 before shipping them.
+
 ## Apple Silicon (M1/M2/M3)
 
 The native binary is **x64-only**. On Apple Silicon you must run all build commands under Rosetta. Install Rosetta first if you haven't already:
@@ -24,12 +29,33 @@ arch -x86_64 bash -c 'source ~/.nvm/nvm.sh && nvm use 24 && npm run fetch-deps'
 
 ## 1. Prerequisites
 
-| Tool          | Version                                | Install (macOS)          |
-| ------------- | -------------------------------------- | ------------------------ |
-| Node.js       | >= 24.0.0                              | `nvm install 24`         |
-| CMake         | >= 3.15                                | `brew install cmake`     |
-| Maven         | >= 3.8                                 | `brew install maven`     |
-| C++ toolchain | C++17 (clang++ on macOS, g++ on Linux) | Xcode Command Line Tools |
+| Tool          | Version                                | Install (macOS)          | Install (Debian/Ubuntu)           |
+| ------------- | -------------------------------------- | ------------------------ | --------------------------------- |
+| Node.js       | >= 24.0.0                              | `nvm install 24`         | `nvm install 24`                  |
+| CMake         | >= 3.15                                | `brew install cmake`     | `apt-get install cmake`           |
+| Maven         | >= 3.8                                 | `brew install maven`     | `apt-get install maven`           |
+| C++ toolchain | C++17 (clang++ on macOS, g++ on Linux) | Xcode Command Line Tools | `apt-get install build-essential` |
+
+### Linux: X11 development libraries
+
+The link step needs them even though this SDK never captures a screen: libwebrtc's
+Linux build pulls in desktop capture, which links X11. Without them the build
+fails at link time with `cannot find -lX11` and six similar errors.
+
+```bash
+sudo apt-get install -y --no-install-recommends \
+  libx11-dev libxext-dev libxdamage-dev libxfixes-dev \
+  libxcomposite-dev libxrandr-dev libxtst-dev
+```
+
+`docker/Dockerfile` installs the same set, so a container build needs no extra step.
+
+### macOS: Apple Silicon
+
+The native binary is x64-only. Install Rosetta once
+(`softwareupdate --install-rosetta`) and run an x64 Node so `process.arch` reports
+`x64`. Under a native arm64 Node, `npm install` fails with `EBADPLATFORM` and the
+SDK throws `UnsupportedPlatformError` at import.
 
 ## 2. Get rtc-cpp
 
@@ -118,6 +144,24 @@ npm run build:ts
 | `npm run rebuild`       | Clean + full native build                                                                          |
 | `npm run clean`         | Remove native build artifacts                                                                      |
 
+### Tests and checks
+
+Unit tests need the native addon built; integration tests additionally need the
+credentials in [section 4](#4-credentials) and reach the live Twilio service.
+
+| Script                     | Description                                                               |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `npm run test:unit`        | Unit suite (requires the native addon)                                    |
+| `npm run test:unit:pure`   | The subset that does not load the addon                                   |
+| `npm run test:coverage`    | Unit suite with the coverage thresholds CI enforces                       |
+| `npm run test:integration` | End-to-end suite against live Twilio rooms                                |
+| `npm test`                 | Everything, unit and integration - needs the credentials in section 4     |
+| `npm run lint`             | ESLint                                                                    |
+| `npm run format:check`     | Prettier, check only (`npm run format` writes)                            |
+| `npm run typecheck`        | `tsc --noEmit` over lib and tests (run `npm run build:ts` first)          |
+| `npm run check:examples`   | Syntax-checks the examples and typechecks them against the built `.d.cts` |
+| `npm run docs`             | TypeDoc API reference into `docs/`                                        |
+
 ## 4. Credentials
 
 The examples load credentials from a `.env` file at the repo root (via the shared
@@ -139,9 +183,17 @@ Get these from the [Twilio Console](https://www.twilio.com/console) under API Ke
 
 No twilio-video-cpp could be located: `TWILIO_VIDEO_SRC_ROOT` is unset and `deps/twilio-video` does not exist. Run `npm run fetch-deps`, or point `TWILIO_VIDEO_SRC_ROOT` at a built local source tree (see [Local source checkout](#local-source-checkout)).
 
-### `No prebuilt binary found for <platform>-<arch>. Run npm run build to compile from source.`
+### `No prebuilt binary for <platform>-<arch>, and no local build in build/Release or build/Debug.`
 
-The native addon isn't built and no matching prebuild exists (the underlying cause reads `Cannot find module '.../twilio_video_sdk_node.node'`). Run `npm run build`. If using Artifactory, ensure `npm run fetch-deps` succeeded first.
+A `NativeBindingLoadError`: the native addon isn't built and no matching prebuild exists. Run `npm run build`. If the message also says to fetch dependencies, `deps/twilio-video` is missing - run `npm run fetch-deps` first.
+
+### `The prebuilt binary at <path> failed to load.` / `The local build at <path> failed to load.`
+
+A `NativeBindingLoadError` with a binary present. It was built for a different Node ABI, or a system library it needs is missing. On Linux that is usually the X11 development packages; see [section 1](#linux-x11-development-libraries). Rebuild with `npm run build`.
+
+### `<platform>-<arch> is not a supported platform.`
+
+An `UnsupportedPlatformError`, thrown before any load is attempted: the addon is not built for this `process.platform`/`process.arch`. There is no arm64 build, so on Apple Silicon this means Node is running as arm64; see [Apple Silicon](#apple-silicon-m1m2m3).
 
 ### `TWILIO_ACCOUNT_SID, TWILIO_API_KEY, and TWILIO_API_SECRET are required`
 

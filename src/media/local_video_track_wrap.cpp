@@ -54,6 +54,8 @@ void LocalVideoTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("kind", &LocalVideoTrackWrap::GetKind, nullptr),
         InstanceAccessor("enabled", &LocalVideoTrackWrap::IsEnabled, &LocalVideoTrackWrap::SetEnabled),
         InstanceMethod("write", &LocalVideoTrackWrap::Write),
+        InstanceMethod("getWriteStats", &LocalVideoTrackWrap::GetWriteStats),
+        InstanceMethod("_configureSource", &LocalVideoTrackWrap::ConfigureSource),
     });
 
     constructor_ = Napi::Persistent(func);
@@ -104,6 +106,40 @@ void LocalVideoTrackWrap::SetEnabled(const Napi::CallbackInfo& info, const Napi:
     track_->setEnabled(value.As<Napi::Boolean>().Value());
 }
 
+namespace {
+// Reads one I420Plane ({ data, stride, width, height }) off the frame object.
+// Returns false with a JS exception pending on any shape or type error.
+bool ReadPlane(Napi::Env env, const Napi::Object& frame, const char* key,
+               Napi::Buffer<uint8_t>* outData, int32_t* outStride) {
+    if (!frame.Has(key)) {
+        Napi::TypeError::New(env, std::string("VideoFrameInput requires an I420Plane '") + key + "'")
+            .ThrowAsJavaScriptException();
+        return false;
+    }
+    Napi::Value v = frame.Get(key);
+    if (!v.IsObject()) {
+        Napi::TypeError::New(env, std::string("VideoFrameInput.") + key + " must be an I420Plane object")
+            .ThrowAsJavaScriptException();
+        return false;
+    }
+    Napi::Object plane = v.As<Napi::Object>();
+    if (!plane.Has("data") || !plane.Get("data").IsBuffer()) {
+        Napi::TypeError::New(env, std::string("VideoFrameInput.") + key + ".data must be a Buffer")
+            .ThrowAsJavaScriptException();
+        return false;
+    }
+    int32_t stride;
+    if (!ToFiniteInt32(plane.Get("stride"), &stride)) {
+        Napi::TypeError::New(env, std::string("VideoFrameInput.") + key + ".stride must be a finite integer")
+            .ThrowAsJavaScriptException();
+        return false;
+    }
+    *outData = plane.Get("data").As<Napi::Buffer<uint8_t>>();
+    *outStride = stride;
+    return true;
+}
+}  // namespace
+
 Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -114,27 +150,29 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
 
     Napi::Object frame = info[0].As<Napi::Object>();
 
-    if (!frame.Has("y") || !frame.Has("u") || !frame.Has("v") ||
-        !frame.Get("y").IsBuffer() || !frame.Get("u").IsBuffer() || !frame.Get("v").IsBuffer()) {
-        Napi::TypeError::New(env, "VideoFrameInput requires y, u, v Buffers").ThrowAsJavaScriptException();
-        return env.Undefined();
+    // `format` is optional but, when present, must be the one format we accept.
+    if (frame.Has("format") && !frame.Get("format").IsUndefined()) {
+        Napi::Value f = frame.Get("format");
+        if (!f.IsString() || f.As<Napi::String>().Utf8Value() != "I420") {
+            Napi::TypeError::New(env, "VideoFrameInput.format must be 'I420'")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
     }
 
-    int32_t width, height, yStride, uStride, vStride;
+    int32_t width, height;
     if (!ToFiniteInt32(frame.Get("width"), &width) ||
-        !ToFiniteInt32(frame.Get("height"), &height) ||
-        !ToFiniteInt32(frame.Get("yStride"), &yStride) ||
-        !ToFiniteInt32(frame.Get("uStride"), &uStride) ||
-        !ToFiniteInt32(frame.Get("vStride"), &vStride)) {
-        Napi::TypeError::New(env,
-            "VideoFrameInput requires finite integer width, height, yStride, uStride, vStride")
+        !ToFiniteInt32(frame.Get("height"), &height)) {
+        Napi::TypeError::New(env, "VideoFrameInput requires finite integer width and height")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    auto yBuffer = frame.Get("y").As<Napi::Buffer<uint8_t>>();
-    auto uBuffer = frame.Get("u").As<Napi::Buffer<uint8_t>>();
-    auto vBuffer = frame.Get("v").As<Napi::Buffer<uint8_t>>();
+    Napi::Buffer<uint8_t> yBuffer, uBuffer, vBuffer;
+    int32_t yStride, uStride, vStride;
+    if (!ReadPlane(env, frame, "y", &yBuffer, &yStride)) return env.Undefined();
+    if (!ReadPlane(env, frame, "u", &uBuffer, &uStride)) return env.Undefined();
+    if (!ReadPlane(env, frame, "v", &vBuffer, &vStride)) return env.Undefined();
 
     if (width <= 0 || height <= 0) {
         Napi::RangeError::New(env, "VideoFrameInput width and height must be positive")
@@ -146,6 +184,14 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     // have no well-defined chroma plane size.
     if ((width & 1) || (height & 1)) {
         Napi::RangeError::New(env, "VideoFrameInput width and height must be even")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    if ((expectedWidth_ && width != expectedWidth_) ||
+        (expectedHeight_ && height != expectedHeight_)) {
+        Napi::RangeError::New(env,
+            "VideoFrameInput dimensions do not match the track's configured source size")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
@@ -167,27 +213,33 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
+    // Microseconds as a plain JS number: exact for ~285 years at this
+    // resolution, and the engine reports microseconds natively.
     int64_t timestampUs;
-    if (frame.Has("timestampNs") && !frame.Get("timestampNs").IsUndefined()) {
-        Napi::Value tsVal = frame.Get("timestampNs");
-        if (!tsVal.IsBigInt()) {
-            Napi::TypeError::New(env, "VideoFrameInput timestampNs must be a BigInt")
+    if (frame.Has("timestamp") && !frame.Get("timestamp").IsUndefined()) {
+        Napi::Value tsVal = frame.Get("timestamp");
+        if (!tsVal.IsNumber()) {
+            Napi::TypeError::New(env, "VideoFrameInput.timestamp must be a number (microseconds)")
                 .ThrowAsJavaScriptException();
             return env.Undefined();
         }
-        bool lossless = false;
-        int64_t timestampNs = tsVal.As<Napi::BigInt>().Int64Value(&lossless);
-        if (!lossless) {
-            Napi::RangeError::New(env, "timestampNs out of range for int64")
+        double ts = tsVal.As<Napi::Number>().DoubleValue();
+        if (!std::isfinite(ts) || ts != std::trunc(ts)) {
+            Napi::RangeError::New(env, "VideoFrameInput.timestamp must be a whole number of microseconds")
                 .ThrowAsJavaScriptException();
             return env.Undefined();
         }
-        if (timestampNs < 0) {
-            Napi::RangeError::New(env, "timestampNs must be non-negative")
+        if (ts < 0) {
+            Napi::RangeError::New(env, "VideoFrameInput.timestamp must be non-negative")
                 .ThrowAsJavaScriptException();
             return env.Undefined();
         }
-        timestampUs = timestampNs / 1000;
+        if (ts > 9007199254740991.0) {
+            Napi::RangeError::New(env, "VideoFrameInput.timestamp exceeds Number.MAX_SAFE_INTEGER")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        timestampUs = static_cast<int64_t>(ts);
     } else {
         timestampUs = rtc::TimeMicros();
     }
@@ -217,6 +269,8 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
+    // Copied synchronously: the caller may reuse or free these buffers as soon
+    // as write() returns.
     auto i420Buffer = webrtc::I420Buffer::Copy(
         width, height,
         yBuffer.Data(), yStride,
@@ -224,7 +278,43 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
         vBuffer.Data(), vStride);
 
     bool delivered = videoSource_->PushFrame(i420Buffer, timestampUs, rotation);
+    if (delivered) {
+        framesWritten_++;
+        if (hasLastTimestamp_ && timestampUs <= lastTimestampUs_) timestampRegressions_++;
+        hasLastTimestamp_ = true;
+        lastTimestampUs_ = timestampUs;
+    } else {
+        framesDropped_++;
+    }
     return Napi::Boolean::New(env, delivered);
+}
+
+Napi::Value LocalVideoTrackWrap::ConfigureSource(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsObject()) return env.Undefined();
+    Napi::Object opts = info[0].As<Napi::Object>();
+    int32_t w = 0, h = 0;
+    if (opts.Has("width")) ToFiniteInt32(opts.Get("width"), &w);
+    if (opts.Has("height")) ToFiniteInt32(opts.Get("height"), &h);
+    expectedWidth_ = w > 0 ? w : 0;
+    expectedHeight_ = h > 0 ? h : 0;
+    return env.Undefined();
+}
+
+Napi::Value LocalVideoTrackWrap::GetWriteStats(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto out = Napi::Object::New(env);
+    out.Set("framesWritten", Napi::Number::New(env, static_cast<double>(framesWritten_)));
+    out.Set("framesDropped", Napi::Number::New(env, static_cast<double>(framesDropped_)));
+    out.Set("timestampRegressions",
+            Napi::Number::New(env, static_cast<double>(timestampRegressions_)));
+    // Video publish is synchronous, so nothing is ever queued SDK-side.
+    out.Set("sendQueueDepth", Napi::Number::New(env, 0));
+    out.Set("maxQueue", Napi::Number::New(env, 0));
+    if (hasLastTimestamp_) {
+        out.Set("lastTimestamp", Napi::Number::New(env, static_cast<double>(lastTimestampUs_)));
+    }
+    return out;
 }
 
 }
