@@ -1,0 +1,12 @@
+{
+  "name": "twilio-video-node-examples",
+  "private": true,
+  "description": "Extra dependencies for the computer-vision examples. Install with `npm install` from this directory; the other examples need nothing beyond the SDK.",
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.8",
+    "onnxruntime-node": "1.22.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

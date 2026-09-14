@@ -552,8 +552,15 @@ See the [`examples/`](https://github.com/twilio/twilio-video-node/tree/main/exam
 
 The computer-vision examples (`cv_*.js`) run local ONNX models via
 [`onnxruntime-node`](https://www.npmjs.com/package/onnxruntime-node) and draw with
-[`@napi-rs/canvas`](https://www.npmjs.com/package/@napi-rs/canvas) (both dev
-dependencies). No cloud service or API key is needed: each analyzes the first
+[`@napi-rs/canvas`](https://www.npmjs.com/package/@napi-rs/canvas). These two are
+large and only these examples need them, so they live in `examples/package.json`
+rather than the SDK's own dependencies — install them separately:
+
+```bash
+npm install --prefix examples
+```
+
+No cloud service or API key is needed: each example analyzes the first
 participant's video and expresses its result on a re-published video track. Run
 them against any room you also join from a browser, publishing your webcam.
 
