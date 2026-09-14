@@ -19,9 +19,8 @@ const { generateToken } = require('./token');
 const { i420ToRgba } = require('./yuv');
 
 // Run at most this many inferences per second. Inference on the CPU takes tens
-// of milliseconds, so we pace the loop and drop frames that arrive while an
-// inference is still running rather than letting callbacks queue up. Lower it
-// to cut CPU/heat; override with CV_MAX_FPS.
+// of milliseconds, so we skip frames that arrive inside this interval rather
+// than analyzing every one. Lower it to cut CPU/heat; override with CV_MAX_FPS.
 const MAX_FPS = Math.max(1, Number(process.env.CV_MAX_FPS) || 8);
 const MIN_INTERVAL_MS = 1000 / MAX_FPS;
 
@@ -48,75 +47,67 @@ async function runCvExample(options) {
 
   let processedFrames = 0;
   let frameCount = 0;
-  let lastFrameAt = 0;
-  let busy = false;
   let lastRun = 0;
-  let activeTrack = null;
   let boundTrackSid = null;
-  let boundParticipantSid = null;
 
-  function onFrame(frame) {
-    frameCount++;
-    lastFrameAt = Date.now();
-    if (busy || lastFrameAt - lastRun < MIN_INTERVAL_MS) return;
-    lastRun = lastFrameAt;
-    busy = true;
+  // Consume frames until the track stops delivering them, which happens when it
+  // is unsubscribed or the room disconnects. `mode: 'latest'` with a queue of
+  // one means a frame arriving while inference runs replaces the queued one, so
+  // the loop always picks up the newest frame instead of falling behind.
+  async function analyzeTrack(track, participant) {
+    for await (const frame of track.frames({ mode: 'latest', maxQueue: 1 })) {
+      frameCount++;
+      const now = Date.now();
+      if (now - lastRun < MIN_INTERVAL_MS) {
+        frame.close?.();
+        continue;
+      }
+      lastRun = now;
 
-    // Convert synchronously so the processor holds a private copy across its
-    // async inference. A decode error must still clear `busy`, or the pipeline
-    // wedges.
-    let rgba, width, height, timestampNs, rotation;
-    try {
-      ({ data: rgba, width, height } = i420ToRgba(frame));
-      timestampNs = frame.timestampNs;
-      rotation = frame.rotation;
-    } catch (err) {
-      busy = false;
-      console.error('[cv] frame decode error:', err.message);
-      return;
-    }
+      // Convert before releasing the frame, so the processor holds a private
+      // copy across its async inference.
+      let rgba, width, height, timestamp, rotation;
+      try {
+        ({ data: rgba, width, height } = i420ToRgba(frame));
+        timestamp = frame.timestamp;
+        rotation = frame.rotation;
+      } catch (err) {
+        console.error('[cv] frame decode error:', err);
+        continue;
+      } finally {
+        frame.close?.();
+      }
 
-    Promise.resolve(processor(rgba, width, height))
-      .then(out => {
+      try {
+        const out = await processor(rgba, width, height);
         if (out) {
-          outTrack.write({ ...out, timestampNs, rotation });
+          outTrack.write({ ...out, timestamp, rotation });
           processedFrames++;
         }
-      })
-      .catch(err => console.error('[cv] processing error:', err.message))
-      .finally(() => {
-        busy = false;
-      });
-  }
-
-  // A single onFrame registration can fail to start (or can stall) with this
-  // SDK, so we (re)register the sink a few times up front and re-arm it from a
-  // watchdog below if frames stop arriving (mirrors examples/voice_agent.js).
-  function registerFrameSink(track) {
-    track.onFrame(onFrame);
+      } catch (err) {
+        console.error('[cv] processing error:', err);
+      }
+    }
+    console.log(`[cv] Video stream ended for ${participant.identity}`);
+    unbindTrack();
   }
 
   function handleTrack(track, participant) {
     if (track.kind !== 'video') return; // only analyze video, not audio/data
     // Bind to the first participant's video and ignore any others, so the shared
-    // pacing state (onFrame, busy, activeTrack, ...) always describes one source.
+    // pacing state always describes one source.
     if (boundTrackSid !== null) return;
     boundTrackSid = track.sid;
-    boundParticipantSid = participant.sid;
-    activeTrack = track;
-    lastFrameAt = Date.now();
     console.log(`[cv] Analyzing video from ${participant.identity}`);
-    registerFrameSink(track);
-    setTimeout(() => registerFrameSink(track), 1000);
-    setTimeout(() => registerFrameSink(track), 3000);
+    analyzeTrack(track, participant).catch(err => {
+      console.error('[cv] analysis failed:', err);
+      unbindTrack();
+    });
   }
 
-  // Release the binding so the watchdog stops re-registering a frame sink on a
-  // track that is no longer subscribed, and a later participant can be analyzed.
+  // Release the binding so a later participant can be analyzed.
   function unbindTrack() {
     boundTrackSid = null;
-    boundParticipantSid = null;
-    activeTrack = null;
   }
 
   // Subscribe using the repo's belt-and-suspenders pattern: handle the
@@ -125,9 +116,6 @@ async function runCvExample(options) {
   function handleParticipant(participant) {
     console.log(`[cv] Participant: ${participant.identity}`);
     participant.on('trackSubscribed', track => handleTrack(track, participant));
-    participant.on('trackUnsubscribed', track => {
-      if (track.sid === boundTrackSid) unbindTrack();
-    });
 
     const poll = setInterval(() => {
       for (const pub of participant.videoTracks.values()) {
@@ -143,28 +131,15 @@ async function runCvExample(options) {
 
   room.participants.forEach(handleParticipant);
   room.on('participantConnected', handleParticipant);
-  room.on('participantDisconnected', participant => {
-    if (participant.sid === boundParticipantSid) unbindTrack();
-  });
 
-  // Watchdog: if frames were flowing but stopped for >2s, re-register the sink.
-  const watchdog = setInterval(() => {
-    if (activeTrack && frameCount > 0 && Date.now() - lastFrameAt > 2000) {
-      console.log('[cv] Video stalled — re-registering frame sink');
-      registerFrameSink(activeTrack);
-    }
-  }, 2000);
-
-  room.on('disconnected', error => {
+  room.on('disconnected', (_room, error) => {
     console.log('[cv] Disconnected', error ? error.message : '');
+    room.dispose();
     process.exit(error ? 1 : 0);
   });
 
   process.on('SIGINT', () => {
     console.log('\n[cv] Shutting down...');
-    clearInterval(watchdog);
-    // Detach the frame sink before disconnecting to avoid a native teardown race.
-    if (activeTrack && activeTrack.removeFrameCallback) activeTrack.removeFrameCallback();
     room.disconnect();
     setTimeout(() => process.exit(0), 1000);
   });

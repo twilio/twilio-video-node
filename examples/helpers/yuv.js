@@ -1,17 +1,13 @@
 // I420 <-> RGBA conversion for the computer-vision examples.
 //
-// The SDK is I420-only: received frames arrive as three planes
-// (frame.y/u/v, each { data, stride, width, height }) and LocalVideoTrack.write()
-// expects a flat VideoFrameInput (y/u/v Buffers + yStride/uStride/vStride). CV
-// libraries and the canvas drawing layer work in packed RGBA, so we convert in
-// both directions here.
+// The SDK is I420-only: both the frames it delivers and the VideoFrameInput
+// LocalVideoTrack.write() takes carry three planes (y/u/v, each
+// { data, stride, width, height }). CV libraries and the canvas drawing layer
+// work in packed RGBA, so we convert in both directions here.
 //
-// Two SDK-specific details are handled:
-//   - Received frames nest the planes (frame.y.data / frame.y.stride) while the
-//     write() input is flat — the two shapes are bridged by i420ToRgba /
-//     rgbaToI420.
-//   - write() requires *even* width and height. rgbaToI420 crops the bottom row
-//     and/or right column when a dimension is odd so the output is always valid.
+// One SDK-specific detail is handled: write() requires *even* width and height,
+// so rgbaToI420 crops the bottom row and/or right column when a dimension is
+// odd, keeping the output valid.
 //
 // Coefficients use BT.601 studio (limited) range, matching WebRTC's decoded
 // output, so a round trip (decode -> annotate -> re-encode) stays color-stable.
@@ -99,14 +95,11 @@ function rgbaToI420(rgba, width, height) {
   }
 
   return {
-    y,
-    u,
-    v,
-    yStride: outW,
-    uStride: cW,
-    vStride: cW,
     width: outW,
     height: outH,
+    y: { data: y, stride: outW, width: outW, height: outH },
+    u: { data: u, stride: cW, width: cW, height: cH },
+    v: { data: v, stride: cW, width: cW, height: cH },
   };
 }
 

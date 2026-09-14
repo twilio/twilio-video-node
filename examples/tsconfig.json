@@ -15,5 +15,17 @@
     "noImplicitAny": false,
     "strictNullChecks": false
   },
-  "include": ["**/*.js"]
+  "include": ["**/*.js"],
+  // The computer-vision examples import onnxruntime-node and @napi-rs/canvas,
+  // which live in examples/package.json and are installed only by developers
+  // running them (see the README). They are syntax-checked by `check:examples`
+  // instead.
+  "exclude": [
+    "cv_object_detection.js",
+    "cv_face_analysis.js",
+    "helpers/cv-runner.js",
+    "helpers/cv-postprocess.js",
+    "helpers/draw.js",
+    "helpers/onnx-model.js"
+  ]
 }
