@@ -64,4 +64,7 @@ runCvExample({
       return rgbaToI420(rgbaFromCanvas(ctx, width, height), width, height);
     };
   },
+}).catch(err => {
+  console.error('Error:', err);
+  process.exit(1);
 });

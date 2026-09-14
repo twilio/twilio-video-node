@@ -99,6 +99,9 @@ runCvExample({
       return rgbaToI420(rgbaFromCanvas(ctx, width, height), width, height);
     };
   },
+}).catch(err => {
+  console.error('Error:', err);
+  process.exit(1);
 });
 
 // --- Attention scoring (head-orientation heuristic) -------------------------
@@ -108,10 +111,13 @@ runCvExample({
 // turning away and looking up/down, but not where the eyes point within a facing
 // head.
 
-// A face is considered on screen when the nose, or both eyes, are visible.
+// A face is on screen when two of its keypoints are visible, which is also what
+// faceBoxFromKeypoints needs.
 function isFaceVisible(keypoints, minScore = 0.3) {
-  const seen = i => keypoints[i].score >= minScore;
-  return seen(KP.nose) || (seen(KP.leftEye) && seen(KP.rightEye));
+  const visible = [KP.nose, KP.leftEye, KP.rightEye, KP.leftEar, KP.rightEar].filter(
+    i => keypoints[i].score >= minScore,
+  );
+  return visible.length >= 2;
 }
 
 // Build an approximate head box from the visible face keypoints, padded up for
@@ -174,8 +180,9 @@ function estimateAttention(keypoints, minScore = 0.3) {
     const yaw = seen(nose) ? Math.abs(nose.x - eyeMidX) / eyeDist : 1;
     score -= Math.min(50, yaw * 80);
 
-    // Roll: tilt of the line between the eyes, in radians.
-    const roll = Math.abs(Math.atan2(re.y - le.y, re.x - le.x));
+    // Roll: tilt of the eye line, in radians. Both deltas are absolute so the
+    // result is tilt rather than direction, whichever eye sits left in the image.
+    const roll = Math.atan2(Math.abs(re.y - le.y), Math.abs(re.x - le.x));
     score -= Math.min(20, roll * 40);
 
     // Pitch (coarse up/down): the nose foreshortens toward the eyes when looking

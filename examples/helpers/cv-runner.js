@@ -53,6 +53,7 @@ async function runCvExample(options) {
   let lastRun = 0;
   let activeTrack = null;
   let boundTrackSid = null;
+  let boundParticipantSid = null;
 
   function onFrame(frame) {
     frameCount++;
@@ -61,9 +62,9 @@ async function runCvExample(options) {
     lastRun = lastFrameAt;
     busy = true;
 
-    // Convert synchronously, before the native frame buffer is recycled; the
-    // processor then works on this private copy across its async inference. Any
-    // decode error must still clear `busy`, or the pipeline wedges.
+    // Convert synchronously so the processor holds a private copy across its
+    // async inference. A decode error must still clear `busy`, or the pipeline
+    // wedges.
     let rgba, width, height, timestampNs, rotation;
     try {
       ({ data: rgba, width, height } = i420ToRgba(frame));
@@ -101,11 +102,21 @@ async function runCvExample(options) {
     // pacing state (onFrame, busy, activeTrack, ...) always describes one source.
     if (boundTrackSid !== null) return;
     boundTrackSid = track.sid;
+    boundParticipantSid = participant.sid;
     activeTrack = track;
+    lastFrameAt = Date.now();
     console.log(`[cv] Analyzing video from ${participant.identity}`);
     registerFrameSink(track);
     setTimeout(() => registerFrameSink(track), 1000);
     setTimeout(() => registerFrameSink(track), 3000);
+  }
+
+  // Release the binding so the watchdog stops re-registering a frame sink on a
+  // track that is no longer subscribed, and a later participant can be analyzed.
+  function unbindTrack() {
+    boundTrackSid = null;
+    boundParticipantSid = null;
+    activeTrack = null;
   }
 
   // Subscribe using the repo's belt-and-suspenders pattern: handle the
@@ -114,6 +125,9 @@ async function runCvExample(options) {
   function handleParticipant(participant) {
     console.log(`[cv] Participant: ${participant.identity}`);
     participant.on('trackSubscribed', track => handleTrack(track, participant));
+    participant.on('trackUnsubscribed', track => {
+      if (track.sid === boundTrackSid) unbindTrack();
+    });
 
     const poll = setInterval(() => {
       for (const pub of participant.videoTracks.values()) {
@@ -129,6 +143,9 @@ async function runCvExample(options) {
 
   room.participants.forEach(handleParticipant);
   room.on('participantConnected', handleParticipant);
+  room.on('participantDisconnected', participant => {
+    if (participant.sid === boundParticipantSid) unbindTrack();
+  });
 
   // Watchdog: if frames were flowing but stopped for >2s, re-register the sink.
   const watchdog = setInterval(() => {
