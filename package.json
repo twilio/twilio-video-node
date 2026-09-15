@@ -47,7 +47,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test:soak": "node test/soak.mjs",
     "typecheck:examples": "tsc --noEmit -p examples/tsconfig.json",
-    "check:examples": "node --check examples/audio_push.js && node --check examples/data_channel.js && node --check examples/video_mirror.js && node --check examples/virtual_camera.js && node --check examples/voice_agent.js && npm run typecheck:examples"
+    "check:examples": "node --check examples/audio_push.js && node --check examples/data_channel.js && node --check examples/video_mirror.js && node --check examples/virtual_camera.js && node --check examples/voice_agent.js && node --check examples/cv_object_detection.js && node --check examples/cv_face_analysis.js && node --check examples/helpers/cv-runner.js && node --check examples/helpers/cv-postprocess.js && node --check examples/helpers/draw.js && node --check examples/helpers/onnx-model.js && npm run typecheck:examples"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
