@@ -73,7 +73,8 @@
     "scripts/common.js",
     "package.json",
     "CHANGELOG.md",
-    "FRAME_CONTRACT.md"
+    "FRAME_CONTRACT.md",
+    "LIFECYCLE.md"
   ],
   "engines": {
     "node": ">=24.0.0"

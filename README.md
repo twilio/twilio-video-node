@@ -97,16 +97,14 @@ main().catch(err => {
 ## Releasing a Room
 
 Call `room.dispose()` when you are done with a Room. Until you do, the process
-does not exit on its own. `disconnect()` leaves the room but does not release
+does not exit on its own. `disconnect()` leaves the session but does not release
 the native resources behind it.
 
-The `disconnected` event is the clearest place to dispose:
+The `disconnected` event is the clearest place to dispose, as in the quick
+start.
 
-```js
-room.on('disconnected', () => {
-  room.dispose();
-});
-```
+For what each object owns, what teardown releases, and the ordering the SDK
+guarantees during teardown, see [LIFECYCLE.md](LIFECYCLE.md).
 
 ## Differences from the JavaScript SDK
 
