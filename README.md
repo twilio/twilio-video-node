@@ -19,7 +19,7 @@ The native binary is prebuilt and bundled — no build step required. Import it 
 **Requirements:**
 
 - Node.js >= 24.0.0
-- Linux x86-64, glibc >= 2.29 (Ubuntu 20.04+, Debian 11+)
+- Linux x86-64, glibc >= 2.34 (Ubuntu 22.04+, Debian 12+)
 
 Linux x86-64 is the only supported platform for the beta. Alpine/musl, arm64 and Windows are not supported, and macOS is development-only. See [Platform Support](#platform-support) for the full ABI requirements.
 
@@ -523,18 +523,18 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
 
 - **Node.js** >= 24.0.0
 - **OS** Linux x86-64
-- **Distros** Ubuntu 20.04+ and Debian 11+.
+- **Distros** Ubuntu 22.04+ and Debian 12+.
 - **CPU** x86-64 only. There is no arm64 build, so on Apple Silicon Node must run under Rosetta.
 
 The prebuilt native addon is linked against glibc and requires:
 
 | Requirement           | Minimum |
 | --------------------- | ------- |
-| glibc                 | 2.29    |
-| libstdc++ (`GLIBCXX`) | 3.4.26  |
+| glibc                 | 2.34    |
+| libstdc++ (`GLIBCXX`) | 3.4.30  |
 | C++ ABI (`CXXABI`)    | 1.3.11  |
 
-It also links `libX11.so.6`, which WebRTC pulls in for screen capture. Install your distro's X11 client library (`libx11-6` on Debian and Ubuntu) even on headless servers.
+It also links `libX11.so.6`, which WebRTC requires unconditionally. Install your distro's X11 client library (`libx11-6` on Debian and Ubuntu) even on headless servers.
 
 Alpine and other musl-based distros are not supported: the addon is glibc-only. Windows is not supported. macOS x64 builds and runs for local development, but is not a supported target and is not tested as one. See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
