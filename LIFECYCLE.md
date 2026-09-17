@@ -35,18 +35,37 @@ disposed Room is no longer usable.
 
 Call either one more than once, in either order, without harm.
 
-The `disconnected` event is the clearest place to dispose:
+`dispose()` also ends the Room's event delivery. It closes the event queue
+before it disconnects, so an application that calls `dispose()` directly never
+receives `disconnected`, and a `disconnected` raised by an earlier
+`disconnect()` is discarded if it has not been delivered yet.
+
+Two shutdown shapes follow from that. To act on the event, dispose from the
+handler:
 
 ```js
 room.on('disconnected', () => {
   room.dispose();
 });
+room.disconnect();
 ```
 
-Calling `disconnect()` or `dispose()` from inside that handler is supported, as
-it is from any other Room or Participant event handler. You do not need to defer
-the call to a later tick. One consequence to plan for: disposing from a handler
-discards Room events still queued behind the one you are handling, such as a
+To shut down without waiting, dispose directly:
+
+```js
+process.on('SIGINT', () => {
+  room.dispose();
+});
+```
+
+The second reports no `disconnected`. Since `dispose()` is also what lets the
+process exit, it is the call to make from a signal handler or a timeout.
+
+Calling `disconnect()` or `dispose()` from inside the `disconnected` handler is
+supported, as it is from any other Room or Participant event handler. You do not
+need to defer the call to a later tick. One consequence to plan for: disposing
+from a handler discards Room events still queued behind the one you are
+handling, such as a
 `participantDisconnected` that a remotely ended Room raised at the same moment.
 If your application needs those events, let the handler return and dispose on a
 later tick.
@@ -57,7 +76,11 @@ listener stops an `emit`. The exception reaches the process as an
 
 ## Ending a receiver
 
-A `frames()` iterator ends on its own when the track is unsubscribed or the Room
+A receiver is the active `frames()` iterator on a track: the single consumer
+pulling decoded frames from it. `track.frames()` starts one, and a track
+supports one at a time.
+
+A receiver ends on its own when the track is unsubscribed or the Room
 disconnects, so a `for await` loop exits instead of hanging. Leaving the loop
 ends it early.
 
@@ -73,6 +96,10 @@ handler: the SDK ends the receiver itself as soon as that handler returns.
 `track.getStats()` keeps reporting the final counts after a receiver ends, for
 as long as you hold that track wrapper. A wrapper minted after the cache entry
 was dropped has no history and reports zeros.
+
+Two limits apply to that final report today. The `queueDepth` it carries can be
+nonzero although nothing is queued any more, and frames still held at the native
+boundary when the receiver ended are not counted in `framesDropped`.
 
 ## Event sequencing
 
@@ -93,6 +120,4 @@ The SDK guarantees this ordering during teardown:
   not final while the `disconnected` handler is running.
 
 A track supports one receiver at a time, and `frames()` throws while one is
-active. Starting a second receiver after the first ended works only while the
-track is still subscribed. Once the track has been released, `frames()` returns
-an iterator that never yields and never completes.
+active. Ending a receiver releases the track for the next one.
