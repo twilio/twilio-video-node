@@ -22,16 +22,12 @@
     }
   },
   "scripts": {
-    "install": "node scripts/install.js",
     "build": "node scripts/build.js",
     "build:debug": "cmake-js build --debug",
     "build:release": "cmake-js build --CDCMAKE_BUILD_TYPE=Release",
     "rebuild": "cmake-js rebuild",
     "clean": "cmake-js clean",
     "package": "node scripts/prebuild.js",
-    "upload": "node scripts/upload.js",
-    "upload:darwin": "node scripts/upload.js darwin-x64",
-    "upload:linux": "node scripts/upload.js linux-x64",
     "fetch-deps": "node scripts/fetch-deps.js",
     "build:ts": "tsdown",
     "docs": "typedoc",
@@ -43,7 +39,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "test:unit:pure": "vitest run test/frame_stream.test.ts test/remote_track.test.ts test/errors.test.ts test/room.test.ts test/participant.test.ts",
+    "test:unit:pure": "vitest run test/frame_stream.test.ts test/remote_track.test.ts test/errors.test.ts test/room.test.ts test/participant.test.ts test/changelog_section.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test:soak": "node test/soak.mjs",
     "typecheck:examples": "tsc --noEmit -p examples/tsconfig.json",
@@ -69,8 +65,6 @@
   "files": [
     "dist",
     "prebuilds",
-    "scripts/install.js",
-    "scripts/common.js",
     "package.json",
     "CHANGELOG.md",
     "FRAME_CONTRACT.md",
@@ -80,7 +74,6 @@
     "node": ">=24.0.0"
   },
   "os": [
-    "darwin",
     "linux"
   ],
   "cpu": [

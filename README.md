@@ -8,13 +8,11 @@ Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access
 
 ## Installation
 
-Install the provided `.tgz` file directly:
-
 ```bash
-npm install ./twilio-video-node-sdk-<version>.tgz
+npm install @twilio/video-node-sdk
 ```
 
-The native binary is prebuilt and bundled — no build step required. Import it as `@twilio/video-node-sdk`.
+The native binary is prebuilt and bundled — no build step required.
 
 **Requirements:**
 
