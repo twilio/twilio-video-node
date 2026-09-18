@@ -128,12 +128,10 @@ To build against a local twilio-video-cpp source tree, point the build at it wit
 ## 3. Build
 
 ```sh
-TWILIO_VIDEO_NODE_SKIP_DOWNLOAD=1 npm install
+npm install
 npm run build
 npm run build:ts
 ```
-
-> **Note:** `TWILIO_VIDEO_NODE_SKIP_DOWNLOAD=1` skips the prebuilt binary download in the `install` script. This is required when building from source — the prebuilt download requires `gh` auth to the internal GitHub release.
 
 | Script                  | Description                                                                                        |
 | ----------------------- | -------------------------------------------------------------------------------------------------- |

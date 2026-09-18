@@ -1,7 +1,7 @@
 This SDK is currently in beta, and Linux x86-64 is the only supported platform.
 See the [README](README.md) for details.
 
-# 1.0.0-beta.1 (In Progress)
+# 1.0.0-rc.1 (In Progress)
 
 ## Breaking Changes
 
@@ -172,14 +172,13 @@ change what is sent or when. Video publish still carries the timestamp through
 to the encoded frame. This documents existing behavior; nothing changed in the
 publish path.
 
-- `trackSubscribed` and `trackUnsubscribed` now pass the track's `RemoteTrackPublication`.
-  Listeners receive `(track, publication)` on a `RemoteParticipant` and
-  `(track, publication, participant)` on a `Room`, matching twilio-video.js. Update any
-  listener that took `(track, participant)` on a Room. On `trackUnsubscribed` the publication
-  reports `isSubscribed: false` and its `track` is `undefined`, as documented for
-  `RemoteTrackPublication`; the unsubscribed track is the event's first argument.
-- An event listener that throws now surfaces the error instead of being silently ignored. An
-  application relying on the previous behavior will start seeing `uncaughtException`.
+### `trackSubscribed` and `trackUnsubscribed` pass a `RemoteTrackPublication`
+
+Listeners receive `(track, publication)` on a `RemoteParticipant` and
+`(track, publication, participant)` on a `Room`, matching twilio-video.js. Update any listener
+that took `(track, participant)` on a Room. On `trackUnsubscribed` the publication reports
+`isSubscribed: false` and its `track` is `undefined`, as documented for
+`RemoteTrackPublication`; the unsubscribed track is the event's first argument.
 
 ### Remote track events carry a `RemoteTrackPublication`
 
@@ -199,6 +198,13 @@ participant.on('trackPublished', pub => {
   if (pub.kind === 'video' && pub.track) pub.track.frames();
 });
 ```
+
+### An event listener that throws is no longer ignored
+
+The error is reported as an `uncaughtException`, and events queued behind it are retained, so
+an application that handles `uncaughtException` still receives them. Previously such an error
+produced no output at all, which was indistinguishable from an event that was never emitted. An
+application relying on that behavior will start seeing `uncaughtException`.
 
 ### `disconnected` passes the Room first
 
@@ -272,10 +278,6 @@ localParticipant.on('trackPublicationFailed', (error, localTrack) => { ... });
   connects, rather than one thread hop later, which is after the subscription has already
   completed. Rejoining participants were the most affected: the first join often reported its
   tracks and later ones silently did not.
-- An exception thrown by an event listener is no longer swallowed. It is reported as an
-  `uncaughtException`, and events queued behind it are retained so an application that handles
-  `uncaughtException` still receives them. Previously such an error produced no output at all,
-  which was indistinguishable from an event that was never emitted.
 - `trackUnsubscribed` is now emitted for every track a participant was still publishing when they
   disconnected. It could previously be lost because it and `participantDisconnected` were
   delivered on independent internal queues with no guaranteed order between them.
