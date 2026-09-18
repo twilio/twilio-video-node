@@ -28,6 +28,11 @@ if(APPLE)
    set(TARGET_PLATFORM "darwin")
    set(TARGET_ARCH "x86_64")
    set(CMAKE_OSX_ARCHITECTURES "x86_64")
+   # Without this the addon inherits the SDK of whatever machine built it, and
+   # will not load on any macOS older than that. 15.0 is the deployment target
+   # every object in rtc-cpp's libtwilio-video.a is built with, so it is the
+   # lowest floor this addon can link against.
+   set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
 else()
    set(TARGET_PLATFORM "linux")
    set(TARGET_ARCH "x86_64")

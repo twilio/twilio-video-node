@@ -534,7 +534,7 @@ The prebuilt native addon is linked against glibc and requires:
 
 It also links `libX11.so.6`, which WebRTC requires unconditionally. Install your distro's X11 client library (`libx11-6` on Debian and Ubuntu) even on headless servers.
 
-Alpine and other musl-based distros are not supported: the addon is glibc-only. Windows is not supported. macOS x64 builds and runs for local development, but is not a supported target and is not tested as one. See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
+Alpine and other musl-based distros are not supported: the addon is glibc-only. Windows is not supported. macOS x64 builds and runs for local development, but is not a supported target and is not tested as one; the macOS addon targets macOS 15.0 and later. See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
 ## Examples
 
