@@ -1,0 +1,766 @@
+name: Release
+
+# Builds the prebuilds on both supported platforms, packs a single tarball
+# carrying both, tags the commit, publishes to npm and creates the GitHub
+# release.
+#
+# Dispatch this from `main`, after the version bump PR has merged. There is no
+# version input: the version is whatever package.json says, which is what that
+# PR already reviewed.
+#
+# `dry_run` runs everything up to and including `npm publish --dry-run` and
+# writes nothing anywhere.
+#
+# Recovery: re-running a failed job also re-runs everything downstream of it.
+# The tag, publish and github-release jobs are each idempotent so that re-run
+# is the supported path. See DEVELOPER_GUIDE.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      # Guards on this read `github.event.inputs.dry_run`, not `inputs.dry_run`:
+      # the event payload is always the string "true"/"false", whereas `inputs`
+      # is a real boolean from the UI but a (truthy) string from the dispatch API.
+      dry_run:
+        description: 'Build, pack and verify only. Tag nothing, publish nothing.'
+        required: false
+        type: boolean
+        default: false
+
+# Two dispatches from the same branch must not race. Never cancel: a
+# half-cancelled release is worse than a queued one. The jobs that write
+# anything carry a second, per-version group, which this one cannot express
+# because workflow-level concurrency is evaluated before any job runs and so
+# cannot read a job output.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# No default permissions; each job below declares exactly what it needs.
+permissions: {}
+
+env:
+  ARTIFACTORY_URL: ${{ vars.ARTIFACTORY_URL }}
+  PACKAGE_NAME: '@twilio/video-node-sdk'
+
+jobs:
+  # No install and no build: a bad version or a stale CHANGELOG must fail
+  # before two native builds spend an hour proving it.
+  validate:
+    name: Validate
+    runs-on: ubuntu-x64
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      npm_tag: ${{ steps.version.outputs.npm_tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Validate the dispatch ref
+        run: |
+          set -euo pipefail
+
+          # The tag job tags this ref's commit, so a tag dispatch would be
+          # tagging a tag. The default branch only: it is the branch the
+          # version bump PR merges into.
+          if [ "$GITHUB_REF" != "refs/heads/${DEFAULT_BRANCH}" ]; then
+            echo "::error::Dispatch this workflow from ${DEFAULT_BRANCH}, not ${GITHUB_REF}."
+            exit 1
+          fi
+
+          case "${DRY_RUN:-false}" in
+            true|false) ;;
+            *)
+              echo "::error::dry_run must be exactly true or false."
+              exit 1
+              ;;
+          esac
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Read the version and derive the dist-tag
+        id: version
+        run: |
+          set -euo pipefail
+
+          VERSION="$(node -p "require('./package.json').version")"
+
+          # Exact versions only. A range or an alias here would tag and publish
+          # something other than the literal string used everywhere below.
+          if ! printf '%s' "$VERSION" | grep -qxE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::package.json version ${VERSION} is not an exact semver version."
+            exit 1
+          fi
+
+          # A prerelease must never take the `latest` dist-tag, or
+          # `npm install @twilio/video-node-sdk` starts resolving to it.
+          case "$VERSION" in
+            *-*) NPM_TAG=rc; PRERELEASE=true ;;
+            *)   NPM_TAG=latest; PRERELEASE=false ;;
+          esac
+
+          {
+            echo "version=$VERSION"
+            echo "npm_tag=$NPM_TAG"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Releasing ${VERSION} under dist-tag ${NPM_TAG}."
+
+      # The checkout fetches no tags, so a local `git tag` would not notice one
+      # that already exists on origin.
+      - name: Verify the tag does not already exist
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "::error::tag ${VERSION} already exists on origin. Bump the version, or delete the tag if the release was abandoned."
+            exit 1
+          fi
+
+      - name: Extract the release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/changelog-section.js "$VERSION" release-notes.md
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: validate
+    runs-on: ${{ matrix.runs-on }}
+    # An unrecognized self-hosted label queues until GitHub's 24h default
+    # rather than failing, so every job here is capped.
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runs-on: ubuntu-x64
+          - platform: darwin-x64
+            runs-on: macos-x64
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      # Ahead of the OIDC step so the npm cache is restored before .npmrc points
+      # at Artifactory. Keep node-version pinned, and move engines.node with it.
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24.14'
+          cache: npm
+
+      # Building under an arm64 Node silently produces a prebuilds/darwin-arm64/
+      # addon that ships to nobody. This is the one mistake the automation has
+      # to make impossible.
+      - name: Verify the toolchain
+        run: |
+          set -euo pipefail
+
+          ARCH="$(node -p 'process.arch')"
+          if [ "$ARCH" != "x64" ]; then
+            echo "::error::expected an x64 Node, got ${ARCH}. This runner cannot build the addon."
+            exit 1
+          fi
+
+          for TOOL in cmake curl strip file
+          do
+            if ! command -v "$TOOL" >/dev/null 2>&1; then
+              echo "::error::${TOOL} is required to build the addon but is not on this runner."
+              exit 1
+            fi
+          done
+
+      - name: Artifactory OIDC Auth
+        uses: ./.github/actions/artifactory-oidc
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # The tarball's token is minted by the credential vendor, separately from
+      # npm's, so it can be scoped to the repository holding it.
+      - name: Artifactory token for rtc-cpp
+        id: rtc-cpp-token
+        uses: ./.github/actions/artifactory-token-vendor
+        with:
+          vendor-url: ${{ vars.RTC_CPP_TOKEN_VENDOR_URL }}
+          audience: ${{ vars.RTC_CPP_TOKEN_VENDOR_AUDIENCE }}
+      # Not cached: rtc-cpp is not redistributable, and GitHub caches are
+      # readable by any workflow run on the repository. The token is scoped to
+      # this step so it is not in the environment of the build step.
+      - name: Fetch rtc-cpp
+        env:
+          RTC_CPP_ARTIFACTORY_TOKEN: ${{ steps.rtc-cpp-token.outputs.token }}
+        run: npm run fetch-deps
+
+      # CMakeLists links these on Linux; the runner image does not carry them.
+      - name: Install X11 development libraries
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxext-dev libxdamage-dev libxfixes-dev \
+            libxcomposite-dev libxrandr-dev libxtst-dev
+
+      # Builds, strips, and copies to prebuilds/<platform>/.
+      - name: Build and package the addon
+        run: npm run package
+
+      - name: Verify the binary
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+
+          BIN="prebuilds/${PLATFORM}/twilio_video_sdk_node-${PLATFORM}.node"
+          if [ ! -s "$BIN" ]; then
+            echo "::error::no binary at ${BIN}."
+            ls -R prebuilds || true
+            exit 1
+          fi
+
+          # A stripped addon is ~17 MB. The band is wide on purpose: it is here
+          # to catch a truncated or unstripped binary, not to track growth.
+          SIZE=$(wc -c < "$BIN")
+          if [ "$SIZE" -lt 5000000 ] || [ "$SIZE" -gt 40000000 ]; then
+            echo "::error::${BIN} is ${SIZE} bytes, outside the expected 5-40 MB band."
+            exit 1
+          fi
+          echo "::notice::${BIN} is ${SIZE} bytes."
+
+          file "$BIN"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            file "$BIN" | grep -q 'ELF 64-bit LSB.*x86-64' \
+              || { echo "::error::${BIN} is not an x86-64 ELF object."; exit 1; }
+          else
+            file "$BIN" | grep -q 'Mach-O 64-bit.*x86_64' \
+              || { echo "::error::${BIN} is not an x86_64 Mach-O object."; exit 1; }
+          fi
+
+      # CMakeLists asks for seven X11 libraries and the link prunes six of
+      # them. If a runner build ever loses that pruning they come back as
+      # DT_NEEDED and every headless consumer fails at require() time, with a
+      # correct-looking file(1) output and a plausible size. README.md's
+      # Platform Support section documents libX11.so.6 as the only X11
+      # dependency, so this set is a published contract.
+      - name: Verify DT_NEEDED
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+
+          BIN="prebuilds/${PLATFORM}/twilio_video_sdk_node-${PLATFORM}.node"
+
+          cat > /tmp/dt-needed-expected <<'EOF'
+          ld-linux-x86-64.so.2
+          libX11.so.6
+          libc.so.6
+          libdl.so.2
+          libgcc_s.so.1
+          libm.so.6
+          libpthread.so.0
+          libstdc++.so.6
+          EOF
+
+          objdump -p "$BIN" | awk '/NEEDED/ {print $2}' | sort > /tmp/dt-needed-actual
+
+          if ! diff -u /tmp/dt-needed-expected /tmp/dt-needed-actual; then
+            echo "::error::the shared library dependencies of ${BIN} changed. A library that appeared here is one every consumer must now install; one that vanished may mean a feature stopped being linked in."
+            exit 1
+          fi
+          echo "::notice::DT_NEEDED matches the published set."
+
+      # README.md's Platform Support table documents these floors, and they
+      # come from the rtc-cpp build container rather than from this runner. A
+      # newer runner raises them silently and breaks Ubuntu 22.04 consumers.
+      - name: Verify the ABI floors
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+
+          BIN="prebuilds/${PLATFORM}/twilio_video_sdk_node-${PLATFORM}.node"
+          STATUS=0
+
+          # Recorded pass or fail. The check is an upper bound, so a binary
+          # needing less than the floor also passes; the numbers are here to
+          # be read.
+          echo '### ABI floors' >> "$GITHUB_STEP_SUMMARY"
+          echo '| family | required | documented floor |' >> "$GITHUB_STEP_SUMMARY"
+          echo '| --- | --- | --- |' >> "$GITHUB_STEP_SUMMARY"
+
+          check_floor() {
+            local FAMILY="$1" FLOOR="$2" MAX
+            MAX=$(objdump -T "$BIN" | grep -oE "${FAMILY}_[0-9][0-9.]*" | sort -Vu | tail -1 || true)
+            MAX="${MAX#${FAMILY}_}"
+
+            echo "| ${FAMILY} | ${MAX:-none} | ${FLOOR} |" >> "$GITHUB_STEP_SUMMARY"
+
+            if [ -z "$MAX" ]; then
+              echo "::notice::${BIN} references no ${FAMILY}_ versioned symbols."
+              return 0
+            fi
+
+            # sort -V puts the floor last only when the binary needs no more
+            # than the floor.
+            if [ "$(printf '%s\n%s\n' "$MAX" "$FLOOR" | sort -V | tail -1)" != "$FLOOR" ]; then
+              echo "::error::${BIN} requires ${FAMILY}_${MAX}, above the ${FAMILY} ${FLOOR} floor documented in README.md. Build this platform in a container matching the documented floor, or change the floor deliberately and update README.md."
+              STATUS=1
+            else
+              echo "::notice::${FAMILY} max ${MAX} (floor ${FLOOR})."
+            fi
+          }
+
+          check_floor GLIBC 2.34
+          check_floor GLIBCXX 3.4.30
+          check_floor CXXABI 1.3.11
+
+          # The full set, so a dry run needs no follow-up.
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo "<details><summary>all versioned symbols referenced</summary>" >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          objdump -T "$BIN" \
+            | grep -oE 'GLIBC_[0-9.]+|GLIBCXX_[0-9.]+|CXXABI_[0-9.]+' \
+            | sort -Vu >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '</details>' >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$STATUS"
+
+      # CMakeLists pins CMAKE_OSX_DEPLOYMENT_TARGET; this is what notices when
+      # a runner SDK bump stops that pin taking effect. rc.1 shipped minos 26.0
+      # and loaded on nothing older than macOS 26.
+      - name: Verify the macOS deployment target
+        if: ${{ runner.os == 'macOS' }}
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          EXPECTED_MINOS: '26.0'
+        run: |
+          set -euo pipefail
+
+          BIN="prebuilds/${PLATFORM}/twilio_video_sdk_node-${PLATFORM}.node"
+          MINOS=$(otool -l "$BIN" | awk '/LC_BUILD_VERSION/ {found=1} found && /minos/ {print $2; exit}')
+
+          if [ "$MINOS" != "$EXPECTED_MINOS" ]; then
+            echo "::error::${BIN} reports minos ${MINOS:-none}, expected ${EXPECTED_MINOS}. It will not load on macOS older than that. Check CMAKE_OSX_DEPLOYMENT_TARGET in CMakeLists.txt against this runner's SDK."
+            exit 1
+          fi
+          echo "::notice::minos ${MINOS}."
+
+      - name: Load the addon
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: node -e "require('./prebuilds/${PLATFORM}/twilio_video_sdk_node-${PLATFORM}.node'); console.log('addon loaded')"
+
+      # Checked by the pack job, so a truncated or mixed-up download fails
+      # there rather than shipping.
+      - name: Record the binary checksum
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+
+          cd "prebuilds/${PLATFORM}"
+          BIN="twilio_video_sdk_node-${PLATFORM}.node"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$BIN" > "${BIN}.sha256"
+          else
+            shasum -a 256 "$BIN" > "${BIN}.sha256"
+          fi
+          cat "${BIN}.sha256"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: prebuild-${{ matrix.platform }}
+          path: prebuilds/${{ matrix.platform }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  pack:
+    name: Pack and verify
+    needs: [validate, build]
+    runs-on: ubuntu-x64
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24.14'
+          cache: npm
+      - name: Artifactory OIDC Auth
+        uses: ./.github/actions/artifactory-oidc
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build the TypeScript entry points
+        run: npm run build:ts
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: prebuild-*
+          path: prebuilds/
+      - name: Verify both prebuilds arrived
+        run: |
+          set -euo pipefail
+
+          # download-artifact names each directory after its artifact.
+          for PLATFORM in linux-x64 darwin-x64
+          do
+            mv "prebuilds/prebuild-${PLATFORM}" "prebuilds/${PLATFORM}"
+            BIN="prebuilds/${PLATFORM}/twilio_video_sdk_node-${PLATFORM}.node"
+            if [ ! -s "$BIN" ]; then
+              echo "::error::${BIN} is missing or empty. A tarball with one prebuild is broken for half the users and must not be published."
+              exit 1
+            fi
+            echo "::notice::${BIN} $(wc -c < "$BIN") bytes"
+
+            # The bytes the build job verified.
+            ( cd "prebuilds/${PLATFORM}" && sha256sum -c "$(basename "$BIN").sha256" )
+
+            # `files` ships all of prebuilds/, so this must not be packed.
+            rm "${BIN}.sha256"
+          done
+
+      # --ignore-scripts: `prepare` runs husky, which has nothing to do here
+      # and fails outside a git checkout with hooks installed.
+      - name: Pack
+        run: npm pack --ignore-scripts
+
+      # dist/ and prebuilds/ are gitignored and still pack: `files` in
+      # package.json is an allowlist that .gitignore does not override. The
+      # list is compared rather than counted so a failure names the file that
+      # appeared or vanished.
+      - name: Verify the tarball manifest
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/manifest-expected <<'EOF'
+          CHANGELOG.md
+          FRAME_CONTRACT.md
+          LICENSE.md
+          LIFECYCLE.md
+          README.md
+          dist/index.cjs
+          dist/index.d.cts
+          dist/index.d.mts
+          dist/index.mjs
+          package.json
+          prebuilds/darwin-x64/twilio_video_sdk_node-darwin-x64.node
+          prebuilds/linux-x64/twilio_video_sdk_node-linux-x64.node
+          EOF
+
+          npm pack --dry-run --ignore-scripts --json > /tmp/pack.json
+          node -e '
+            const pack = require("/tmp/pack.json")[0];
+            process.stdout.write(pack.files.map(f => f.path).sort().join("\n") + "\n");
+          ' > /tmp/manifest-actual
+
+          if ! diff -u /tmp/manifest-expected /tmp/manifest-actual; then
+            echo "::error::the tarball contents changed. Update the expected list here if package.json's files field changed deliberately."
+            exit 1
+          fi
+          echo "::notice::tarball manifest matches."
+
+      # The point of this test is that it reproduces a customer's environment,
+      # so it must not inherit ours. artifactory-oidc writes .npmrc into
+      # GITHUB_WORKSPACE and npm walks upward looking for one, so a temp
+      # directory inside the workspace would still find the Artifactory
+      # registry and its token, and the test would pass for the wrong reason.
+      - name: Consumer smoke test
+        env:
+          # Both emptied for the step: neither the workspace .npmrc nor a
+          # runner-level one should be reachable.
+          npm_config_userconfig: /dev/null
+          npm_config_globalconfig: /dev/null
+          ARTIFACTORY_URL: ''
+          RTC_CPP_ARTIFACTORY_TOKEN: ''
+          RTC_CPP_ARCHIVE: ''
+          RTC_CPP_VERSION: ''
+        run: |
+          set -euo pipefail
+
+          TARBALL="$(pwd)/$(ls -1 twilio-video-node-sdk-*.tgz)"
+          CONSUMER="$(mktemp -d "${RUNNER_TEMP}/consumer.XXXXXX")"
+          cd "$CONSUMER"
+
+          npm init -y >/dev/null
+          npm install --foreground-scripts --registry https://registry.npmjs.org "$TARBALL"
+
+          # A script holding a track keeps the event loop alive, hence the
+          # explicit exit.
+          node -e "
+            const sdk = require('${PACKAGE_NAME}');
+            if (typeof sdk.connect !== 'function') {
+              throw new Error('the installed package does not export connect()');
+            }
+            console.log('installed package loaded, no build step and no privileged download');
+            process.exit(0);
+          "
+
+      # The tarball, not the working tree, which would repack.
+      - name: Publish dry run
+        run: |
+          set -euo pipefail
+
+          TARBALL="$(ls -1 twilio-video-node-sdk-*.tgz)"
+          npm publish "$TARBALL" \
+            --dry-run \
+            --ignore-scripts \
+            --access public \
+            --registry https://registry.npmjs.org
+
+      # Rechecked before publishing, so the bytes that ship are the ones
+      # smoke-tested above.
+      - name: Record the tarball checksum
+        run: |
+          set -euo pipefail
+
+          sha256sum twilio-video-node-sdk-*.tgz > package-tarball.sha256
+          cat package-tarball.sha256
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-tarball
+          path: |
+            twilio-video-node-sdk-*.tgz
+            package-tarball.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  # Git only. Do not add an install or a build step here.
+  #
+  # Tag before publish: a tag with no npm release is recoverable, an npm
+  # release with no tag is not.
+  tag:
+    name: Tag
+    needs: [validate, pack]
+    if: ${{ github.event.inputs.dry_run != 'true' }}
+    runs-on: ubuntu-x64
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ needs.validate.outputs.version }}
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # Idempotent, because re-running a failed publish re-runs this job too.
+      # A tag on a different commit is not a retry: it is a second commit
+      # claiming a released version.
+      - name: Tag the release
+        run: |
+          set -euo pipefail
+
+          EXISTING=$(git ls-remote --tags origin "refs/tags/${VERSION}" | awk '{print $1}')
+
+          if [ -n "$EXISTING" ]; then
+            if [ "$EXISTING" = "$GITHUB_SHA" ]; then
+              echo "::notice::tag ${VERSION} already points at ${GITHUB_SHA}; nothing to do."
+              exit 0
+            fi
+            echo "::error::tag ${VERSION} already exists on origin at ${EXISTING}, not ${GITHUB_SHA}."
+            exit 1
+          fi
+
+          # Lightweight and un-prefixed, matching the existing tags.
+          git tag "$VERSION" "$GITHUB_SHA"
+          git push origin "refs/tags/${VERSION}"
+          echo "::notice::tagged ${VERSION} at ${GITHUB_SHA}."
+
+  publish:
+    name: Publish to npm
+    needs: [validate, tag]
+    if: ${{ github.event.inputs.dry_run != 'true' }}
+    runs-on: ubuntu-x64
+    timeout-minutes: 15
+    # Both at job level: `environment:` resolves before any step runs, and the
+    # OIDC token only carries the environment claim when the job itself asks
+    # for the environment, which is what npm's trusted publisher matches on.
+    environment:
+      name: production
+      url: https://www.npmjs.com/package/@twilio/video-node-sdk/v/${{ needs.validate.outputs.version }}
+    permissions:
+      contents: read
+      id-token: write # required for npm OIDC trusted publishing
+    concurrency:
+      group: release-${{ needs.validate.outputs.version }}
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+      NPM_TAG: ${{ needs.validate.outputs.npm_tag }}
+    steps:
+      # npm >= 11.5.1, bundled with Node 24, is required for OIDC trusted
+      # publishing. registry-url points npm at the public registry; no
+      # NODE_AUTH_TOKEN, because the OIDC exchange provides the credential.
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24.14'
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: package-tarball
+
+      # The tarball is published by path, so the bytes that ship are the exact
+      # ones the pack job smoke-tested.
+      - name: Verify the tarball matches the tag
+        id: tarball
+        run: |
+          set -euo pipefail
+
+          TARBALL="$(ls -1 twilio-video-node-sdk-*.tgz)"
+          tar -xzOf "$TARBALL" package/package.json > /tmp/packed-package.json
+
+          PACKED_NAME=$(node -p "require('/tmp/packed-package.json').name")
+          PACKED_VERSION=$(node -p "require('/tmp/packed-package.json').version")
+
+          if [ "$PACKED_NAME" != "$PACKAGE_NAME" ]; then
+            echo "::error::the tarball is ${PACKED_NAME}, not ${PACKAGE_NAME}."
+            exit 1
+          fi
+          if [ "$PACKED_VERSION" != "$VERSION" ]; then
+            echo "::error::the tarball is ${PACKED_VERSION}, but the tag is ${VERSION}."
+            exit 1
+          fi
+
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the tarball checksum
+        run: |
+          set -euo pipefail
+
+          sha256sum -c package-tarball.sha256
+          echo "::notice::tarball matches the checksum recorded by the pack job."
+
+      # Without this, every re-run of a partially failed release dies on
+      # EPUBLISHCONFLICT, which reads like a real failure.
+      - name: Skip if this version is already published
+        id: published
+        run: |
+          set -euo pipefail
+
+          if npm view "${PACKAGE_NAME}@${VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "::notice::${PACKAGE_NAME}@${VERSION} is already on the registry; not republishing."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --access public: a scoped package defaults to restricted.
+      # --provenance: attests the tarball to this repository and workflow.
+      - name: Publish
+        if: ${{ steps.published.outputs.skip != 'true' }}
+        run: |
+          set -euo pipefail
+
+          npm publish "${{ steps.tarball.outputs.tarball }}" \
+            --provenance \
+            --access public \
+            --tag "$NPM_TAG" \
+            --ignore-scripts \
+            --registry https://registry.npmjs.org
+
+          echo "::notice::published ${PACKAGE_NAME}@${VERSION} under ${NPM_TAG}."
+
+  github-release:
+    name: GitHub release
+    needs: [validate, publish]
+    if: ${{ github.event.inputs.dry_run != 'true' }}
+    runs-on: ubuntu-x64
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ needs.validate.outputs.version }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.validate.outputs.version }}
+      PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: package-tarball
+
+      - name: Compose the release body
+        run: |
+          set -euo pipefail
+
+          {
+            echo "Install:"
+            echo '```'
+            echo "npm install ${PACKAGE_NAME}@${VERSION}"
+            echo '```'
+            echo
+            echo "Requires Node >= 24, on linux-x64 or macOS-x64."
+            echo
+            echo "# ${VERSION}"
+            echo
+            cat release-notes.md
+          } > release-body.md
+
+      # Idempotent: this is the job most likely to be re-run on its own.
+      - name: Create or update the release
+        run: |
+          set -euo pipefail
+
+          PRERELEASE_FLAG=()
+          if [ "$PRERELEASE" = "true" ]; then
+            PRERELEASE_FLAG=(--prerelease)
+          else
+            PRERELEASE_FLAG=(--latest)
+          fi
+
+          TARBALL="$(ls -1 twilio-video-node-sdk-*.tgz)"
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "::notice::release ${VERSION} exists; updating it."
+            gh release edit "$VERSION" --notes-file release-body.md "${PRERELEASE_FLAG[@]}"
+            gh release upload "$VERSION" "$TARBALL" --clobber
+          else
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --notes-file release-body.md \
+              "${PRERELEASE_FLAG[@]}" \
+              "$TARBALL"
+          fi
+
+      # An asset-less release is the failure mode worth catching: the tarball
+      # is what anyone who cannot reach npm falls back to.
+      - name: Verify the release
+        run: |
+          set -euo pipefail
+
+          gh release view "$VERSION" --json tagName,isPrerelease,assets \
+            --jq '{tag:.tagName,prerelease:.isPrerelease,assets:[.assets[]|{name,size,state}]}' \
+            | tee /tmp/release.json
+
+          ASSETS=$(node -p "require('/tmp/release.json').assets.length")
+          if [ "$ASSETS" -lt 1 ]; then
+            echo "::error::release ${VERSION} has no assets."
+            exit 1
+          fi
