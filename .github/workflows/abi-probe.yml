@@ -1,0 +1,157 @@
+# Throwaway measurement workflow. Delete once the ABI floors and the macOS
+# runner contents are recorded; nothing should come to depend on it.
+name: ABI probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ARTIFACTORY_URL: ${{ vars.ARTIFACTORY_URL }}
+
+jobs:
+  probe:
+    name: probe (${{ matrix.platform }})
+    runs-on: ${{ matrix.runs-on }}
+    # A self-hosted label that does not exist queues until the 24h default
+    # instead of failing, so cap it.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runs-on: ubuntu-x64
+          - platform: darwin-x64
+            runs-on: macos-x64
+    steps:
+      - name: Runner image
+        run: |
+          uname -a
+          echo "arch=$(node -p 'process.arch' 2>/dev/null || echo 'node not yet installed')"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            ldd --version | head -1
+            cat /etc/os-release | head -2
+          else
+            sw_vers
+            xcrun --show-sdk-version || true
+            echo "SDK path: $(xcrun --show-sdk-path || true)"
+          fi
+      # Recorded before any install step, to see what the image actually carries.
+      - name: Toolchain present
+        run: |
+          for t in cmake curl strip file git; do
+            printf '%-6s %s\n' "$t" "$(command -v "$t" || echo MISSING)"
+          done
+          cmake --version | head -1 || true
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            gcc --version | head -1 || true
+            objdump --version | head -1 || true
+          else
+            clang --version | head -1 || true
+            otool --version | head -2 || true
+          fi
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24.14'
+          cache: npm
+      - name: Confirm x64 Node
+        run: |
+          ARCH=$(node -p 'process.arch')
+          echo "process.arch=$ARCH"
+          [ "$ARCH" = "x64" ] || { echo "::error::expected x64 Node, got $ARCH"; exit 1; }
+      - name: Artifactory OIDC Auth
+        uses: ./.github/actions/artifactory-oidc
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Artifactory token for rtc-cpp
+        id: rtc-cpp-token
+        uses: ./.github/actions/artifactory-token-vendor
+        with:
+          vendor-url: ${{ vars.RTC_CPP_TOKEN_VENDOR_URL }}
+          audience: ${{ vars.RTC_CPP_TOKEN_VENDOR_AUDIENCE }}
+      - name: Fetch rtc-cpp
+        env:
+          RTC_CPP_ARTIFACTORY_TOKEN: ${{ steps.rtc-cpp-token.outputs.token }}
+        run: npm run fetch-deps
+      - name: Install X11 development libraries
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxext-dev libxdamage-dev libxfixes-dev \
+            libxcomposite-dev libxrandr-dev libxtst-dev
+
+      - name: Build and package
+        run: |
+          npm run build
+          npm run package
+
+      - name: Measure
+        run: |
+          BIN="prebuilds/${{ matrix.platform }}/twilio_video_sdk_node-${{ matrix.platform }}.node"
+          [ -f "$BIN" ] || { echo "::error::no binary at $BIN"; ls -R prebuilds || true; exit 1; }
+
+          {
+            echo "## ${{ matrix.platform }} (${{ matrix.runs-on }})"
+            echo
+            echo '```'
+            echo "path  $BIN"
+            echo "size  $(wc -c < "$BIN") bytes"
+            echo
+
+            if [ "$RUNNER_OS" = "Linux" ]; then
+              echo "-- highest versioned symbol required, per family --"
+              for f in GLIBC GLIBCXX CXXABI; do
+                MAX=$(objdump -T "$BIN" | grep -oE "${f}_[0-9][0-9.]*" | sort -Vu | tail -1)
+                printf '%-8s %s\n' "$f" "${MAX:-none}"
+              done
+              echo
+              echo "-- all versions referenced (for the record) --"
+              objdump -T "$BIN" | grep -oE 'GLIBC_[0-9.]+|GLIBCXX_[0-9.]+|CXXABI_[0-9.]+' | sort -Vu | tr '\n' ' '
+              echo
+              echo
+              echo "-- DT_NEEDED --"
+              objdump -p "$BIN" | awk '/NEEDED/ {print $2}' | sort
+            else
+              echo "-- load commands --"
+              otool -l "$BIN" | grep -A4 LC_BUILD_VERSION | head -20
+              echo
+              echo "-- linked libraries --"
+              otool -L "$BIN"
+            fi
+
+            echo
+            echo "-- file(1) --"
+            file "$BIN"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          cat "$GITHUB_STEP_SUMMARY"
+
+      # Where the literal manifest list in release.yml comes from. dist/ is
+      # untracked, so a fresh checkout has none until build:ts runs; `files` is
+      # an allowlist that .gitignore does not override, so it packs either way.
+      # This leg sees only the linux prebuild, so expect 11 entries here and 12
+      # in the real pack job, which downloads both.
+      - name: Pack manifest
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          npm run build:ts
+          npm pack --ignore-scripts --dry-run --json > /tmp/pack.json
+          echo '## pack manifest' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          node -e '
+            const p = require("/tmp/pack.json")[0];
+            const files = p.files.map(f => f.path).sort();
+            console.log(files.join("\n"));
+            console.log("\nentries: " + files.length);
+          ' | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
