@@ -194,13 +194,22 @@ function getPrebuiltPath(platformDir: string): string {
 }
 
 /**
- * Platforms the native addon is built for, derived from the `os` and `cpu`
- * fields npm itself enforces at install time. Deriving rather than restating
- * them means the runtime check cannot drift from what the package declares.
+ * Platforms the published package ships a prebuild for, derived from the `os`
+ * and `cpu` fields npm itself enforces at install time. Deriving rather than
+ * restating them means the runtime check cannot drift from what the package
+ * declares.
  */
-const SUPPORTED_PLATFORMS: string[] = (PKG.os ?? ['darwin', 'linux']).flatMap(o =>
+const SUPPORTED_PLATFORMS: string[] = (PKG.os ?? ['linux']).flatMap(o =>
   (PKG.cpu ?? ['x64']).map(c => `${o}-${c}`),
 );
+
+/**
+ * Platforms the addon can be compiled for. Wider than {@link
+ * SUPPORTED_PLATFORMS}: macOS x64 is a development platform that ships no
+ * prebuild, so a checkout can build and load one even though an installed
+ * package never carries it.
+ */
+const BUILDABLE_PLATFORMS: string[] = [...new Set([...SUPPORTED_PLATFORMS, 'darwin-x64'])];
 
 function loadAddon(): NativeAddon {
   const platformDir = getPlatformDir();
@@ -249,13 +258,13 @@ function loadAddon(): NativeAddon {
   // Nothing to load. Fail with the real reason rather than advising a build
   // that cannot succeed. Apple Silicon is the common case: package.json
   // declares cpu x64, so npm refuses to install under an arm64 Node in the
-  // first place. SUPPORTED_PLATFORMS is what the addon is built for, which is
-  // wider than what is supported: Linux x86-64 is the supported platform,
-  // macOS x64 is for local development.
-  if (!SUPPORTED_PLATFORMS.includes(platformDir)) {
+  // first place. The gate is BUILDABLE_PLATFORMS, not SUPPORTED_PLATFORMS: on
+  // macOS x64 a build does succeed, so that case falls through to the build
+  // advice below instead of being told to stop.
+  if (!BUILDABLE_PLATFORMS.includes(platformDir)) {
     throw new UnsupportedPlatformError(
-      `${platformDir} is not a supported platform. This SDK supports linux-x64; ` +
-        `the native addon can also load on ${SUPPORTED_PLATFORMS.join(' and ')}. ` +
+      `${platformDir} is not a supported platform. This SDK ships a prebuilt addon for ` +
+        `${SUPPORTED_PLATFORMS.join(' and ')}. ` +
         (process.platform === 'darwin' && process.arch === 'arm64'
           ? 'There is no arm64 build. On Apple Silicon, run Node under Rosetta so ' +
             'process.arch reports x64 (install once with `softwareupdate --install-rosetta`, ' +

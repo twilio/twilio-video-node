@@ -8,13 +8,11 @@ Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access
 
 ## Installation
 
-Install the provided `.tgz` file directly:
-
 ```bash
-npm install ./twilio-video-node-sdk-<version>.tgz
+npm install @twilio/video-node-sdk
 ```
 
-The native binary is prebuilt and bundled — no build step required. Import it as `@twilio/video-node-sdk`.
+The native binary is prebuilt and bundled — no build step required.
 
 **Requirements:**
 
@@ -534,7 +532,7 @@ The prebuilt native addon is linked against glibc and requires:
 
 It also links `libX11.so.6`, which WebRTC requires unconditionally. Install your distro's X11 client library (`libx11-6` on Debian and Ubuntu) even on headless servers.
 
-Alpine and other musl-based distros are not supported: the addon is glibc-only. Windows is not supported. macOS x64 builds and runs for local development, but is not a supported target and is not tested as one. See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
+Alpine and other musl-based distros are not supported: the addon is glibc-only. Windows is not supported. macOS x64 builds and runs for local development, but is not a supported target and is not tested as one; the macOS addon targets the current macOS release, 26. See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
 ## Examples
 

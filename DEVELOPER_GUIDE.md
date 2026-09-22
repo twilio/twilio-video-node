@@ -57,6 +57,9 @@ The native binary is x64-only. Install Rosetta once
 `x64`. Under a native arm64 Node, `npm install` fails with `EBADPLATFORM` and the
 SDK throws `UnsupportedPlatformError` at import.
 
+The addon targets macOS 26. CMakeLists pins `CMAKE_OSX_DEPLOYMENT_TARGET`, so a
+local build on an older macOS compiles but will not load.
+
 ## 2. Get rtc-cpp
 
 The native addon links against rtc-cpp (Twilio's C++ Video library).
@@ -128,12 +131,10 @@ To build against a local twilio-video-cpp source tree, point the build at it wit
 ## 3. Build
 
 ```sh
-TWILIO_VIDEO_NODE_SKIP_DOWNLOAD=1 npm install
+npm install
 npm run build
 npm run build:ts
 ```
-
-> **Note:** `TWILIO_VIDEO_NODE_SKIP_DOWNLOAD=1` skips the prebuilt binary download in the `install` script. This is required when building from source — the prebuilt download requires `gh` auth to the internal GitHub release.
 
 | Script                  | Description                                                                                        |
 | ----------------------- | -------------------------------------------------------------------------------------------------- |
