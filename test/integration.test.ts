@@ -27,10 +27,7 @@ import {
 import type { EventEmitter } from 'node:events';
 
 const TIMEOUT = {
-  // 15s was tight enough to flake late in a full suite run, where the late-joiner
-  // case timed out at 15s but passes in isolation. vitest's testTimeout is 60s,
-  // so 30s still fails a genuinely broken subscribe rather than hanging.
-  subscribe: 30_000,
+  subscribe: 15_000,
   mediaFlow: 10_000,
   // SDP renegotiation after publishTrack + trackSubscribed needs time to complete
   // before the encoder sink attaches and frames actually flow
@@ -44,7 +41,10 @@ function uniqueRoom(): string {
 /**
  * Resolve once `count` of a participant's publications report `isSubscribed`.
  * Polls state rather than counting events, because a subscription completing
- * before a listener attaches is never replayed.
+ * before a listener attaches is never replayed. Tests that join a Room whose
+ * participants are already publishing use this: those subscriptions can
+ * complete before connect() resolves, when no trackSubscribed listener can
+ * exist yet. It is the pattern the README documents for applications.
  */
 async function waitForSubscribed(
   participant: RemoteParticipant,
@@ -101,6 +101,37 @@ function waitForEvent<T = unknown>(
   timeout: number,
 ): Promise<T> {
   return waitForEvents<T>(emitter, event, 1, timeout).then(([first]) => first);
+}
+
+/**
+ * Resolve with the next participant to join `room`, and a promise of its first
+ * `count` `event` events. The listener is attached inside the
+ * participantConnected handler, the only point guaranteed to precede them: a
+ * listener attached after awaiting the join can miss a subscription that
+ * completed in the meantime.
+ */
+function waitForJoin<T = unknown>(
+  room: EventEmitter,
+  event: string,
+  count: number,
+  timeout: number,
+): Promise<{ participant: RemoteParticipant; events: Promise<T[]> }> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      room.removeListener('participantConnected', onJoin);
+      reject(new Error(`Timeout waiting for 'participantConnected'\n${describeLiveRooms()}`));
+    }, timeout);
+    const onJoin = (participant: RemoteParticipant) => {
+      clearTimeout(timer);
+      room.removeListener('participantConnected', onJoin);
+      const events = waitForEvents<T>(participant, event, count, timeout);
+      // A test that fails before awaiting `events` would otherwise report its
+      // later timeout as an unhandled rejection against whichever test runs next.
+      events.catch(() => {});
+      resolve({ participant, events });
+    };
+    room.on('participantConnected', onJoin);
+  });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -286,28 +317,17 @@ describe('Multiple participants', () => {
     connA.room.localParticipant.publishTrack(aliceVideo);
     connB.room.localParticipant.publishTrack(bobVideo);
 
-    // Carol joins after both are already publishing, which is the case that
-    // previously missed events for participants present before the join.
+    // Carol joins after both are already publishing.
     const carol = await connectToRoom('carol', roomName);
 
     try {
       const subscribed = new Map<string, RemoteVideoTrack>();
-      const done = new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(new Error(`Carol subscribed to ${subscribed.size} of 2 tracks`)),
-          TIMEOUT.subscribe,
-        );
-        carol.room.on('trackSubscribed', track => {
-          if (track.kind !== 'video') return;
-          subscribed.set(track.name, track as RemoteVideoTrack);
-          if (subscribed.size >= 2) {
-            clearTimeout(timer);
-            resolve();
-          }
-        });
-      });
-
-      await done;
+      for (const participant of carol.room.participants.values()) {
+        await waitForSubscribed(participant, 1, TIMEOUT.subscribe);
+        for (const publication of participant.videoTracks.values()) {
+          if (publication.track) subscribed.set(publication.trackName, publication.track);
+        }
+      }
       expect([...subscribed.keys()].sort()).toEqual(['alice-cam', 'bob-cam']);
       expect(carol.room.participants.size).toBe(2);
 
@@ -1100,7 +1120,7 @@ describe('Room-level track event bubbling', () => {
 });
 
 describe('Late joiner into a populated room', () => {
-  it('emits trackSubscribed for tracks a peer published before we joined', async () => {
+  it('reports tracks a peer published before we joined as subscribed', async () => {
     const roomName = uniqueRoom();
     const videoTrack = createLocalVideoTrack('late-cam');
     const audioTrack = createLocalAudioTrack('late-mic');
@@ -1111,30 +1131,12 @@ describe('Late joiner into a populated room', () => {
     });
     const connB = await connectToRoom('bob', roomName);
 
-    const publishers: string[] = [];
-    const kinds: string[] = [];
-    const bothSubscribed = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error(`Timeout waiting for trackSubscribed x2, got: [${kinds}]`)),
-        TIMEOUT.subscribe,
-      );
-      connB.room.on(
-        'trackSubscribed',
-        (track: RemoteTrack, _publication, participant: RemoteParticipant) => {
-          kinds.push(track.kind);
-          publishers.push(participant.identity);
-          if (kinds.length === 2) {
-            clearTimeout(timeout);
-            resolve();
-          }
-        },
-      );
-    });
-
     try {
-      await bothSubscribed;
+      const alice = [...connB.room.participants.values()].find(p => p.identity === 'alice');
+      expect(alice).toBeDefined();
+      await waitForSubscribed(alice!, 2, TIMEOUT.subscribe);
+      const kinds = [...alice!.tracks.values()].map(publication => publication.track?.kind);
       expect(kinds.toSorted()).toEqual(['audio', 'video']);
-      expect(publishers).toEqual(['alice', 'alice']);
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
@@ -1490,9 +1492,10 @@ describe('Subscription to tracks published before joining', () => {
 
     try {
       for (let i = 0; i < rejoins; i++) {
-        const joined = waitForEvent<RemoteParticipant>(
+        const joined = waitForJoin<RemoteTrack>(
           incumbent.room,
-          'participantConnected',
+          'trackSubscribed',
+          2,
           TIMEOUT.subscribe,
         );
         const peer = await connectToRoom('bob', roomName, {
@@ -1500,13 +1503,7 @@ describe('Subscription to tracks published before joining', () => {
           audioTracks: [createLocalAudioTrack(`audio-${i}`)],
         });
 
-        const remotePeer = await joined;
-        const tracks = await waitForEvents<RemoteTrack>(
-          remotePeer,
-          'trackSubscribed',
-          2,
-          TIMEOUT.subscribe,
-        );
+        const tracks = await (await joined).events;
         subscribedKinds.push(tracks.map(track => track.kind).sort());
 
         const left = waitForEvent(incumbent.room, 'participantDisconnected', TIMEOUT.subscribe);
@@ -1569,17 +1566,18 @@ describe('Subscription to tracks published before joining', () => {
 
     try {
       for (let i = 0; i < rejoins; i++) {
-        const joined = waitForEvent<RemoteParticipant>(
+        const joined = waitForJoin<RemoteTrack>(
           incumbent.room,
-          'participantConnected',
+          'trackSubscribed',
+          2,
           TIMEOUT.subscribe,
         );
         const peer = await connectToRoom('bob', roomName, {
           videoTracks: [createLocalVideoTrack(`video-${i}`)],
           audioTracks: [createLocalAudioTrack(`audio-${i}`)],
         });
-        const remotePeer = await joined;
-        await waitForEvents<RemoteTrack>(remotePeer, 'trackSubscribed', 2, TIMEOUT.subscribe);
+        const { participant: remotePeer, events: subscribed } = await joined;
+        await subscribed;
 
         const unsubscribed = waitForEvents<RemoteTrack>(
           remotePeer,
@@ -1613,18 +1611,15 @@ describe('Subscription to tracks published before joining', () => {
     const incumbent = await connectToRoom('alice', roomName);
     try {
       const [bob] = [...incumbent.room.participants.values()];
-      // Subscription has not completed when connect() resolves: the
-      // publications read here still report isSubscribed false. Disconnecting
-      // the peer before then leaves nothing to unsubscribe, so wait for both
-      // tracks to be subscribed before asserting the unsubscribe events.
-      const subscribed = waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 2, TIMEOUT.subscribe);
+      // Disconnecting the peer before both tracks are subscribed leaves nothing
+      // to unsubscribe.
+      await waitForSubscribed(bob, 2, TIMEOUT.subscribe);
       const unsubscribed = waitForEvents<RemoteTrack>(
         bob,
         'trackUnsubscribed',
         2,
         TIMEOUT.subscribe,
       );
-      await subscribed;
 
       await peer.cleanup();
       const tracks = await unsubscribed;
@@ -1643,16 +1638,12 @@ describe('Subscription to tracks published before joining', () => {
     const incumbent = await connectToRoom('alice', roomName);
 
     try {
-      const joined = waitForEvent<RemoteParticipant>(
-        incumbent.room,
-        'participantConnected',
-        TIMEOUT.subscribe,
-      );
+      const joined = waitForJoin(incumbent.room, 'trackSubscribed', 1, TIMEOUT.subscribe);
       const peer = await connectToRoom('bob', roomName, {
         videoTracks: [createLocalVideoTrack('video')],
       });
-      const bob = await joined;
-      await waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 1, TIMEOUT.subscribe);
+      const { participant: bob, events: subscribed } = await joined;
+      await subscribed;
 
       // A typical app reads this getter to build or refresh a participant list.
       const [sameParticipant] = [...incumbent.room.participants.values()];
@@ -1774,15 +1765,11 @@ describe('Subscription to tracks published before joining', () => {
     }) as typeof incumbent.room.emit;
 
     try {
-      const joined = waitForEvent<RemoteParticipant>(
-        incumbent.room,
-        'participantConnected',
-        TIMEOUT.subscribe,
-      );
+      const joined = waitForJoin(incumbent.room, 'trackSubscribed', 1, TIMEOUT.subscribe);
       const peer = await connectToRoom('bob', roomName, {
         videoTracks: [createLocalVideoTrack('video')],
       });
-      const bob = await joined;
+      const { participant: bob, events: subscribed } = await joined;
 
       const participantEmit = bob.emit.bind(bob);
       bob.emit = ((event: string, ...args: unknown[]) => {
@@ -1790,7 +1777,7 @@ describe('Subscription to tracks published before joining', () => {
         return participantEmit(event, ...args);
       }) as typeof bob.emit;
 
-      await waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 1, TIMEOUT.subscribe);
+      await subscribed;
       const left = waitForEvent(incumbent.room, 'participantDisconnected', TIMEOUT.subscribe);
       await peer.cleanup();
       await left;
@@ -1813,16 +1800,12 @@ describe('Subscription to tracks published before joining', () => {
     const poll = setInterval(() => void [...incumbent.room.participants.values()], 5);
 
     try {
-      const joined = waitForEvent<RemoteParticipant>(
-        incumbent.room,
-        'participantConnected',
-        TIMEOUT.subscribe,
-      );
+      const joined = waitForJoin(incumbent.room, 'trackSubscribed', 1, TIMEOUT.subscribe);
       const peer = await connectToRoom('bob', roomName, {
         videoTracks: [createLocalVideoTrack('video')],
       });
-      const bob = await joined;
-      await waitForEvents<RemoteTrack>(bob, 'trackSubscribed', 1, TIMEOUT.subscribe);
+      const { participant: bob, events: subscribed } = await joined;
+      await subscribed;
 
       const left = waitForEvent<RemoteParticipant>(
         incumbent.room,
@@ -1902,10 +1885,11 @@ describe('Subscription to tracks published before joining', () => {
       connectToRoom('carol', roomName),
     ]);
     // Each subscriber also sees the other one connect, so wait for the
-    // publisher specifically.
-    const joined = subscribers.map(
+    // publisher specifically. Its trackSubscribed listener is attached inside
+    // the participantConnected handler, before the subscription can complete.
+    const subscribedTracks = subscribers.map(
       subscriber =>
-        new Promise<RemoteParticipant>((resolve, reject) => {
+        new Promise<RemoteDataTrack>((resolve, reject) => {
           const timer = setTimeout(
             () => reject(new Error('Timeout waiting for the publisher to connect')),
             TIMEOUT.subscribe,
@@ -1913,19 +1897,16 @@ describe('Subscription to tracks published before joining', () => {
           subscriber.room.on('participantConnected', (participant: RemoteParticipant) => {
             if (participant.identity !== 'alice') return;
             clearTimeout(timer);
-            resolve(participant);
+            resolve(
+              waitForEvent<RemoteDataTrack>(participant, 'trackSubscribed', TIMEOUT.subscribe),
+            );
           });
         }),
     );
     const publisher = await connectToRoom('alice', roomName, { dataTracks: [dataTrack] });
 
     try {
-      const tracks = await Promise.all(
-        joined.map(async participant => {
-          const alice = await participant;
-          return waitForEvent<RemoteDataTrack>(alice, 'trackSubscribed', TIMEOUT.subscribe);
-        }),
-      );
+      const tracks = await Promise.all(subscribedTracks);
       await sleep(TIMEOUT.negotiate);
 
       const received = tracks.map(track => {
@@ -1966,20 +1947,17 @@ describe('Subscription to tracks published before joining', () => {
     const dataTrack = createLocalDataTrack('chat');
     // Subscriber first, so it sees the publisher connect.
     const subscriber = await connectToRoom('bob', roomName);
-    const joined = waitForEvent<RemoteParticipant>(
+    const joined = waitForJoin<RemoteDataTrack>(
       subscriber.room,
-      'participantConnected',
+      'trackSubscribed',
+      1,
       TIMEOUT.subscribe,
     );
     const publisher = await connectToRoom('alice', roomName, { dataTracks: [dataTrack] });
 
     try {
-      const alice = await joined;
-      const track = await waitForEvent<RemoteDataTrack>(
-        alice,
-        'trackSubscribed',
-        TIMEOUT.subscribe,
-      );
+      const { participant: alice, events: subscribed } = await joined;
+      const [track] = await subscribed;
       await sleep(TIMEOUT.negotiate);
 
       let unsubscribed = false;
@@ -2020,16 +1998,13 @@ describe('Subscription to tracks published before joining', () => {
     const roomName = uniqueRoom();
     const dataTrack = createLocalDataTrack('chat');
     const subscriber = await connectToRoom('bob', roomName);
-    const joined = waitForEvent<RemoteParticipant>(
-      subscriber.room,
-      'participantConnected',
-      TIMEOUT.subscribe,
-    );
+    const joined = waitForJoin(subscriber.room, 'trackSubscribed', 1, TIMEOUT.subscribe);
     const publisher = await connectToRoom('alice', roomName, { dataTracks: [dataTrack] });
 
     try {
-      const alice = await joined;
-      await waitForEvent<RemoteDataTrack>(alice, 'trackSubscribed', TIMEOUT.subscribe);
+      await (
+        await joined
+      ).events;
       await sleep(TIMEOUT.negotiate);
 
       // Fire a batch and disconnect immediately, without awaiting any of them.
