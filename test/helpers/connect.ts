@@ -110,6 +110,12 @@ async function connectToRoom(
     room,
     cleanup() {
       liveRooms.delete(diag);
+      // `disconnected` has already fired and will not again, so waiting for it
+      // would only sit out the fallback.
+      if (room.state === 'disconnected') {
+        room.dispose();
+        return Promise.resolve();
+      }
       return new Promise<void>(resolve => {
         const fallback = setTimeout(resolve, 3000);
         room.once('disconnected', () => {

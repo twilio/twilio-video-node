@@ -260,8 +260,7 @@ describe('Error cases, provoked end to end', () => {
       expect(error?.code).toBe(53205);
       expect(error?.name).toBe('ParticipantDuplicateIdentityError');
     } finally {
-      await second.cleanup();
-      first.room.dispose();
+      await Promise.all([first.cleanup(), second.cleanup()]);
     }
   });
 
@@ -796,7 +795,7 @@ describe('participantDisconnected', () => {
     try {
       expect(participant.identity).toBe('bob');
     } finally {
-      await connA.cleanup();
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
 });
