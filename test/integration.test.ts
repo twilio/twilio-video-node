@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
-import { connectToRoom } from './helpers/connect.js';
+import { connectToRoom, describeLiveRooms } from './helpers/connect.js';
 import { generateToken, badTokens } from './helpers/token.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 import type {
@@ -56,7 +56,9 @@ async function waitForSubscribed(
     const subscribed = [...participant.tracks.values()].filter(p => p.isSubscribed).length;
     if (subscribed >= count) return;
     if (Date.now() >= deadline) {
-      throw new Error(`Timed out waiting for ${count} subscribed tracks; got ${subscribed}`);
+      throw new Error(
+        `Timed out waiting for ${count} subscribed tracks; got ${subscribed}\n${describeLiveRooms()}`,
+      );
     }
     await sleep(250);
   }
@@ -70,13 +72,15 @@ function waitForEvents<T = unknown>(
 ): Promise<T[]> {
   return new Promise((resolve, reject) => {
     const received: T[] = [];
+    const attachedAt = new Date().toISOString();
     const timer = setTimeout(() => {
       emitter.removeListener(event, handler);
       reject(
         new Error(
-          count === 1
+          (count === 1
             ? `Timeout waiting for '${event}'`
-            : `Timeout waiting for ${count} '${event}' events; got ${received.length}`,
+            : `Timeout waiting for ${count} '${event}' events; got ${received.length}`) +
+            ` (listener attached ${attachedAt})\n${describeLiveRooms()}`,
         ),
       );
     }, timeout);
