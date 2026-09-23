@@ -68,7 +68,8 @@
     "package.json",
     "CHANGELOG.md",
     "FRAME_CONTRACT.md",
-    "LIFECYCLE.md"
+    "LIFECYCLE.md",
+    "SECURITY-PRIVACY.md"
   ],
   "engines": {
     "node": ">=24.0.0"
