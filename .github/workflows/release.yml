@@ -563,7 +563,11 @@ jobs:
           echo "::notice::tarball manifest matches."
 
       # The tarball, not the working tree, which would repack.
+      # npm refuses a prerelease without --tag, dry run or not, so this passes
+      # the same tag the publish job does.
       - name: Publish dry run
+        env:
+          NPM_TAG: ${{ needs.validate.outputs.npm_tag }}
         run: |
           set -euo pipefail
 
@@ -572,6 +576,7 @@ jobs:
             --dry-run \
             --ignore-scripts \
             --access public \
+            --tag "$NPM_TAG" \
             --registry https://registry.npmjs.org
 
       # Rechecked before publishing, so the bytes that ship are the ones the
