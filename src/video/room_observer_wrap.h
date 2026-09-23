@@ -36,6 +36,9 @@ public:
     void onTranscription(const twilio::video::Room* room, const std::string& transcriptionJson) override;
 
     void close();
+    // Keeps the process alive while Room events can still arrive; close()
+    // releases it.
+    void ref();
 
     /**
      * Returns the observer already registered for this participant, or creates

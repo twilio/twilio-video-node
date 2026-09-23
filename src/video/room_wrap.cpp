@@ -532,6 +532,12 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
+    // Room events, the pending connect and getStats() results keep the process
+    // alive until the Room is disposed. Taken only once connect() has started,
+    // so a Room that failed above holds nothing.
+    roomWrap->observer_->ref();
+    roomWrap->asyncContext_->ref();
+
     // On macOS, rtc-cpp posts work to dispatch_get_main_queue() which Node.js
     // doesn't pump. Start a libuv timer to drain all pending events frequently.
 #ifdef __APPLE__

@@ -457,7 +457,8 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
         const grace = setTimeout(disposeOnce, DISPOSE_GRACE_MS);
         grace.unref?.();
       }, timeoutMs);
-      // A pending connect should not by itself keep the process alive.
+      // The native Room keeps the process alive while it connects; this
+      // timeout shouldn't add a hold of its own.
       timer.unref?.();
     }
   });

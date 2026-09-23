@@ -8,6 +8,7 @@ AsyncContext::AsyncContext(Napi::Env env, size_t maxQueueDepth)
     napi_get_uv_event_loop(env, &loop);
     async_ = new uv_async_t;
     uv_async_init(loop, async_, onAsync);
+    uv_unref(reinterpret_cast<uv_handle_t*>(async_));
     async_->data = this;
 }
 
@@ -29,6 +30,16 @@ void AsyncContext::dispatch(std::function<void(Napi::Env)> fn) {
     queue_.push(std::move(fn));
 
     if (async_) uv_async_send(async_);
+}
+
+void AsyncContext::ref() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (async_) uv_ref(reinterpret_cast<uv_handle_t*>(async_));
+}
+
+void AsyncContext::unref() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (async_) uv_unref(reinterpret_cast<uv_handle_t*>(async_));
 }
 
 size_t AsyncContext::queueDepth() const {

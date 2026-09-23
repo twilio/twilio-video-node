@@ -11,6 +11,10 @@ RoomObserverWrap::RoomObserverWrap(Napi::Env env, RoomWrap* roomWrap)
     // queue depth 0 = unlimited for events (events must not be dropped)
 }
 
+void RoomObserverWrap::ref() {
+    asyncContext_->ref();
+}
+
 RoomObserverWrap::~RoomObserverWrap() {
     close();
 }
