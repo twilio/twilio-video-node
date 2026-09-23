@@ -622,16 +622,17 @@ jobs:
           name: package-tarball
 
       # The point of this test is that it reproduces a customer's environment,
-      # so it must not inherit ours. artifactory-oidc writes .npmrc into
-      # GITHUB_WORKSPACE and npm walks upward looking for one, so a temp
-      # directory inside the workspace would still find the Artifactory
-      # registry and its token, and the test would pass for the wrong reason.
+      # so it must not inherit ours. This job has no checkout and runs no
+      # Artifactory step, so no project .npmrc points npm at Artifactory or
+      # carries its token. Adding artifactory-oidc here would let the test pass
+      # for the wrong reason.
       - name: Install and load the package
         env:
-          # Both emptied for the step: neither the workspace .npmrc nor a
-          # runner-level one should be reachable.
-          npm_config_userconfig: /dev/null
-          npm_config_globalconfig: /dev/null
+          # Empty user and global configs, so an .npmrc on the runner image
+          # cannot redirect the install either. Two separate files, because npm
+          # refuses to load one file as both user and global config.
+          npm_config_userconfig: ${{ runner.temp }}/empty-user.npmrc
+          npm_config_globalconfig: ${{ runner.temp }}/empty-global.npmrc
           ARTIFACTORY_URL: ''
           RTC_CPP_ARTIFACTORY_TOKEN: ''
           RTC_CPP_ARCHIVE: ''
