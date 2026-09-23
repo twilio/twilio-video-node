@@ -133,6 +133,7 @@ void LocalDataTrackWrap::settleSend(uint64_t id, bool ok, const std::string& err
 
     Napi::Promise::Deferred deferred = it->second;
     pendingSends_.erase(it);
+    if (pendingSends_.empty()) asyncContext_->unref();
 
     Napi::Env env = deferred.Env();
     Napi::HandleScope scope(env);
@@ -220,6 +221,8 @@ Napi::Value LocalDataTrackWrap::Send(const Napi::CallbackInfo& info) {
 
     auto deferred = Napi::Promise::Deferred::New(env);
     pendingSends_.emplace(static_cast<uint64_t>(id), deferred);
+    // Keep the process alive until every send() has settled.
+    if (pendingSends_.size() == 1) asyncContext_->ref();
     return deferred.Promise();
 }
 

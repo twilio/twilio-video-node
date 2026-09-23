@@ -328,6 +328,10 @@ localParticipant.on('trackPublicationFailed', (error, localTrack) => { ... });
 - Data track observers are no longer retained for the process's lifetime. They were released
   only when a track was explicitly unsubscribed, so any other teardown, such as disposing a
   Room mid-call, left them behind.
+- The process can now exit on its own after `room.dispose()`. Local tracks, remote participants
+  and data tracks, and a `connect()` that failed immediately each left work registered with
+  Node's event loop that was only released on garbage collection, if at all, so the process
+  stayed alive until it called `process.exit()`.
 
 # 1.0.0-preview.3 (September 2, 2026)
 

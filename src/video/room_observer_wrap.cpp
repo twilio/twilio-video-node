@@ -9,6 +9,8 @@ RoomObserverWrap::RoomObserverWrap(Napi::Env env, RoomWrap* roomWrap)
     : roomWrap_(roomWrap)
     , asyncContext_(std::make_unique<AsyncContext>(env, 0)) {
     // queue depth 0 = unlimited for events (events must not be dropped)
+    // Room events keep the process alive until the Room is disposed.
+    asyncContext_->ref();
 }
 
 RoomObserverWrap::~RoomObserverWrap() {

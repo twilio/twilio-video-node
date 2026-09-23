@@ -2,7 +2,6 @@
 
 #include <napi.h>
 #include <twilio/media/media_factory.h>
-#include "../common/async_context.h"
 #include "node_audio_device.h"
 
 namespace twilio_video_node {
@@ -26,7 +25,6 @@ private:
     Napi::Value CreateDataTrack(const Napi::CallbackInfo& info);
 
     std::shared_ptr<twilio::media::MediaFactory> factory_;
-    std::unique_ptr<AsyncContext> asyncContext_;
     rtc::scoped_refptr<NodeAudioDevice> adm_;
 };
 

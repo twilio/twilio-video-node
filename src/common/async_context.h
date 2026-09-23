@@ -19,6 +19,11 @@ public:
 
     void dispatch(std::function<void(Napi::Env)> fn);
     void close();
+    // A context does not keep the process alive unless ref() is called; its
+    // callbacks are still delivered while something else does. unref() undoes
+    // ref(), and close() releases it either way.
+    void ref();
+    void unref();
     bool isClosed() const { return closed_.load(std::memory_order_acquire); }
 
     // Frames shed at the native-to-JS transfer boundary, before the JS policy
