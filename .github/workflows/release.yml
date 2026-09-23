@@ -371,10 +371,8 @@ jobs:
           ld-linux-x86-64.so.2
           libX11.so.6
           libc.so.6
-          libdl.so.2
           libgcc_s.so.1
           libm.so.6
-          libpthread.so.0
           libstdc++.so.6
           EOF
 
@@ -388,9 +386,9 @@ jobs:
           fi
           echo "::notice::DT_NEEDED matches the published set."
 
-      # README.md's Platform Support table documents these floors, and they
-      # come from the rtc-cpp build container rather than from this runner. A
-      # newer runner raises them silently and breaks Ubuntu 22.04 consumers.
+      # README.md's Platform Support table documents these floors, measured
+      # from an ubuntu-x64 (24.04) build. A runner image update can raise them
+      # silently and break Ubuntu 22.04 consumers.
       - name: Verify the ABI floors
         if: ${{ runner.os == 'Linux' }}
         env:
