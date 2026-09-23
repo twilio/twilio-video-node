@@ -20,10 +20,13 @@ jobs:
   check:
     name: ${{ matrix.name }}
     if: ${{ !github.event.pull_request.head.repo.fork }}
-    runs-on: ubuntu-x64
+    runs-on: ${{ matrix.runs-on || 'ubuntu-x64' }}
     permissions:
       contents: read
       id-token: write
+    env:
+      # Set by macOS entries only; see build-and-test (macos).
+      DEVELOPER_DIR: ${{ matrix.developer-dir }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +47,16 @@ jobs:
             # deleted or silently-skipped test file shows up here as a coverage
             # drop, and vitest exits 0 both when a named test file is missing
             # and when one is removed.
+            native: true
+            run: |
+              npm run build:ts
+              npm run test:coverage
+          - name: build-and-test (macos)
+            runs-on: macos-x64
+            # rtc-cpp's darwin library is built with Apple clang 17, which this
+            # Xcode provides. The image's default Xcode has a newer clang that
+            # rejects rtc-cpp's headers.
+            developer-dir: /Applications/Xcode_26.0.1.app/Contents/Developer
             native: true
             run: |
               npm run build:ts
@@ -75,6 +88,22 @@ jobs:
         uses: ./.github/actions/artifactory-oidc
       - name: Install dependencies
         run: npm ci --ignore-scripts
+      # rtc-cpp ships its darwin library for one compiler
+      # (deps/twilio-video/lib/x86_64/appleclang-17.0/) and the build does not
+      # check it. An image without the pinned Xcode fails here, not mid-build.
+      - name: Verify the Apple clang version
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          set -euo pipefail
+
+          xcodebuild -version
+          clang --version
+
+          MAJOR=$(clang --version | sed -nE '1s/^Apple clang version ([0-9]+)\..*/\1/p')
+          if [ "$MAJOR" != "17" ]; then
+            echo "::error::expected Apple clang 17, got ${MAJOR:-an unrecognized version}. rtc-cpp's darwin library is built with appleclang-17.0. Point DEVELOPER_DIR at an installed Xcode that provides it."
+            exit 1
+          fi
       # The tarball's token is minted by the credential vendor, separately from
       # npm's, so it can be scoped to the repository holding it.
       - name: Artifactory token for rtc-cpp
@@ -94,7 +123,7 @@ jobs:
         run: npm run fetch-deps
       # CMakeLists links these on Linux; the runner image does not carry them.
       - name: Install X11 development libraries
-        if: ${{ matrix.native }}
+        if: ${{ matrix.native && runner.os == 'Linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
