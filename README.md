@@ -17,9 +17,10 @@ The native binary is prebuilt and bundled — no build step required.
 **Requirements:**
 
 - Node.js >= 24.0.0
-- Linux x86-64, glibc >= 2.34 (Ubuntu 22.04+, Debian 12+)
+- Linux x86-64, glibc >= 2.34 (Ubuntu 22.04+, Debian 12+), or
+- macOS 26+ on x86-64 (Intel, or Apple Silicon with Node running under Rosetta)
 
-Linux x86-64 is the only supported platform for the beta. Alpine/musl, arm64 and Windows are not supported, and macOS is development-only. See [Platform Support](#platform-support) for the full ABI requirements.
+Alpine/musl, native arm64 and Windows are not supported. See [Platform Support](#platform-support) for the full requirements.
 
 ### Access Token
 
@@ -518,7 +519,7 @@ Interleaved 16-bit signed little-endian PCM in a single `Buffer`.
 ## Platform Support
 
 - **Node.js** >= 24.0.0
-- **OS** Linux x86-64
+- **OS** Linux x86-64, macOS 26+ x86-64
 - **Distros** Ubuntu 22.04+ and Debian 12+.
 - **CPU** x86-64 only. There is no arm64 build, so on Apple Silicon Node must run under Rosetta.
 
@@ -532,7 +533,9 @@ The prebuilt native addon is linked against glibc and requires:
 
 It also links `libX11.so.6`, which WebRTC requires unconditionally. Install your distro's X11 client library (`libx11-6` on Debian and Ubuntu) even on headless servers.
 
-Alpine and other musl-based distros are not supported: the addon is glibc-only. Windows is not supported. macOS x64 builds and runs for local development, but is not a supported target and is not tested as one; the macOS addon targets the current macOS release, 26. See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
+On macOS the prebuilt addon requires macOS 26 or later. npm cannot check the macOS version, so on an older release `npm install` succeeds and the SDK fails when it loads the addon.
+
+Alpine and other musl-based distros are not supported: the addon is glibc-only. Windows is not supported.
 
 ## Examples
 

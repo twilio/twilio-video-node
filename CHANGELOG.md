@@ -1,4 +1,4 @@
-This SDK is currently in beta, and Linux x86-64 is the only supported platform.
+This SDK is currently in beta. It supports Linux x86-64 and macOS 26+ on x86-64.
 See the [README](README.md) for details.
 
 # 1.0.0-beta.1 (In Progress)
@@ -172,14 +172,11 @@ change what is sent or when. Video publish still carries the timestamp through
 to the encoded frame. This documents existing behavior; nothing changed in the
 publish path.
 
-### The published package is linux-x64 only
+### The package ships linux-x64 and darwin-x64 prebuilds
 
-`os` no longer lists `darwin`, so `npm install` on macOS fails with `EBADPLATFORM` rather than
-installing a package whose addon cannot load. The tarball carries the linux-x64 prebuild only;
-earlier tarballs also carried a darwin-x64 one.
-
-macOS remains a development platform. Build the addon locally with `npm run build`, which is
-loaded in preference to any prebuild.
+The darwin-x64 prebuild is built and tested in CI alongside linux-x64. It requires macOS
+26 or later and an x64 Node, so on Apple Silicon Node must run under Rosetta. npm cannot check
+the macOS version, so on an older macOS the install succeeds and loading the addon fails.
 
 ### `trackSubscribed` and `trackUnsubscribed` pass a `RemoteTrackPublication`
 

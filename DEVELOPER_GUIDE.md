@@ -2,11 +2,6 @@
 
 > This guide is for Twilio employees working on the SDK. If you're an external developer, the best way to contribute is by building with the SDK, reporting issues, and sharing feedback. See [README.md](README.md) for API docs and usage.
 
-**Linux x86-64 is the only supported platform for the beta.** The macOS x64 build
-described below exists for local development. It is not a supported target, CI
-does not exercise it, and results there do not stand in for Linux: verify changes
-on Linux x86-64 before shipping them.
-
 ## Apple Silicon (M1/M2/M3)
 
 The native binary is **x64-only**. On Apple Silicon you must run all build commands under Rosetta. Install Rosetta first if you haven't already:
@@ -59,6 +54,10 @@ SDK throws `UnsupportedPlatformError` at import.
 
 The addon targets macOS 26. CMakeLists pins `CMAKE_OSX_DEPLOYMENT_TARGET`, so a
 local build on an older macOS compiles but will not load.
+
+rtc-cpp's darwin library is built with Apple clang 17, which Xcode 26.0 provides.
+Newer Xcode releases ship a clang that rejects rtc-cpp's headers. If you have
+several Xcodes installed, select that one with `DEVELOPER_DIR`, as CI does.
 
 ## 2. Get rtc-cpp
 
