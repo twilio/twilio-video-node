@@ -1,8 +1,8 @@
 name: Release
 
 # Builds the prebuilds on both supported platforms, packs a single tarball
-# carrying both, tags the commit, publishes to npm and creates the GitHub
-# release.
+# carrying both, tags the commit, publishes to npm, publishes the API
+# reference to GitHub Pages and creates the GitHub release.
 #
 # Dispatch this from `main`, after the version bump PR has merged. There is no
 # version input: the version is whatever package.json says, which is what that
@@ -535,6 +535,12 @@ jobs:
       - name: Build the TypeScript entry points
         run: npm run build:ts
 
+      # Built here rather than in the docs job, so a dry run proves the API
+      # reference builds. docs/ is outside package.json's files, so it is not
+      # packed.
+      - name: Build the API reference
+        run: npm run docs -- --includeVersion
+
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: prebuild-*
@@ -635,6 +641,14 @@ jobs:
             twilio-video-node-sdk-*.tgz
             package-tarball.sha256
           if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: api-docs
+          path: docs/
+          if-no-files-found: error
+          # Matches the tarball: the docs job may be re-run on its own.
           retention-days: 30
 
   # Installs the packed tarball on each platform it carries a prebuild for,
@@ -874,6 +888,117 @@ jobs:
             --registry https://registry.npmjs.org
 
           echo "::notice::published ${PACKAGE_NAME}@${VERSION} under ${NPM_TAG}."
+
+  # Publishes the API reference to GitHub Pages from the gh-pages branch. Each
+  # version gets its own folder, which is never replaced, and latest/ mirrors
+  # the version npm's latest dist-tag points at. The package is already out by
+  # now, so a failure here never blocks a release: re-run this job.
+  docs:
+    name: Publish API docs
+    needs: [validate, publish]
+    if: ${{ github.event.inputs.dry_run != 'true' }}
+    runs-on: ubuntu-x64
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    # Releases of different versions both push gh-pages, and the second push
+    # would be rejected if they overlapped.
+    concurrency:
+      group: release-docs
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+      NPM_TAG: ${{ needs.validate.outputs.npm_tag }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: api-docs
+          path: api-docs
+
+      # actions/checkout cannot check out a branch that does not exist yet, so
+      # this checks out the default branch for its credentials and switches to
+      # gh-pages, or starts it on the first release.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          path: site
+      - name: Switch to gh-pages
+        working-directory: site
+        run: |
+          set -euo pipefail
+
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git fetch --depth 1 origin gh-pages
+            git checkout -q -B gh-pages FETCH_HEAD
+          else
+            echo "::notice::gh-pages does not exist yet; starting it."
+            git checkout -q --orphan gh-pages
+            git rm -r -q -f --ignore-unmatch .
+          fi
+
+      - name: Publish the API docs
+        working-directory: site
+        run: |
+          set -euo pipefail
+
+          SRC=../api-docs
+          if [ ! -s "${SRC}/index.html" ]; then
+            echo "::error::the api-docs artifact has no index.html."
+            exit 1
+          fi
+
+          # A version's docs describe what was published and never change. A
+          # re-run brings the same artifact, so an identical folder is fine.
+          if [ -e "$VERSION" ]; then
+            if ! diff -rq "$VERSION" "$SRC" >/dev/null; then
+              echo "::error::${VERSION}/ already exists on gh-pages with different contents."
+              exit 1
+            fi
+          else
+            cp -R "$SRC" "$VERSION"
+          fi
+
+          if [ "$NPM_TAG" = latest ]; then
+            rm -rf latest
+            cp -R "$VERSION" latest
+            echo "$VERSION" > latest.txt
+          fi
+
+          # Release order, newest first. Sorting by version would need semver
+          # rules sort(1) does not have: it puts 1.0.0 before 1.0.0-rc.1.
+          if ! grep -qxF "$VERSION" versions.txt 2>/dev/null; then
+            { echo "$VERSION"; cat versions.txt 2>/dev/null || true; } > versions.txt.new
+            mv versions.txt.new versions.txt
+          fi
+
+          LATEST_VERSION="$(cat latest.txt 2>/dev/null || true)"
+          {
+            echo '<!DOCTYPE html>'
+            echo '<html lang="en"><head><meta charset="utf-8">'
+            echo "<title>${PACKAGE_NAME} API reference</title></head><body>"
+            echo "<h1>${PACKAGE_NAME} API reference</h1>"
+            if [ -n "$LATEST_VERSION" ]; then
+              echo "<p><a href=\"latest/\">Latest (${LATEST_VERSION})</a></p>"
+            fi
+            echo '<ul>'
+            while read -r V; do
+              echo "<li><a href=\"${V}/\">${V}</a></li>"
+            done < versions.txt
+            echo '</ul></body></html>'
+          } > index.html
+
+          # Serve TypeDoc's folders as they are, without Jekyll.
+          touch .nojekyll
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::gh-pages already has the ${VERSION} docs."
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "$VERSION"
+          git push origin gh-pages
+          echo "::notice::published the ${VERSION} API docs."
 
   github-release:
     name: GitHub release
