@@ -180,7 +180,20 @@ jobs:
                 exit 1
               fi
               if [ "${LATEST:-false}" = true ]; then
-                echo "::warning::${VERSION} publishes under latest, as the latest input asks. The ${NPM_TAG} dist-tag stays on its current version."
+                # Once latest holds a final release, a prerelease taking it
+                # would move every default install backwards, and trusted
+                # publishing could not move it back.
+                CURRENT_LATEST=$(npm view "$PACKAGE_NAME" dist-tags.latest \
+                  --registry https://registry.npmjs.org) \
+                  || { echo "::error::could not read the latest dist-tag of ${PACKAGE_NAME}."; exit 1; }
+                case "$CURRENT_LATEST" in
+                  *-*) ;;
+                  ?*)
+                    echo "::error::latest is ${CURRENT_LATEST}, a final release. A prerelease must not replace it."
+                    exit 1
+                    ;;
+                esac
+                echo "::warning::${VERSION} publishes under latest, replacing ${CURRENT_LATEST:-nothing}, as the latest input asks. The ${NPM_TAG} dist-tag stays on its current version."
                 NPM_TAG=latest
               fi
               ;;
@@ -831,7 +844,18 @@ jobs:
             exit 1
           fi
 
-          echo "::notice::${PACKAGE_NAME}@${VERSION} is already on the registry with these exact bytes; not republishing."
+          # npm publish sets the dist-tag as part of publishing, and trusted
+          # publishing cannot set one afterwards. A skipped publish therefore
+          # leaves the tag wherever it is, which is only correct if it already
+          # points here.
+          TAGGED=$(npm view "$PACKAGE_NAME" "dist-tags.${NPM_TAG}" \
+            --registry https://registry.npmjs.org 2>/dev/null || true)
+          if [ "$TAGGED" != "$VERSION" ]; then
+            echo "::error::${PACKAGE_NAME}@${VERSION} is already published, but the ${NPM_TAG} dist-tag points at ${TAGGED:-nothing}. Trusted publishing cannot move it. Release a new version."
+            exit 1
+          fi
+
+          echo "::notice::${PACKAGE_NAME}@${VERSION} is already on the registry with these exact bytes, under ${NPM_TAG}; not republishing."
           echo "skip=true" >> "$GITHUB_OUTPUT"
 
       # --access public: a scoped package defaults to restricted.
