@@ -891,7 +891,8 @@ jobs:
 
   # Publishes the API reference to GitHub Pages from the gh-pages branch. Each
   # version gets its own folder, which is never replaced, and latest/ mirrors
-  # the version npm's latest dist-tag points at. The package is already out by
+  # the version npm's latest dist-tag points at. The root redirects to latest/,
+  # and versions.html lists every version. The package is already out by
   # now, so a failure here never blocks a release: re-run this job.
   docs:
     name: Publish API docs
@@ -974,7 +975,7 @@ jobs:
           {
             echo '<!DOCTYPE html>'
             echo '<html lang="en"><head><meta charset="utf-8">'
-            echo "<title>${PACKAGE_NAME} API reference</title></head><body>"
+            echo "<title>${PACKAGE_NAME} API reference versions</title></head><body>"
             echo "<h1>${PACKAGE_NAME} API reference</h1>"
             if [ -n "$LATEST_VERSION" ]; then
               echo "<p><a href=\"latest/\">Latest (${LATEST_VERSION})</a></p>"
@@ -984,7 +985,23 @@ jobs:
               echo "<li><a href=\"${V}/\">${V}</a></li>"
             done < versions.txt
             echo '</ul></body></html>'
-          } > index.html
+          } > versions.html
+
+          # The root goes straight to latest/. Until a release has published
+          # under latest there is no latest/ to go to, so it lists the versions.
+          if [ -n "$LATEST_VERSION" ]; then
+            {
+              echo '<!DOCTYPE html>'
+              echo '<html lang="en"><head><meta charset="utf-8">'
+              echo '<meta http-equiv="refresh" content="0; url=latest/">'
+              echo '<link rel="canonical" href="latest/">'
+              echo "<title>${PACKAGE_NAME} API reference</title></head><body>"
+              echo '<p><a href="latest/">Latest API reference</a> · <a href="versions.html">All versions</a></p>'
+              echo '</body></html>'
+            } > index.html
+          else
+            cp versions.html index.html
+          fi
 
           # Serve TypeDoc's folders as they are, without Jekyll.
           touch .nojekyll
