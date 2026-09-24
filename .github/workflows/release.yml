@@ -11,6 +11,9 @@ name: Release
 # `dry_run` runs everything up to and including `npm publish --dry-run` and
 # writes nothing anywhere.
 #
+# `latest` publishes a prerelease under the `latest` dist-tag instead of its
+# own, so a bare `npm install` resolves to it.
+#
 # Recovery: re-running a failed job also re-runs everything downstream of it.
 # The tag, publish and github-release jobs are each idempotent so that re-run
 # is the supported path. See DEVELOPER_GUIDE.md.
@@ -23,6 +26,14 @@ on:
       # is a real boolean from the UI but a (truthy) string from the dispatch API.
       dry_run:
         description: 'Build, pack and verify only. Tag nothing, publish nothing.'
+        required: false
+        type: boolean
+        default: false
+      # npm publish sets exactly one dist-tag, and trusted publishing cannot
+      # move one afterwards, so a prerelease published under `latest` leaves
+      # its own tag (`rc`, `beta`) on the previous version.
+      latest:
+        description: 'Publish a prerelease under latest instead of its own dist-tag. Its own tag does not move.'
         required: false
         type: boolean
         default: false
@@ -78,8 +89,17 @@ jobs:
               exit 1
               ;;
           esac
+
+          case "${LATEST:-false}" in
+            true|false) ;;
+            *)
+              echo "::error::latest must be exactly true or false."
+              exit 1
+              ;;
+          esac
         env:
           DRY_RUN: ${{ github.event.inputs.dry_run }}
+          LATEST: ${{ github.event.inputs.latest }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
       # ci.yml runs on push to the default branch, but a dispatch could land
@@ -121,6 +141,8 @@ jobs:
 
       - name: Read the version and derive the dist-tag
         id: version
+        env:
+          LATEST: ${{ github.event.inputs.latest }}
         run: |
           set -euo pipefail
 
@@ -139,9 +161,9 @@ jobs:
           fi
 
           # A prerelease takes its own dist-tag, named after its first
-          # prerelease identifier: 1.0.0-beta.1 publishes under `beta`. It must
-          # never take `latest`, or `npm install @twilio/video-node-sdk` starts
-          # resolving to it.
+          # prerelease identifier: 1.0.0-beta.1 publishes under `beta`. It takes
+          # `latest` only when dispatched with the latest input, because then
+          # `npm install @twilio/video-node-sdk` resolves to it.
           case "$VERSION" in
             *-*)
               PRERELEASE=true
@@ -156,6 +178,10 @@ jobs:
               if [ "$NPM_TAG" = latest ]; then
                 echo "::error::${VERSION} would publish under the latest dist-tag."
                 exit 1
+              fi
+              if [ "${LATEST:-false}" = true ]; then
+                echo "::warning::${VERSION} publishes under latest, as the latest input asks. The ${NPM_TAG} dist-tag stays on its current version."
+                NPM_TAG=latest
               fi
               ;;
             *)
