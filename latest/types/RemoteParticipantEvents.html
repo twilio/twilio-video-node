@@ -1,0 +1,276 @@
+<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>RemoteParticipantEvents | @twilio/video-node-sdk - v1.0.0-rc.3</title><meta name="description" content="Documentation for @twilio/video-node-sdk"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script><script async src="../assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
+<div class="tsd-toolbar-contents container"><a href="../index.html" class="title">@twilio/video-node-sdk - v1.0.0-rc.3</a>
+<div id="tsd-toolbar-links"><a href="https://github.com/twilio/twilio-video-node">GitHub</a><a href="https://www.twilio.com/docs/video">Twilio Video</a></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/>
+<ul role="listbox" id="tsd-search-results"></ul>
+<div id="tsd-search-status" aria-live="polite" aria-atomic="true">
+<div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-menu"></use></svg></a></div></header>
+<div class="container container-main">
+<div class="col-content">
+<div class="tsd-page-title">
+<ul class="tsd-breadcrumb" aria-label="Breadcrumb">
+<li><a href="" aria-current="page">RemoteParticipantEvents</a></li></ul>
+<h1>Type Alias RemoteParticipantEvents</h1></div>
+<section class="tsd-panel tsd-comment">
+<div class="tsd-comment tsd-typography"><p>Listener signatures for every event a <a href="../classes/RemoteParticipant.html" class="tsd-kind-class">RemoteParticipant</a> can emit.</p>
+<p>The track events here are also re-emitted by the <a href="../modules/Room.html" class="tsd-kind-namespace">Room</a>, with the
+participant appended as the last argument. See <a href="RoomEvents.html" class="tsd-kind-type-alias">RoomEvents</a>.
+<code>networkQualityLevelChanged</code> is not re-emitted, so it must be listened for on
+each participant.</p>
+</div></section>
+<div class="tsd-signature"><span class="tsd-signature-keyword">type</span> <span class="tsd-kind-type-alias">RemoteParticipantEvents</span> <span class="tsd-signature-symbol">=</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#networkqualitylevelchanged">networkQualityLevelChanged</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">level</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#trackdisabled">trackDisabled</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#trackenabled">trackEnabled</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#trackpublished">trackPublished</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#tracksubscribed">trackSubscribed</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><br/>        <span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteAudioTrack.html" class="tsd-signature-type tsd-kind-class">RemoteAudioTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteDataTrack.html" class="tsd-signature-type tsd-kind-class">RemoteDataTrack</a><span class="tsd-signature-symbol">,</span><br/>        <span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#tracksubscriptionfailed">trackSubscriptionFailed</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><br/>        <span class="tsd-kind-parameter">error</span><span class="tsd-signature-symbol">:</span> <a href="../classes/TwilioError.html" class="tsd-signature-type tsd-kind-class">TwilioError</a><span class="tsd-signature-symbol">,</span><br/>        <span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#trackunpublished">trackUnpublished</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#trackunsubscribed">trackUnsubscribed</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><br/>        <span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteAudioTrack.html" class="tsd-signature-type tsd-kind-class">RemoteAudioTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteDataTrack.html" class="tsd-signature-type tsd-kind-class">RemoteDataTrack</a><span class="tsd-signature-symbol">,</span><br/>        <span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#videotrackswitchedoff">videoTrackSwitchedOff</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#videotrackswitchedon">videoTrackSwitchedOn</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div>
+<section class="tsd-panel-group tsd-index-group">
+<section class="tsd-panel tsd-index-panel">
+<details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h5 class="tsd-index-heading uppercase">Index</h5></summary>
+<div class="tsd-accordion-details">
+<section class="tsd-index-section">
+<h3 class="tsd-index-heading tsd-anchor-link" id="properties">Properties<a href="#properties" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-index-list"><a href="#networkqualitylevelchanged" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>network<wbr/>Quality<wbr/>Level<wbr/>Changed</span></a>
+<a href="#trackdisabled" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Disabled</span></a>
+<a href="#trackenabled" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Enabled</span></a>
+<a href="#trackpublished" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Published</span></a>
+<a href="#tracksubscribed" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Subscribed</span></a>
+<a href="#tracksubscriptionfailed" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Subscription<wbr/>Failed</span></a>
+<a href="#trackunpublished" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Unpublished</span></a>
+<a href="#trackunsubscribed" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Unsubscribed</span></a>
+<a href="#videotrackswitchedoff" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>video<wbr/>Track<wbr/>Switched<wbr/>Off</span></a>
+<a href="#videotrackswitchedon" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>video<wbr/>Track<wbr/>Switched<wbr/>On</span></a>
+</div></section></div></details></section></section>
+<details class="tsd-panel-group tsd-member-group tsd-accordion" open><summary class="tsd-accordion-summary" data-key="section-Properties"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h2 class="tsd-anchor-link" id="properties-1">Properties<a href="#properties-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2></summary>
+<section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="networkqualitylevelchanged"><span>network<wbr/>Quality<wbr/>Level<wbr/>Changed</span><a href="#networkqualitylevelchanged" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">networkQualityLevelChanged</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">level</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>This participant's network quality changed. Emitted only when the Room was
+joined with network quality enabled for remote participants.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">level</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">level</span>: <span class="tsd-signature-type">number</span></span>
+<div class="tsd-comment tsd-typography"><p>Quality from 0 (worst) to 5 (best).</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="trackdisabled"><span>track<wbr/>Disabled</span><a href="#trackdisabled" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">trackDisabled</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>This participant muted a track they publish. The track stays subscribed but
+stops delivering media.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">publication</span>: <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a></span>
+<div class="tsd-comment tsd-typography"><p>The publication whose track was disabled.</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="trackenabled"><span>track<wbr/>Enabled</span><a href="#trackenabled" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">trackEnabled</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>This participant unmuted a track they publish.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">publication</span>: <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a></span>
+<div class="tsd-comment tsd-typography"><p>The publication whose track was enabled.</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="trackpublished"><span>track<wbr/>Published</span><a href="#trackpublished" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">trackPublished</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>This participant published a track. Subscription follows separately, and
+<code>trackSubscribed</code> reports it.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">publication</span>: <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a></span>
+<div class="tsd-comment tsd-typography"><p>The new publication. Its <code>track</code> is set only once
+subscription completes.</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="tracksubscribed"><span>track<wbr/>Subscribed</span><a href="#tracksubscribed" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">trackSubscribed</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteAudioTrack.html" class="tsd-signature-type tsd-kind-class">RemoteAudioTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteDataTrack.html" class="tsd-signature-type tsd-kind-class">RemoteDataTrack</a><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>One of this participant's tracks was subscribed to and is now delivering
+media or messages.</p>
+<p>A participant already publishing when <a href="../functions/connect.html" class="tsd-kind-function">connect</a> resolved emits this
+afterwards. Subscriptions that completed before the listener was attached
+are not replayed; they appear in <a href="../classes/RemoteParticipant.html#tracks" class="tsd-kind-accessor">RemoteParticipant.tracks</a> with
+<code>isSubscribed</code> set to <code>true</code>.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteAudioTrack.html" class="tsd-signature-type tsd-kind-class">RemoteAudioTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteDataTrack.html" class="tsd-signature-type tsd-kind-class">RemoteDataTrack</a><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">track</span>: <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteAudioTrack.html" class="tsd-signature-type tsd-kind-class">RemoteAudioTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteDataTrack.html" class="tsd-signature-type tsd-kind-class">RemoteDataTrack</a></span>
+<div class="tsd-comment tsd-typography"><p>The subscribed track.</p>
+</div></li>
+<li><span><span class="tsd-kind-parameter">publication</span>: <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a></span>
+<div class="tsd-comment tsd-typography"><p>The publication the track was subscribed from.</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="tracksubscriptionfailed"><span>track<wbr/>Subscription<wbr/>Failed</span><a href="#tracksubscriptionfailed" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">trackSubscriptionFailed</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">error</span><span class="tsd-signature-symbol">:</span> <a href="../classes/TwilioError.html" class="tsd-signature-type tsd-kind-class">TwilioError</a><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>Subscribing to one of this participant's tracks failed. The track stays
+unsubscribed.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">error</span><span class="tsd-signature-symbol">:</span> <a href="../classes/TwilioError.html" class="tsd-signature-type tsd-kind-class">TwilioError</a><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">error</span>: <a href="../classes/TwilioError.html" class="tsd-signature-type tsd-kind-class">TwilioError</a></span>
+<div class="tsd-comment tsd-typography"><p>Why the subscription failed.</p>
+</div></li>
+<li><span><span class="tsd-kind-parameter">publication</span>: <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a></span>
+<div class="tsd-comment tsd-typography"><p>Identifies the track that could not be subscribed to.</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="trackunpublished"><span>track<wbr/>Unpublished</span><a href="#trackunpublished" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">trackUnpublished</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>This participant unpublished a track.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">publication</span>: <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a></span>
+<div class="tsd-comment tsd-typography"><p>The publication that was removed.</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="trackunsubscribed"><span>track<wbr/>Unsubscribed</span><a href="#trackunsubscribed" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">trackUnsubscribed</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteAudioTrack.html" class="tsd-signature-type tsd-kind-class">RemoteAudioTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteDataTrack.html" class="tsd-signature-type tsd-kind-class">RemoteDataTrack</a><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>One of this participant's tracks was unsubscribed from and stops delivering
+media. Its frame and message callbacks will not fire again.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteAudioTrack.html" class="tsd-signature-type tsd-kind-class">RemoteAudioTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteDataTrack.html" class="tsd-signature-type tsd-kind-class">RemoteDataTrack</a><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">publication</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">track</span>: <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteAudioTrack.html" class="tsd-signature-type tsd-kind-class">RemoteAudioTrack</a> <span class="tsd-signature-symbol">|</span> <a href="../classes/RemoteDataTrack.html" class="tsd-signature-type tsd-kind-class">RemoteDataTrack</a></span>
+<div class="tsd-comment tsd-typography"><p>The unsubscribed track.</p>
+</div></li>
+<li><span><span class="tsd-kind-parameter">publication</span>: <a href="../classes/RemoteTrackPublication.html" class="tsd-signature-type tsd-kind-class">RemoteTrackPublication</a></span>
+<div class="tsd-comment tsd-typography"><p>The publication the track was unsubscribed from.</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="videotrackswitchedoff"><span>video<wbr/>Track<wbr/>Switched<wbr/>Off</span><a href="#videotrackswitchedoff" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">videoTrackSwitchedOff</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>The server stopped delivering a subscribed video track, typically to stay
+within the Room's bandwidth profile. The track stays subscribed and its
+<code>isSwitchedOff</code> reads <code>true</code>.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">track</span>: <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a></span>
+<div class="tsd-comment tsd-typography"><p>The track that was switched off.</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="videotrackswitchedon"><span>video<wbr/>Track<wbr/>Switched<wbr/>On</span><a href="#videotrackswitchedon" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">videoTrackSwitchedOn</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
+<div class="tsd-comment tsd-typography"><p>The server resumed delivering a video track that was switched off.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter-signature">
+<ul class="tsd-signatures">
+<li class="tsd-signature"><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">track</span><span class="tsd-signature-symbol">:</span> <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span></li>
+<li class="tsd-description">
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li><span><span class="tsd-kind-parameter">track</span>: <a href="../classes/RemoteVideoTrack.html" class="tsd-signature-type tsd-kind-class">RemoteVideoTrack</a></span>
+<div class="tsd-comment tsd-typography"><p>The track that was switched on.</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4></li></ul></li></ul></div></section></section></details></div>
+<div class="col-sidebar">
+<div class="page-menu">
+<div class="tsd-navigation settings">
+<details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>Settings</h3></summary>
+<div class="tsd-accordion-details">
+<div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span>
+<ul id="tsd-filter-options">
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div>
+<div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div>
+<details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>On This Page</h3></summary>
+<div class="tsd-accordion-details">
+<details open class="tsd-accordion tsd-page-navigation-section"><summary class="tsd-accordion-summary" data-key="section-Properties"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>Properties</summary>
+<div><a href="#networkqualitylevelchanged"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>network<wbr/>Quality<wbr/>Level<wbr/>Changed</span></a><a href="#trackdisabled"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Disabled</span></a><a href="#trackenabled"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Enabled</span></a><a href="#trackpublished"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Published</span></a><a href="#tracksubscribed"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Subscribed</span></a><a href="#tracksubscriptionfailed"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Subscription<wbr/>Failed</span></a><a href="#trackunpublished"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Unpublished</span></a><a href="#trackunsubscribed"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>track<wbr/>Unsubscribed</span></a><a href="#videotrackswitchedoff"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>video<wbr/>Track<wbr/>Switched<wbr/>Off</span></a><a href="#videotrackswitchedon"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>video<wbr/>Track<wbr/>Switched<wbr/>On</span></a></div></details></div></details></div>
+<div class="site-menu">
+<nav id="tsd-sidebar-links" class="tsd-navigation"><a href="https://github.com/twilio/twilio-video-node" class="tsd-nav-link">GitHub</a><a href="https://www.twilio.com/docs/video" class="tsd-nav-link">Twilio Video</a></nav>
+<nav class="tsd-navigation"><a href="../modules.html">@twilio/video-node-sdk - v1.0.0-rc.3</a>
+<ul class="tsd-small-nested-navigation" id="tsd-nav-container">
+<li>Loading...</li></ul></nav></div></div></div><footer>
+<p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer>
+<div class="overlay"></div></body></html>
