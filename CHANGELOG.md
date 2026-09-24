@@ -3,6 +3,13 @@ See the [README](README.md) for details.
 
 # 1.0.0-rc.2 (September 23, 2026)
 
+## Documentation
+
+- The `trackSubscribed` docs no longer say that a participant who was already publishing emits
+  the event after `connect()` resolves. The subscription can complete before `connect()`
+  resolves, so a listener attached right after it can miss the event. Read `isSubscribed` on
+  `participant.tracks` as well as listening, as the README example does. Behavior is unchanged.
+
 ## Breaking Changes
 
 ### `frameId` is no longer accepted on published frames

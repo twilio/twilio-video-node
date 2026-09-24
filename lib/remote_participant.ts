@@ -66,10 +66,12 @@ export type RemoteParticipantEvents = {
    * One of this participant's tracks was subscribed to and is now delivering
    * media or messages.
    *
-   * A participant already publishing when {@link connect} resolved emits this
-   * afterwards. Subscriptions that completed before the listener was attached
-   * are not replayed; they appear in {@link RemoteParticipant.tracks} with
-   * `isSubscribed` set to `true`.
+   * Subscription can complete before the caller attaches a listener: for a
+   * participant already publishing when the caller joined, often before
+   * {@link connect} resolves. Subscriptions that completed before the listener
+   * was attached are not replayed; they appear in
+   * {@link RemoteParticipant.tracks} with `isSubscribed` set to `true`, so read
+   * that state as well as listening for this event.
    *
    * @param track - The subscribed track.
    * @param publication - The publication the track was subscribed from.

@@ -177,9 +177,11 @@ conferencing. Key differences:
 `connect()` resolved. They are part of the Room's starting state: read them from
 `room.participants`.
 
-A participant who was already publishing emits `trackSubscribed` after `connect()` resolves.
-Subscriptions that completed before the listener was attached are not replayed, and appear in
-`participant.tracks` with `isSubscribed` set to `true`.
+For a participant who was already publishing, subscription can complete before `connect()`
+resolves or before you attach a `trackSubscribed` listener. Subscriptions that completed before
+the listener was attached are not replayed, and appear in `participant.tracks` with
+`isSubscribed` set to `true`. Read that state as well as listening for the event, as the
+example above does.
 
 | Event                     | Handler Signature                                  |
 | ------------------------- | -------------------------------------------------- |
