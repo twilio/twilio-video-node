@@ -1,6 +1,19 @@
 This SDK is currently in beta. It supports Linux x86-64 and macOS 26+ on x86-64.
 See the [README](README.md) for details.
 
+# 1.0.0-rc.3 (In Progress)
+
+`npm install @twilio/video-node-sdk` now installs this release: it is published under the
+`latest` dist-tag, which pointed at 1.0.0-rc.1. That package shipped without prebuilt
+binaries and cannot load. The SDK code is unchanged from 1.0.0-rc.2.
+
+## Documentation
+
+### `SECURITY-PRIVACY.md` ships in the package
+
+It describes what the SDK does with decoded media and which obligations remain with the
+application.
+
 # 1.0.0-rc.2 (September 23, 2026)
 
 ## Breaking Changes
