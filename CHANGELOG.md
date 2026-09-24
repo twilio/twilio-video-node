@@ -1,6 +1,20 @@
 This SDK is currently in beta. It supports Linux x86-64 and macOS 26+ on x86-64.
 See the [README](README.md) for details.
 
+# 1.0.0-rc.3 (September 24, 2026)
+
+## Documentation
+
+### API reference on GitHub Pages
+
+The API reference for each release is published at https://twilio.github.io/twilio-video-node/,
+which opens the latest version.
+
+### `SECURITY-PRIVACY.md` ships in the package
+
+It describes what the SDK does with decoded media and which obligations remain with the
+application.
+
 # 1.0.0-rc.2 (September 23, 2026)
 
 ## Breaking Changes
