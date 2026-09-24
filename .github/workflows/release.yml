@@ -580,6 +580,7 @@ jobs:
           LICENSE.md
           LIFECYCLE.md
           README.md
+          SECURITY-PRIVACY.md
           dist/index.cjs
           dist/index.d.cts
           dist/index.d.mts
