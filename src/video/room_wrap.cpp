@@ -491,6 +491,16 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
 
     roomWrap->observer_ = std::make_shared<RoomObserverWrap>(env, roomWrap);
     roomWrap->asyncContext_ = std::make_shared<AsyncContext>(env, 0);
+    // Pending connect and getStats() results keep the process alive until the
+    // Room is disposed.
+    roomWrap->asyncContext_->ref();
+
+    // A Room that fails here never reaches JS to be disposed, so close what
+    // would otherwise keep the process alive.
+    auto abandon = [roomWrap]() {
+        roomWrap->observer_->close();
+        roomWrap->asyncContext_->close();
+    };
 
     std::string token = info[0].As<Napi::String>().Utf8Value();
     twilio::video::ConnectOptions::Builder builder(token);
@@ -500,6 +510,7 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     // non-object value (including null) is a caller error.
     bool hasOptions = info.Length() >= 2 && !info[1].IsUndefined();
     if (hasOptions && !info[1].IsObject()) {
+        abandon();
         Napi::TypeError::New(env, "options must be an object").ThrowAsJavaScriptException();
         return env.Undefined();
     }
@@ -509,7 +520,10 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
         // Inside the try so a Napi::Error from an N-API access (e.g. a throwing
         // property getter on the options object) surfaces as a JS exception
         // rather than escaping the N-API callback and aborting the process.
-        if (!parseConnectOptions(env, opts, builder)) return env.Undefined();
+        if (!parseConnectOptions(env, opts, builder)) {
+            abandon();
+            return env.Undefined();
+        }
 
         auto connectOptions = builder.build();
         std::shared_ptr<twilio::video::RoomObserver> observer =
@@ -518,16 +532,19 @@ Napi::Value RoomWrap::Connect(const Napi::CallbackInfo& info) {
     } catch (const Napi::Error& e) {
         // Re-surface the already-constructed JS error (carries its original value).
         // Caught before std::exception because Napi::Error derives from it.
+        abandon();
         e.ThrowAsJavaScriptException();
         return env.Undefined();
     } catch (const std::exception& e) {
         // Use Error, not TypeError: bad arguments are already rejected with TypeError
         // in parseConnectOptions, so anything reaching here is a runtime failure.
+        abandon();
         Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     if (!roomWrap->room_) {
+        abandon();
         Napi::Error::New(env, "Failed to create room").ThrowAsJavaScriptException();
         return env.Undefined();
     }

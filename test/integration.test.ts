@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { connectToRoom } from './helpers/connect.js';
 import { generateToken, badTokens } from './helpers/token.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
@@ -2046,4 +2049,114 @@ describe('Subscription to tracks published before joining', () => {
       await Promise.all([publisher.cleanup(), subscriber.cleanup()]);
     }
   });
+});
+
+describe('Process exit', () => {
+  // Runs in a child process because the property under test is that the
+  // process ends on its own, which vitest's own worker would mask.
+  it('exits once a Room with a remote participant is disposed', async () => {
+    const roomName = uniqueRoom();
+    const bobVideo = createLocalVideoTrack('bob-camera');
+    const bobAudio = createLocalAudioTrack('bob-mic');
+    const bobData = createLocalDataTrack('bob-chat');
+    const bob = await connectToRoom('bob', roomName, {
+      videoTracks: [bobVideo],
+      audioTracks: [bobAudio],
+      dataTracks: [bobData],
+    });
+    const intervals = [
+      setInterval(() => bobVideo.write(generateI420Frame(320, 240)), 33),
+      setInterval(() => bobAudio.write({ pcm: generateAudioSamples(480), frames: 480 }), 10),
+      setInterval(() => void bobData.send('ping'), 200),
+    ];
+
+    // Alice receives on every kind of track, then awaits a send of her own, so
+    // each of those paths has been used before dispose(). The only timer is an
+    // unref'd guard, cleared before dispose(), so only the SDK can hold the
+    // process open.
+    const script = `
+      const sdk = require('./dist/index.cjs');
+      let stage = 'connect';
+      const guard = setTimeout(() => {
+        console.error('timed out at ' + stage);
+        process.exit(2);
+      }, 30000).unref();
+      (async () => {
+        const aliceData = sdk.createLocalDataTrack('alice-chat');
+        const room = await sdk.connect(process.env.TOKEN, {
+          name: process.env.ROOM,
+          dataTracks: [aliceData],
+        });
+
+        stage = 'subscribe';
+        const tracks = await new Promise(resolve => {
+          const check = () => {
+            for (const p of room.participants.values()) {
+              const subscribed = [...p.tracks.values()].filter(t => t.isSubscribed && t.track);
+              if (subscribed.length >= 3) resolve(subscribed.map(t => t.track));
+            }
+          };
+          room.on('trackSubscribed', check);
+          check();
+        });
+
+        stage = 'receive';
+        await Promise.all(
+          tracks.map(track => new Promise(resolve => {
+            if (track.kind === 'data') {
+              track.on('message', resolve);
+            } else {
+              (async () => { for await (const frame of track.frames()) resolve(frame); })();
+            }
+          })),
+        );
+
+        stage = 'send';
+        await aliceData.send('hello');
+
+        clearTimeout(guard);
+        room.dispose();
+        console.log('disposed');
+      })().catch(err => {
+        console.error(err);
+        process.exit(3);
+      });
+    `;
+
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const child = spawn(process.execPath, ['-e', script], {
+      cwd: root,
+      env: { ...process.env, TOKEN: generateToken('alice', roomName), ROOM: roomName },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => (stdout += chunk));
+    child.stderr.on('data', chunk => (stderr += chunk));
+
+    try {
+      // 'close', not 'exit': it fires only after stdout has been read in full.
+      const { code, signal } = await new Promise<{
+        code: number | null;
+        signal: NodeJS.Signals | null;
+      }>(resolve => {
+        const timer = setTimeout(() => child.kill(), 45_000);
+        child.on('close', (code, signal) => {
+          clearTimeout(timer);
+          resolve({ code, signal });
+        });
+      });
+
+      // A kill after the deadline sets `signal`: the process was still running.
+      expect(signal).toBeNull();
+      expect(code).toBe(0);
+      expect(stdout).toContain('disposed');
+    } catch (err) {
+      throw new Error(`${(err as Error).message}\nchild stderr (tail):\n${stderr.slice(-2000)}`, {
+        cause: err,
+      });
+    } finally {
+      intervals.forEach(clearInterval);
+      await bob.cleanup();
+    }
+  }, 90_000);
 });
