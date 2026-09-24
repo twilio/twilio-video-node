@@ -775,6 +775,32 @@ describe('participantDisconnected', () => {
       await connA.cleanup();
     }
   });
+
+  it('survives room.dispose() called from the participantDisconnected handler', async () => {
+    const roomName = uniqueRoom();
+    const { connA, connB } = await connectPair(roomName);
+
+    const disposed = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("Timeout waiting for 'participantDisconnected'")),
+        TIMEOUT.subscribe,
+      );
+      connA.room.once('participantDisconnected', () => {
+        clearTimeout(timer);
+        connA.room.dispose();
+        resolve();
+      });
+    });
+    connB.room.disconnect();
+    await disposed;
+
+    // The native layer resumes after the handler returns; give it a turn so a
+    // crash there fails this test rather than a later one.
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(connA.room.state).toBe('disconnected');
+    expect(connA.room.participants.size).toBe(0);
+  });
 });
 
 describe('LocalParticipant observer events', () => {
