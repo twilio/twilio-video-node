@@ -3,11 +3,12 @@ See the [README](README.md) for details.
 
 # 1.0.0-rc.3 (September 24, 2026)
 
-`npm install @twilio/video-node-sdk` now installs this release: it is published under the
-`latest` dist-tag, which pointed at 1.0.0-rc.1. That package shipped without prebuilt
-binaries and cannot load. The SDK code is unchanged from 1.0.0-rc.2.
-
 ## Documentation
+
+### API reference on GitHub Pages
+
+The API reference for each release is published at https://twilio.github.io/twilio-video-node/,
+which opens the latest version.
 
 ### `SECURITY-PRIVACY.md` ships in the package
 
