@@ -9,7 +9,9 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const ort = require('onnxruntime-node');
+const { requireExampleDep } = require('./example-deps');
+
+const ort = requireExampleDep('onnxruntime-node');
 
 const CACHE_DIR = path.join(__dirname, '..', '.models');
 

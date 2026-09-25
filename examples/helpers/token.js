@@ -9,7 +9,9 @@ try {
   process.exit(1);
 }
 
-const twilio = require('twilio');
+const { requireExampleDep } = require('./example-deps');
+
+const twilio = requireExampleDep('twilio');
 
 function generateToken(identity, roomName) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;

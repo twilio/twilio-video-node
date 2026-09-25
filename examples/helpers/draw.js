@@ -4,7 +4,9 @@
 // overlays onto a frame's RGBA buffer. The flow is always: wrap the RGBA in a
 // canvas, draw, then read the pixels back out for re-encoding to I420.
 
-const { createCanvas, ImageData } = require('@napi-rs/canvas');
+const { requireExampleDep } = require('./example-deps');
+
+const { createCanvas, ImageData } = requireExampleDep('@napi-rs/canvas');
 
 // The 80 COCO class names, in standard COCO order (what the detection model emits).
 const COCO_CLASSES = [

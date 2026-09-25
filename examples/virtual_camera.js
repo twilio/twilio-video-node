@@ -1,7 +1,11 @@
 /**
  * Virtual Camera Example - pushes frames from generated_video.mp4 via ffmpeg
  *
- * Usage: node examples/virtual_camera.js [room-name]
+ * Usage: node examples/virtual_camera.js [room-name] [identity]
+ *
+ * Twilio Video disconnects the earlier Participant when two connect with the
+ * same identity, so pass a distinct identity when running several examples
+ * against one room.
  */
 
 const { spawn } = require('child_process');
@@ -10,6 +14,7 @@ const { connect, createLocalVideoTrack } = require('../dist/index.cjs');
 const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';
+const IDENTITY = process.argv[3] || 'virtual-camera';
 const WIDTH = 1280;
 const HEIGHT = 720;
 const FRAME_SIZE = (WIDTH * HEIGHT * 3) / 2; // YUV420p
@@ -22,7 +27,7 @@ async function main() {
   const videoTrack = createLocalVideoTrack('virtual-camera');
   console.log('Created video track:', videoTrack.name);
 
-  const room = await connect(generateToken('node-participant', ROOM_NAME), {
+  const room = await connect(generateToken(IDENTITY, ROOM_NAME), {
     name: ROOM_NAME,
     videoTracks: [videoTrack],
   });
