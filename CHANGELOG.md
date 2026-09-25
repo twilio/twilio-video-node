@@ -1,7 +1,7 @@
 This SDK is currently in beta. It supports Linux x86-64 and macOS 26+ on x86-64.
 See the [README](README.md) for details.
 
-# 1.0.0-beta.1 (In Progress)
+# 1.0.0-beta.1 (September 25, 2026)
 
 ## Breaking Changes
 
