@@ -11,7 +11,8 @@ function requireExampleDep(name) {
   try {
     return require(name);
   } catch (err) {
-    if (err.code !== 'MODULE_NOT_FOUND' || !err.message.includes(name)) throw err;
+    const error = /** @type {NodeJS.ErrnoException} */ (err);
+    if (error.code !== 'MODULE_NOT_FOUND' || !error.message.includes(name)) throw err;
 
     const examplesDir = path.join(__dirname, '..');
     console.error(`
