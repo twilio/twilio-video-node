@@ -6,7 +6,7 @@
  *   Terminal 2: node examples/data_channel.js my-room bob
  */
 
-const { connect, createLocalDataTrack } = require('../dist/index.cjs');
+const { connect, createLocalDataTrack } = require('./helpers/sdk');
 const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'data-room';

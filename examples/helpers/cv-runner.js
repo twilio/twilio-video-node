@@ -14,7 +14,7 @@
 // per second, default 8, below) and CV_THREADS (ONNX Runtime threads per model,
 // default 2, applied in helpers/onnx-model.js). Lower either to reduce CPU/heat.
 
-const { connect, createLocalVideoTrack } = require('../../dist/index.cjs');
+const { connect, createLocalVideoTrack } = require('./sdk');
 const { generateToken } = require('./token');
 const { i420ToRgba } = require('./yuv');
 

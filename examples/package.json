@@ -1,10 +1,12 @@
 {
   "name": "twilio-video-node-examples",
   "private": true,
-  "description": "Extra dependencies for the computer-vision examples. Install with `npm install` from this directory; the other examples need nothing beyond the SDK.",
+  "description": "Dependencies for the examples. `@twilio/video-node-sdk` is used only outside a repo checkout; inside one, helpers/sdk.js prefers the local build. Every example mints an Access Token through helpers/token.js, which needs the `twilio` helper library. The computer-vision examples additionally need onnxruntime-node and @napi-rs/canvas. Install with `npm install` from this directory.",
   "dependencies": {
     "@napi-rs/canvas": "^1.0.8",
-    "onnxruntime-node": "1.22.0"
+    "@twilio/video-node-sdk": "^1.0.0-rc.3",
+    "onnxruntime-node": "1.22.0",
+    "twilio": "^5.12.1"
   },
   "engines": {
     "node": ">=24.0.0"

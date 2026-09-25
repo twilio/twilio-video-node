@@ -1,14 +1,19 @@
 /**
  * Pushable Audio Example - sends a sine wave tone to a room
  *
- * Usage: node examples/audio_push.js [room-name]
+ * Usage: node examples/audio_push.js [room-name] [identity]
+ *
+ * Twilio Video disconnects the earlier Participant when two connect with the
+ * same identity, so pass a distinct identity when running several examples
+ * against one room.
  */
 
-const { connect, createLocalAudioTrack } = require('../dist/index.cjs');
+const { connect, createLocalAudioTrack } = require('./helpers/sdk');
 const { generateToken } = require('./helpers/token');
 const { createPacedWriter } = require('./helpers/paced-audio-writer');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';
+const IDENTITY = process.argv[3] || 'audio-push';
 
 const SAMPLE_RATE = 48000;
 const FRAME_DURATION_MS = 10;
@@ -35,7 +40,7 @@ async function main() {
   const audioTrack = createLocalAudioTrack('pushable-audio');
   console.log('Created audio track:', audioTrack.name);
 
-  const room = await connect(generateToken('node-participant', ROOM_NAME), {
+  const room = await connect(generateToken(IDENTITY, ROOM_NAME), {
     name: ROOM_NAME,
     audioTracks: [audioTrack],
   });

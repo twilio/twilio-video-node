@@ -1,19 +1,25 @@
 /**
  * Video Mirror — receives remote video and pushes it back as-is.
  *
- * Usage: node examples/video_mirror.js [room-name]
+ * Usage: node examples/video_mirror.js [room-name] [identity]
+ *
+ * Needs another Participant publishing video, for example
+ * `node examples/virtual_camera.js my-room`. Twilio Video disconnects the
+ * earlier Participant when two connect with the same identity, so the two
+ * examples default to different ones.
  */
 
-const { connect, createLocalVideoTrack } = require('../dist/index.cjs');
+const { connect, createLocalVideoTrack } = require('./helpers/sdk');
 const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'mirror-room';
+const IDENTITY = process.argv[3] || 'video-mirror';
 
 async function main() {
   const videoTrack = createLocalVideoTrack('mirror');
 
   console.log('Connecting to room:', ROOM_NAME);
-  const room = await connect(generateToken('node-participant', ROOM_NAME), {
+  const room = await connect(generateToken(IDENTITY, ROOM_NAME), {
     name: ROOM_NAME,
     videoTracks: [videoTrack],
     enableAutomaticSubscription: true,
