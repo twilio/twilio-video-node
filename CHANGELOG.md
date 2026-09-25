@@ -1,21 +1,7 @@
 This SDK is currently in beta. It supports Linux x86-64 and macOS 26+ on x86-64.
 See the [README](README.md) for details.
 
-# 1.0.0-rc.3 (September 24, 2026)
-
-## Documentation
-
-### API reference on GitHub Pages
-
-The API reference for each release is published at https://twilio.github.io/twilio-video-node/,
-which opens the latest version.
-
-### `SECURITY-PRIVACY.md` ships in the package
-
-It describes what the SDK does with decoded media and which obligations remain with the
-application.
-
-# 1.0.0-rc.2 (September 23, 2026)
+# 1.0.0-beta.1 (In Progress)
 
 ## Breaking Changes
 
@@ -188,9 +174,9 @@ publish path.
 
 ### The package ships linux-x64 and darwin-x64 prebuilds
 
-The darwin-x64 prebuild is built and tested in CI alongside linux-x64. It requires macOS
-26 or later and an x64 Node, so on Apple Silicon Node must run under Rosetta. npm cannot check
-the macOS version, so on an older macOS the install succeeds and loading the addon fails.
+The darwin-x64 prebuild requires macOS 26 or later and an x64 Node, so on Apple Silicon Node
+must run under Rosetta. npm cannot check the macOS version, so on an older macOS the install
+succeeds and loading the addon fails.
 
 ### `trackSubscribed` and `trackUnsubscribed` pass a `RemoteTrackPublication`
 
@@ -339,6 +325,18 @@ localParticipant.on('trackPublicationFailed', (error, localTrack) => { ... });
 - Data track observers are no longer retained for the process's lifetime. They were released
   only when a track was explicitly unsubscribed, so any other teardown, such as disposing a
   Room mid-call, left them behind.
+
+## Documentation
+
+### API reference on GitHub Pages
+
+The API reference for each release is published at https://twilio.github.io/twilio-video-node/,
+which opens the latest version.
+
+### `SECURITY-PRIVACY.md` ships in the package
+
+It describes what the SDK does with decoded media and which obligations remain with the
+application.
 
 # 1.0.0-preview.3 (September 2, 2026)
 
