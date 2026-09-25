@@ -10,7 +10,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const { connect, createLocalVideoTrack } = require('../dist/index.cjs');
+const { connect, createLocalVideoTrack } = require('./helpers/sdk');
 const { generateToken } = require('./helpers/token');
 
 const ROOM_NAME = process.argv[2] || 'cpp-room';

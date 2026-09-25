@@ -541,13 +541,18 @@ Alpine and other musl-based distros are not supported: the addon is glibc-only. 
 
 ## Examples
 
-The example applications listed below demonstrate various ways to use the SDK for audio or video processing. They load credentials from a `.env` file at the repo root. Copy the template, fill in your credentials, and run:
+The example applications listed below demonstrate various ways to use the SDK for audio or video processing. They need a few packages the SDK itself does not depend on, and they load credentials from a `.env` file at the repo root. Install the dependencies, copy the template, fill in your credentials, and run:
 
 ```bash
+npm install --prefix examples
 cp .env.example .env
 # edit .env: set TWILIO_ACCOUNT_SID / TWILIO_API_KEY / TWILIO_API_SECRET
-node examples/virtual_camera.js [room-name]
+node examples/virtual_camera.js [room-name] [identity]
 ```
+
+Each example connects with its own default identity, so they can run against one room at the same time. Pass `[identity]` to override it; two Participants sharing an identity disconnect each other.
+
+In a repo checkout the examples use your local build when one is present, and the published `@twilio/video-node-sdk` otherwise.
 
 `.env` is gitignored, so your real credentials are never committed.
 

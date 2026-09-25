@@ -8,7 +8,7 @@
  * against one room.
  */
 
-const { connect, createLocalAudioTrack } = require('../dist/index.cjs');
+const { connect, createLocalAudioTrack } = require('./helpers/sdk');
 const { generateToken } = require('./helpers/token');
 const { createPacedWriter } = require('./helpers/paced-audio-writer');
 

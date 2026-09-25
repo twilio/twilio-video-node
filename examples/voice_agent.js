@@ -27,7 +27,7 @@
 
 /* global WebSocket */
 
-const { connect, createLocalAudioTrack } = require('../dist/index.cjs');
+const { connect, createLocalAudioTrack } = require('./helpers/sdk');
 const { generateToken } = require('./helpers/token');
 const { createDownsampler, createUpsampler } = require('./helpers/audio-resampler');
 const { createPacedWriter, SAMPLE_RATE } = require('./helpers/paced-audio-writer');
