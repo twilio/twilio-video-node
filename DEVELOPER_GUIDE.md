@@ -1,6 +1,6 @@
 # Developer Guide
 
-> This guide is for Twilio employees working on the SDK. If you're an external developer, the best way to contribute is by building with the SDK, reporting issues, and sharing feedback. See [README.md](README.md) for API docs and usage.
+> This guide is for Twilio employees working on the SDK. If you're an external developer, the best way to contribute is by building with the SDK, reporting issues, and sharing feedback. See the [developer docs](https://www.twilio.com/docs/video/node) for usage and the [API reference](https://twilio.github.io/twilio-video-node/latest/) for API docs.
 
 ## Apple Silicon (M1/M2/M3)
 
@@ -21,6 +21,9 @@ For example:
 ```sh
 arch -x86_64 bash -c 'source ~/.nvm/nvm.sh && nvm use 24 && npm run fetch-deps'
 ```
+
+Under a native arm64 Node, `npm install` fails with `EBADPLATFORM` and the SDK
+throws `UnsupportedPlatformError` at import.
 
 ## 1. Prerequisites
 
@@ -45,12 +48,7 @@ sudo apt-get install -y --no-install-recommends \
 
 `docker/Dockerfile` installs the same set, so a container build needs no extra step.
 
-### macOS: Apple Silicon
-
-The native binary is x64-only. Install Rosetta once
-(`softwareupdate --install-rosetta`) and run an x64 Node so `process.arch` reports
-`x64`. Under a native arm64 Node, `npm install` fails with `EBADPLATFORM` and the
-SDK throws `UnsupportedPlatformError` at import.
+### macOS: deployment target and Xcode
 
 The addon targets macOS 26. CMakeLists pins `CMAKE_OSX_DEPLOYMENT_TARGET`, so a
 local build on an older macOS compiles but will not load.
@@ -179,6 +177,11 @@ Get these from the [Twilio Console](https://www.twilio.com/console) under API Ke
 
 ## 5. Troubleshooting
 
+This section covers building from source. For errors installing or loading the
+published package, see
+[Troubleshooting](https://www.twilio.com/docs/video/media-sdk-troubleshooting)
+in the developer docs.
+
 ### `CMake Error ... unable to find Twilio-Video-C++`
 
 No twilio-video-cpp could be located: `TWILIO_VIDEO_SRC_ROOT` is unset and `deps/twilio-video` does not exist. Run `npm run fetch-deps`, or point `TWILIO_VIDEO_SRC_ROOT` at a built local source tree (see [Local source checkout](#local-source-checkout)).
@@ -187,13 +190,13 @@ No twilio-video-cpp could be located: `TWILIO_VIDEO_SRC_ROOT` is unset and `deps
 
 A `NativeBindingLoadError`: the native addon isn't built and no matching prebuild exists. Run `npm run build`. If the message also says to fetch dependencies, `deps/twilio-video` is missing - run `npm run fetch-deps` first.
 
-### `The prebuilt binary at <path> failed to load.` / `The local build at <path> failed to load.`
+### `The local build at <path> failed to load.`
 
-A `NativeBindingLoadError` with a binary present. It was built for a different Node ABI, or a system library it needs is missing. On Linux that is usually the X11 development packages; see [section 1](#linux-x11-development-libraries). Rebuild with `npm run build`.
+A `NativeBindingLoadError` with a local build present. It was built for a different Node ABI, or a system library it needs is missing. On Linux that is usually the X11 development packages; see [section 1](#linux-x11-development-libraries). Rebuild with `npm run build`.
 
 ### `<platform>-<arch> is not a supported platform.`
 
-An `UnsupportedPlatformError`, thrown before any load is attempted: the addon is not built for this `process.platform`/`process.arch`. There is no arm64 build, so on Apple Silicon this means Node is running as arm64; see [Apple Silicon](#apple-silicon-m1m2m3).
+An `UnsupportedPlatformError`: the addon is not built for this `process.platform`/`process.arch`. On Apple Silicon this means Node is running as arm64; see [Apple Silicon](#apple-silicon-m1m2m3).
 
 ### `TWILIO_ACCOUNT_SID, TWILIO_API_KEY, and TWILIO_API_SECRET are required`
 

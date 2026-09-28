@@ -2,7 +2,7 @@
 
 The precise behavior of the raw-frame API: buffer ownership, backpressure and
 drop semantics, and the invariants the publish and receive paths guarantee.
-[README.md](README.md) covers usage; this document covers the guarantees.
+The [developer docs](https://www.twilio.com/docs/video/node) cover usage; this document covers the guarantees.
 
 ## Buffer ownership
 
@@ -135,12 +135,17 @@ emits queued samples on its own 10 ms cadence - so an audio `timestamp` is
 observability-only: it feeds `WriteStats.lastTimestamp` and
 `WriteStats.timestampRegressions` and does not alter what is sent or when.
 
-**Non-monotonic timestamps are accepted and counted, not rejected.** A timestamp
-that does not advance past the previous one increments
+**Non-monotonic timestamps are handled per kind.** On audio, a timestamp that
+does not advance past the previous one is accepted and increments
 `WriteStats.timestampRegressions`. Rejecting would break a legitimate producer
 that restarts, such as a looping file source; silently reordering or discarding
 would hide a real problem. A rising count on a live source means the supplied
 timestamps are wrong, which shows up downstream as jitter.
+
+On video, libwebrtc's adapter can reject a frame whose timestamp does not
+advance. A rejected frame makes `write()` return `false` and is counted in
+`WriteStats.framesDropped`, not `timestampRegressions`, which counts only
+regressed frames the adapter accepted.
 
 `frameId` is an SDK-generated monotonic per-track counter on received frames.
 Use it for gap and drop detection. There is no `frameId` on input: correlate a
@@ -194,11 +199,3 @@ fire-and-forget send cannot produce an unhandled rejection. It resolves to
 If the track is destroyed while a send is still in flight, the outstanding
 promise resolves with `ok: false` and an `error` naming the teardown, rather
 than being left pending.
-
-## ABI and compatibility
-
-The addon is built with `node-addon-api` (N-API), so it is ABI-stable across
-Node versions within the N-API version it targets, and does not need rebuilding
-for each Node release. `engines.node` records the supported range. The supported
-platform for the beta is Linux x86-64; the binary is x86-64 only, with no arm64
-build. See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for building from source.

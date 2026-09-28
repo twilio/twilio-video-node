@@ -1,6 +1,6 @@
 # Security and privacy
 
-What this SDK does with decoded media, and which obligations remain with the application. [README.md](README.md) covers usage, and [LIFECYCLE.md](LIFECYCLE.md) covers object ownership and teardown.
+What this SDK does with decoded media, and which obligations remain with the application. The [developer docs](https://www.twilio.com/docs/video/node) cover usage, and [LIFECYCLE.md](LIFECYCLE.md) covers object ownership and teardown.
 
 This document describes SDK behavior. It is not legal advice and does not establish Twilio's obligations under any agreement.
 
