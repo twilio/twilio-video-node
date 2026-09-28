@@ -1,6 +1,6 @@
 # @twilio/video-node-sdk
 
-[![CI](https://github.com/twilio/twilio-video-node/actions/workflows/ci.yml/badge.svg)](https://github.com/twilio/twilio-video-node/actions/workflows/ci.yml)
+[![CI](https://github.com/twilio/twilio-video-node/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/twilio/twilio-video-node/actions/workflows/ci.yml)
 
 Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access. Built on a native C++ addon over WebRTC, it lets a Node.js process push and receive decoded video and audio frames in real time.
 
