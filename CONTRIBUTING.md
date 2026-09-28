@@ -14,7 +14,7 @@ Do not include Access Tokens, API keys, API secrets, or Account SIDs in code, lo
 screenshots. See [what counts as PII](https://www.twilio.com/docs/glossary/what-is-personally-identifiable-information-pii).
 
 Check [Troubleshooting](https://www.twilio.com/docs/video/media-sdk-troubleshooting) first. The
-[`examples/`](examples/) directory is the fastest starting point for a reproduction, and
+[`examples/`](examples/README.md) directory is the fastest starting point for a reproduction, and
 `node scripts/generate-token.js [identity] [room-name]` prints an Access Token, given
 `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY`, and `TWILIO_API_SECRET`.
 

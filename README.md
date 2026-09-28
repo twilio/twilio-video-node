@@ -13,7 +13,7 @@ Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access
 - [Differences from the JavaScript SDK](https://www.twilio.com/docs/video/node-differences-from-javascript-sdk)
 - [Troubleshooting](https://www.twilio.com/docs/video/media-sdk-troubleshooting)
 - [API reference](https://twilio.github.io/twilio-video-node/latest/)
-- [Changelog](https://github.com/twilio/twilio-video-node/blob/main/CHANGELOG.md)
+- [Changelog](CHANGELOG.md)
 
 ## Requirements
 
@@ -126,12 +126,12 @@ Call `room.dispose()` when you are done with a Room. Until you do, the Node.js p
 
 ## Examples
 
-The [`examples/`](https://github.com/twilio/twilio-video-node/tree/main/examples) directory has runnable examples: a virtual camera, a video mirror, audio push, data tracks, a voice agent, and two computer-vision examples. See [examples/README.md](https://github.com/twilio/twilio-video-node/blob/main/examples/README.md) for setup.
+The [`examples/`](examples/README.md) directory has runnable examples, with setup steps: a virtual camera, a video mirror, audio push, data tracks, a voice agent, and two computer-vision examples.
 
 ## Feedback
 
-To report a bug or request a feature, see [CONTRIBUTING.md](https://github.com/twilio/twilio-video-node/blob/main/CONTRIBUTING.md).
+To report a bug or request a feature, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-See [LICENSE.md](https://github.com/twilio/twilio-video-node/blob/main/LICENSE.md).
+See [LICENSE.md](LICENSE.md).
