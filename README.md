@@ -6,7 +6,7 @@ Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access
 
 [API reference](https://twilio.github.io/twilio-video-node/latest/)
 
-**Note: this is a beta release of the Twilio Media SDK for Node.js. It is provided for evaluation purposes only and should not be used with production traffic. During the beta period this SDK is not HIPAA eligible.**
+**Note: this is a beta release of the Twilio Media SDK for Node.js. It is provided for evaluation purposes only. During the beta period this SDK is not HIPAA eligible.**
 
 ## Installation
 
