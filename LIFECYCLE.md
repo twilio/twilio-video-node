@@ -2,7 +2,7 @@
 
 Who owns which objects, what `disconnect()` and `dispose()` each release, and
 the ordering the SDK guarantees while a Room tears down.
-[README.md](README.md) covers usage, and
+The [developer docs](https://www.twilio.com/docs/video/node) cover usage, and
 [FRAME_CONTRACT.md](FRAME_CONTRACT.md) covers frame delivery.
 
 ## What you own

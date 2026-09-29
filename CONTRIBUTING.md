@@ -13,8 +13,8 @@ and actual behavior, and the SDK, Node.js, OS, and architecture versions.
 Do not include Access Tokens, API keys, API secrets, or Account SIDs in code, logs, or
 screenshots. See [what counts as PII](https://www.twilio.com/docs/glossary/what-is-personally-identifiable-information-pii).
 
-Check [Troubleshooting](DEVELOPER_GUIDE.md#5-troubleshooting) first. The
-[`examples/`](examples/) directory is the fastest starting point for a reproduction, and
+Check [Troubleshooting](https://www.twilio.com/docs/video/media-sdk-troubleshooting) first. The
+[`examples/`](examples/README.md) directory is the fastest starting point for a reproduction, and
 `node scripts/generate-token.js [identity] [room-name]` prints an Access Token, given
 `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY`, and `TWILIO_API_SECRET`.
 

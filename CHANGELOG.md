@@ -1,5 +1,20 @@
-This SDK is currently in beta. It supports Linux x86-64 and macOS 26+ on x86-64.
-See the [README](README.md) for details.
+This SDK is currently in beta. It supports Linux x86-64, and macOS 26+ on x86-64 for local
+development only. See the [README](README.md#requirements) for details.
+
+# 1.0.0-beta.2 (In Progress)
+
+## Documentation
+
+- The README is now a short landing page. Usage guides are in the
+  [developer docs](https://www.twilio.com/docs/video/node), and every exported symbol is in the
+  [API reference](https://twilio.github.io/twilio-video-node/latest/).
+- Example setup and the computer-vision model downloads moved to `examples/README.md`.
+- The API reference renders `FRAME_CONTRACT.md`, `LIFECYCLE.md`, `SECURITY-PRIVACY.md`,
+  `CHANGELOG.md`, `CONTRIBUTING.md`, `LICENSE.md` and `examples/README.md` as pages, so links
+  between them stay relative to the version being read.
+- `FRAME_CONTRACT.md` no longer says non-monotonic timestamps are accepted on both publish paths.
+  On video, libwebrtc's adapter can reject such a frame: `write()` returns `false` and the frame
+  is counted in `framesDropped`, not `timestampRegressions`.
 
 # 1.0.0-beta.1 (September 25, 2026)
 

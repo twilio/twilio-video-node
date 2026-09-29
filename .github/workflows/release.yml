@@ -395,7 +395,7 @@ jobs:
       # them. If a runner build ever loses that pruning they come back as
       # DT_NEEDED and every headless consumer fails at require() time, with a
       # correct-looking file(1) output and a plausible size. README.md's
-      # Platform Support section documents libX11.so.6 as the only X11
+      # Requirements section documents libX11.so.6 as the only X11
       # dependency, so this set is a published contract.
       - name: Verify DT_NEEDED
         if: ${{ runner.os == 'Linux' }}
@@ -425,7 +425,7 @@ jobs:
           fi
           echo "::notice::DT_NEEDED matches the published set."
 
-      # README.md's Platform Support table documents these floors, measured
+      # README.md's Requirements table documents these floors, measured
       # from an ubuntu-x64 (24.04) build. A runner image update can raise them
       # silently and break Ubuntu 22.04 consumers.
       - name: Verify the ABI floors

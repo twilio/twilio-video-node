@@ -7,7 +7,7 @@ assignees: ''
 ---
 
 - [ ] I reproduced the issue on the latest `@twilio/video-node-sdk` release, and the [CHANGELOG.md](https://github.com/twilio/twilio-video-node/blob/main/CHANGELOG.md) does not already list it as fixed.
-- [ ] I searched the open GitHub issues and the [Troubleshooting](https://github.com/twilio/twilio-video-node/blob/main/DEVELOPER_GUIDE.md#5-troubleshooting) section, and this does not appear to be an existing report.
+- [ ] I searched the open GitHub issues and the [Troubleshooting](https://www.twilio.com/docs/video/media-sdk-troubleshooting) page, and this does not appear to be an existing report.
 - [ ] I reproduced the issue with a minimal script, ideally based on one of the [`examples/`](https://github.com/twilio/twilio-video-node/tree/main/examples).
 - [ ] I am not sharing any [Personally Identifiable Information (PII)](https://www.twilio.com/docs/glossary/what-is-personally-identifiable-information-pii) or sensitive account information. Access Tokens, API keys, API secrets, and Account SIDs must be redacted from code, logs, and screenshots.
 

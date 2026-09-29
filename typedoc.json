@@ -3,6 +3,15 @@
   "entryPoints": ["lib/index.ts"],
   "tsconfig": "./tsconfig.json",
   "out": "docs",
+  "projectDocuments": [
+    "FRAME_CONTRACT.md",
+    "LIFECYCLE.md",
+    "SECURITY-PRIVACY.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE.md",
+    "examples/README.md"
+  ],
   "name": "@twilio/video-node-sdk",
   "excludePrivate": true,
   "excludeProtected": true,
