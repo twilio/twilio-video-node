@@ -1,0 +1,393 @@
+<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>CHANGELOG | @twilio/video-node-sdk - v1.0.0-beta.2</title><meta name="description" content="Documentation for @twilio/video-node-sdk"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script><script async src="../assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
+<div class="tsd-toolbar-contents container"><a href="../index.html" class="title">@twilio/video-node-sdk - v1.0.0-beta.2</a>
+<div id="tsd-toolbar-links"><a href="https://github.com/twilio/twilio-video-node">GitHub</a><a href="https://www.twilio.com/docs/video">Twilio Video</a></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/>
+<ul role="listbox" id="tsd-search-results"></ul>
+<div id="tsd-search-status" aria-live="polite" aria-atomic="true">
+<div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-menu"></use></svg></a></div></header>
+<div class="container container-main">
+<div class="col-content">
+<div class="tsd-page-title">
+<ul class="tsd-breadcrumb" aria-label="Breadcrumb">
+<li><a href="" aria-current="page">CHANGELOG</a></li></ul></div>
+<div class="tsd-panel tsd-typography"><p>This SDK is currently in beta. It supports Linux x86-64, and macOS 26+ on x86-64 for local
+development only. See the <a href="../#requirements">README</a> for details.</p>
+<h1 id="100-beta2-september-29-2026" class="tsd-anchor-link">1.0.0-beta.2 (September 29, 2026)<a href="#100-beta2-september-29-2026" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h1>
+<h2 id="documentation" class="tsd-anchor-link">Documentation<a href="#documentation" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li>The README is now a short landing page. Usage guides are in the
+<a href="https://www.twilio.com/docs/video/node">developer docs</a>, and every exported symbol is in the
+<a href="https://twilio.github.io/twilio-video-node/latest/">API reference</a>.</li>
+<li>Example setup and the computer-vision model downloads moved to <code>examples/README.md</code>.</li>
+<li>The API reference renders <code>FRAME_CONTRACT.md</code>, <code>LIFECYCLE.md</code>, <code>SECURITY-PRIVACY.md</code>,
+<code>CHANGELOG.md</code>, <code>CONTRIBUTING.md</code>, <code>LICENSE.md</code> and <code>examples/README.md</code> as pages, so links
+between them stay relative to the version being read.</li>
+<li><code>FRAME_CONTRACT.md</code> no longer says non-monotonic timestamps are accepted on both publish paths.
+On video, libwebrtc's adapter can reject such a frame: <code>write()</code> returns <code>false</code> and the frame
+is counted in <code>framesDropped</code>, not <code>timestampRegressions</code>.</li>
+</ul>
+<h1 id="100-beta1-september-25-2026" class="tsd-anchor-link">1.0.0-beta.1 (September 25, 2026)<a href="#100-beta1-september-25-2026" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h1>
+<h2 id="breaking-changes" class="tsd-anchor-link">Breaking Changes<a href="#breaking-changes" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="is-no-longer-accepted-on-published-frames" class="tsd-anchor-link"><code>frameId</code> is no longer accepted on published frames<a href="#is-no-longer-accepted-on-published-frames" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>VideoFrameInput.frameId</code> and <code>AudioFrameInput.frameId</code> are removed. They were
+typed and documented as &quot;carried for tracing&quot;, but the publish path never read
+them, so the value was silently discarded. <code>frameId</code> on <em>received</em> frames is
+unaffected: it is SDK-generated and monotonic per track.</p>
+<pre><code class="js"><span class="hl-7">// Before - frameId was accepted and dropped</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">write</span><span class="hl-1">({ ...</span><span class="hl-6">frame</span><span class="hl-1">, </span><span class="hl-6">frameId:</span><span class="hl-1"> </span><span class="hl-6">n</span><span class="hl-1"> });</span><br/><br/><span class="hl-7">// After - carry your own correlation outside the frame</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">write</span><span class="hl-1">(</span><span class="hl-6">frame</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="is-no-longer-exported" class="tsd-anchor-link"><code>FrameStream</code> is no longer exported<a href="#is-no-longer-exported" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>It is the internal queue behind <code>frames()</code>. <code>frames()</code> returns an
+<code>AsyncIterableIterator</code>, which is the whole contract; exporting the class made
+its internal constructor part of the public API. <code>MAX_QUEUE_CEILING</code> is still
+exported.</p>
+<h3 id="is-now-thrown" class="tsd-anchor-link"><code>UnsupportedPlatformError</code> is now thrown<a href="#is-now-thrown" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Importing the SDK on a platform the addon is not built for, with no local build
+present, throws <code>UnsupportedPlatformError</code> naming the platform, instead of a
+<code>NativeBindingLoadError</code> advising a build that cannot succeed. A local build in
+<code>build/Release</code> or <code>build/Debug</code> is loaded first, so contributors who compiled
+the addon themselves on an unlisted platform are not blocked; an installed
+package never has one, because <code>files</code> excludes <code>build/</code>.</p>
+<p><code>TwilioErrorClass</code>, the constructor shape shared by every error subclass, is now
+exported as a type, and every exported error class exposes the static <code>code</code>
+that shape requires - <code>NativeBindingLoadError</code> included.</p>
+<h3 id="replaces" class="tsd-anchor-link"><code>frames()</code> replaces <code>onFrame()</code><a href="#replaces" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>RemoteVideoTrack.onFrame()</code> and <code>removeFrameCallback()</code> are removed. Receive
+frames by async iteration instead. Awaiting each frame is what applies
+backpressure; a callback could not.</p>
+<pre><code class="js"><span class="hl-7">// Before</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">onFrame</span><span class="hl-1">(</span><span class="hl-6">frame</span><span class="hl-1"> </span><span class="hl-3">=&gt;</span><span class="hl-1"> </span><span class="hl-0">process</span><span class="hl-1">(</span><span class="hl-6">frame</span><span class="hl-1">));</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">removeFrameCallback</span><span class="hl-1">();</span><br/><br/><span class="hl-7">// After</span><br/><span class="hl-5">for</span><span class="hl-1"> </span><span class="hl-5">await</span><span class="hl-1"> (</span><span class="hl-3">const</span><span class="hl-1"> </span><span class="hl-4">frame</span><span class="hl-1"> </span><span class="hl-3">of</span><span class="hl-1"> </span><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">frames</span><span class="hl-1">()) {</span><br/><span class="hl-1">  </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-0">process</span><span class="hl-1">(</span><span class="hl-6">frame</span><span class="hl-1">);</span><br/><span class="hl-1">  </span><span class="hl-6">frame</span><span class="hl-1">.</span><span class="hl-0">close</span><span class="hl-1">?.();</span><br/><span class="hl-1">}</span><br/><span class="hl-7">// The loop ends on unsubscribe or Room disconnect. `break` releases the track.</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Each track supports a single receiver. Fan out inside your own loop if several
+consumers need the same stream.</p>
+<h3 id="messages-are-an-event" class="tsd-anchor-link"><code>RemoteDataTrack</code> messages are an event<a href="#messages-are-an-event" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="js"><span class="hl-7">// Before</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">onMessage</span><span class="hl-1">(</span><span class="hl-6">data</span><span class="hl-1"> </span><span class="hl-3">=&gt;</span><span class="hl-1"> </span><span class="hl-0">handle</span><span class="hl-1">(</span><span class="hl-6">data</span><span class="hl-1">));</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">removeMessageCallback</span><span class="hl-1">();</span><br/><br/><span class="hl-7">// After</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;message&#39;</span><span class="hl-1">, (</span><span class="hl-6">data</span><span class="hl-1">, </span><span class="hl-6">track</span><span class="hl-1">) </span><span class="hl-3">=&gt;</span><span class="hl-1"> </span><span class="hl-0">handle</span><span class="hl-1">(</span><span class="hl-6">data</span><span class="hl-1">, </span><span class="hl-6">track</span><span class="hl-1">));</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Any <code>EventEmitter</code> registration method works: <code>on</code>, <code>once</code>, <code>addListener</code>,
+<code>prependListener</code>, <code>prependOnceListener</code>.</p>
+<h3 id="timestamps-are-microseconds-as-not-nanoseconds-as" class="tsd-anchor-link">Timestamps are microseconds as <code>number</code>, not nanoseconds as <code>bigint</code><a href="#timestamps-are-microseconds-as-not-nanoseconds-as" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>timestampNs</code> and <code>captureTimestampNs</code> become <code>timestamp</code> and
+<code>captureTimestamp</code>, in microseconds. Microsecond resolution stays exact in a JS
+number for roughly 285 years, and the engine reports microseconds natively, so
+this removes a conversion in both directions and lets frame timing be done with
+ordinary arithmetic.</p>
+<pre><code class="js"><span class="hl-7">// Before</span><br/><span class="hl-3">const</span><span class="hl-1"> </span><span class="hl-4">ms</span><span class="hl-1"> = </span><span class="hl-0">Number</span><span class="hl-1">(</span><span class="hl-6">frame</span><span class="hl-1">.</span><span class="hl-6">timestampNs</span><span class="hl-1"> / </span><span class="hl-8">1_000_000</span><span class="hl-3">n</span><span class="hl-1">);</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">write</span><span class="hl-1">({ ..., </span><span class="hl-6">timestampNs:</span><span class="hl-1"> </span><span class="hl-6">process</span><span class="hl-1">.</span><span class="hl-6">hrtime</span><span class="hl-1">.</span><span class="hl-0">bigint</span><span class="hl-1">() });</span><br/><br/><span class="hl-7">// After</span><br/><span class="hl-3">const</span><span class="hl-1"> </span><span class="hl-4">ms</span><span class="hl-1"> = </span><span class="hl-6">frame</span><span class="hl-1">.</span><span class="hl-6">timestamp</span><span class="hl-1"> / </span><span class="hl-8">1000</span><span class="hl-1">;</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">write</span><span class="hl-1">({ ... }); </span><span class="hl-7">// omit `timestamp` and the SDK stamps &quot;now&quot;</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="is-planar" class="tsd-anchor-link"><code>VideoFrameInput</code> is planar<a href="#is-planar" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Input now uses the same shape as the delivered <code>VideoFrame</code>, so a received frame
+can be republished without reshaping.</p>
+<pre><code class="js"><span class="hl-7">// Before</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">write</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-6">y</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-6">u</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-6">v</span><span class="hl-1">, </span><span class="hl-7">// Buffers</span><br/><span class="hl-1">  </span><span class="hl-6">yStride</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-6">uStride</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-6">vStride</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-6">width</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-6">height</span><span class="hl-1">,</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-7">// After</span><br/><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">write</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-6">format:</span><span class="hl-1"> </span><span class="hl-2">&#39;I420&#39;</span><span class="hl-1">, </span><span class="hl-7">// optional</span><br/><span class="hl-1">  </span><span class="hl-6">width</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-6">height</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-6">y:</span><span class="hl-1"> { </span><span class="hl-6">data:</span><span class="hl-1"> </span><span class="hl-6">y</span><span class="hl-1">, </span><span class="hl-6">stride:</span><span class="hl-1"> </span><span class="hl-6">yStride</span><span class="hl-1">, </span><span class="hl-6">width</span><span class="hl-1">, </span><span class="hl-6">height</span><span class="hl-1"> },</span><br/><span class="hl-1">  </span><span class="hl-6">u:</span><span class="hl-1"> { </span><span class="hl-6">data:</span><span class="hl-1"> </span><span class="hl-6">u</span><span class="hl-1">, </span><span class="hl-6">stride:</span><span class="hl-1"> </span><span class="hl-6">uStride</span><span class="hl-1">, </span><span class="hl-6">width:</span><span class="hl-1"> </span><span class="hl-6">width</span><span class="hl-1"> / </span><span class="hl-8">2</span><span class="hl-1">, </span><span class="hl-6">height:</span><span class="hl-1"> </span><span class="hl-6">height</span><span class="hl-1"> / </span><span class="hl-8">2</span><span class="hl-1"> },</span><br/><span class="hl-1">  </span><span class="hl-6">v:</span><span class="hl-1"> { </span><span class="hl-6">data:</span><span class="hl-1"> </span><span class="hl-6">v</span><span class="hl-1">, </span><span class="hl-6">stride:</span><span class="hl-1"> </span><span class="hl-6">vStride</span><span class="hl-1">, </span><span class="hl-6">width:</span><span class="hl-1"> </span><span class="hl-6">width</span><span class="hl-1"> / </span><span class="hl-8">2</span><span class="hl-1">, </span><span class="hl-6">height:</span><span class="hl-1"> </span><span class="hl-6">height</span><span class="hl-1"> / </span><span class="hl-8">2</span><span class="hl-1"> },</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="returns-a-promise-and-enforces-the-64-kb-limit" class="tsd-anchor-link"><code>LocalDataTrack.send()</code> returns a promise, and enforces the 64 KB limit<a href="#returns-a-promise-and-enforces-the-64-kb-limit" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>send()</code> previously returned <code>void</code> and silently discarded a message larger than
+<code>kMaxMessageSize</code>. It now throws a <code>RangeError</code> for an oversize message, and
+returns a promise describing the outcome. The promise <strong>always resolves</strong>, so a
+fire-and-forget <code>send()</code> cannot produce an unhandled rejection. A send still in
+flight when the track is destroyed resolves with <code>ok: false</code> rather than being
+left pending.</p>
+<pre><code class="js"><span class="hl-3">const</span><span class="hl-1"> </span><span class="hl-4">result</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">send</span><span class="hl-1">(</span><span class="hl-2">&#39;hello&#39;</span><span class="hl-1">);</span><br/><span class="hl-5">if</span><span class="hl-1"> (!</span><span class="hl-6">result</span><span class="hl-1">.</span><span class="hl-6">ok</span><span class="hl-1">) </span><span class="hl-6">console</span><span class="hl-1">.</span><span class="hl-0">warn</span><span class="hl-1">(</span><span class="hl-2">&#39;send failed:&#39;</span><span class="hl-1">, </span><span class="hl-6">result</span><span class="hl-1">.</span><span class="hl-6">error</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="audio-publish-is-bounded-and-rejects-rather-than-sheds" class="tsd-anchor-link">Audio publish is bounded, and rejects rather than sheds<a href="#audio-publish-is-bounded-and-rejects-rather-than-sheds" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>LocalAudioTrack.write()</code> previously buffered up to <strong>45 seconds</strong> of audio and
+always returned <code>true</code>. The queue is now bounded (~500 ms by default,
+configurable through <code>source.maxQueue</code> in 10 ms chunks) and a write is accepted
+only if it fits whole in the remaining space. When it does not fit, nothing is
+buffered and <code>write()</code> returns <code>false</code>. A producer running at real-time cadence
+is unaffected; one running faster now learns it is outrunning the wire instead
+of silently accumulating latency.</p>
+<p>A single <code>write()</code> larger than <code>maxQueue</code> can never fit and is always rejected,
+so size <code>maxQueue</code> to the largest burst you intend to publish. A caller that
+handed <code>write()</code> a whole utterance at once previously had the front of it
+discarded silently; it now gets <code>false</code> and can resize the queue or split the
+write.</p>
+<h3 id="and-are-removed-from-audio-track-options" class="tsd-anchor-link"><code>source.mode</code> and <code>source.drop</code> are removed from audio track options<a href="#and-are-removed-from-audio-track-options" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>RawAudioSourceOptions</code> no longer accepts <code>mode</code> or <code>drop</code>. Both were validated
+and then discarded: the publish queue lives in the process-wide audio device,
+which has one policy and cannot express a per-track one. <code>source.maxQueue</code> is
+kept and now documents that it binds that shared device, so the most recent
+value passed to <code>createLocalAudioTrack</code> applies to every local audio track in
+the process. <code>mode</code>, <code>maxQueue</code> and <code>drop</code> on the receive side (<code>frames()</code>) are
+unchanged and remain per-track.</p>
+<h3 id="is-observability-only" class="tsd-anchor-link"><code>AudioFrameInput.timestamp</code> is observability-only<a href="#is-observability-only" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Audio publish is FIFO: the audio device emits queued samples on its own 10 ms
+cadence. The <code>timestamp</code> on a published audio frame feeds
+<code>WriteStats.lastTimestamp</code> and <code>WriteStats.timestampRegressions</code> and does not
+change what is sent or when. Video publish still carries the timestamp through
+to the encoded frame. This documents existing behavior; nothing changed in the
+publish path.</p>
+<h3 id="the-package-ships-linux-x64-and-darwin-x64-prebuilds" class="tsd-anchor-link">The package ships linux-x64 and darwin-x64 prebuilds<a href="#the-package-ships-linux-x64-and-darwin-x64-prebuilds" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The darwin-x64 prebuild requires macOS 26 or later and an x64 Node, so on Apple Silicon Node
+must run under Rosetta. npm cannot check the macOS version, so on an older macOS the install
+succeeds and loading the addon fails.</p>
+<h3 id="and-pass-a" class="tsd-anchor-link"><code>trackSubscribed</code> and <code>trackUnsubscribed</code> pass a <code>RemoteTrackPublication</code><a href="#and-pass-a" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Listeners receive <code>(track, publication)</code> on a <code>RemoteParticipant</code> and
+<code>(track, publication, participant)</code> on a <code>Room</code>, matching twilio-video.js. Update any listener
+that took <code>(track, participant)</code> on a Room. On <code>trackUnsubscribed</code> the publication reports
+<code>isSubscribed: false</code> and its <code>track</code> is <code>undefined</code>, as documented for
+<code>RemoteTrackPublication</code>; the unsubscribed track is the event's first argument.</p>
+<h3 id="remote-track-events-carry-a" class="tsd-anchor-link">Remote track events carry a <code>RemoteTrackPublication</code><a href="#remote-track-events-carry-a" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>These four events passed a plain <code>{ trackSid, trackName }</code> record (plus <code>isSubscribed</code> on the
+state events). They now pass the same <code>RemoteTrackPublication</code> the track collections return,
+matching twilio-video.js and the <code>trackSubscribed</code> events. <code>trackSubscriptionFailed</code> carries one
+too, in place of its own <code>{ trackSid, trackName, kind }</code> record. <code>RemoteTrackPublishEvent</code>,
+<code>RemoteTrackStateEvent</code> and <code>RemoteTrackSubscriptionFailedEvent</code> are no longer exported.</p>
+<pre><code class="js"><span class="hl-7">// Before - a record, with no way to reach the track</span><br/><span class="hl-6">participant</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;trackPublished&#39;</span><span class="hl-1">, </span><span class="hl-6">pub</span><span class="hl-1"> </span><span class="hl-3">=&gt;</span><span class="hl-1"> </span><span class="hl-6">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-6">pub</span><span class="hl-1">.</span><span class="hl-6">trackSid</span><span class="hl-1">));</span><br/><br/><span class="hl-7">// After - a publication, with kind, enabled state and the track once subscribed</span><br/><span class="hl-6">participant</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;trackPublished&#39;</span><span class="hl-1">, </span><span class="hl-6">pub</span><span class="hl-1"> </span><span class="hl-3">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-6">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-6">pub</span><span class="hl-1">.</span><span class="hl-6">trackSid</span><span class="hl-1">, </span><span class="hl-6">pub</span><span class="hl-1">.</span><span class="hl-6">kind</span><span class="hl-1">, </span><span class="hl-6">pub</span><span class="hl-1">.</span><span class="hl-6">isTrackEnabled</span><span class="hl-1">, </span><span class="hl-6">pub</span><span class="hl-1">.</span><span class="hl-6">isSubscribed</span><span class="hl-1">);</span><br/><span class="hl-1">  </span><span class="hl-5">if</span><span class="hl-1"> (</span><span class="hl-6">pub</span><span class="hl-1">.</span><span class="hl-6">kind</span><span class="hl-1"> === </span><span class="hl-2">&#39;video&#39;</span><span class="hl-1"> &amp;&amp; </span><span class="hl-6">pub</span><span class="hl-1">.</span><span class="hl-6">track</span><span class="hl-1">) </span><span class="hl-6">pub</span><span class="hl-1">.</span><span class="hl-6">track</span><span class="hl-1">.</span><span class="hl-0">frames</span><span class="hl-1">();</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="an-event-listener-that-throws-is-no-longer-ignored" class="tsd-anchor-link">An event listener that throws is no longer ignored<a href="#an-event-listener-that-throws-is-no-longer-ignored" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The error is reported as an <code>uncaughtException</code>, and events queued behind it are retained, so
+an application that handles <code>uncaughtException</code> still receives them. Previously such an error
+produced no output at all, which was indistinguishable from an event that was never emitted. An
+application relying on that behavior will start seeing <code>uncaughtException</code>.</p>
+<h3 id="passes-the-room-first" class="tsd-anchor-link"><code>disconnected</code> passes the Room first<a href="#passes-the-room-first" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Listeners receive <code>(room, error?)</code> instead of <code>(error?)</code>, matching twilio-video.js.</p>
+<pre><code class="js"><span class="hl-7">// Before</span><br/><span class="hl-6">room</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;disconnected&#39;</span><span class="hl-1">, </span><span class="hl-6">error</span><span class="hl-1"> </span><span class="hl-3">=&gt;</span><span class="hl-1"> { ... });</span><br/><br/><span class="hl-7">// After</span><br/><span class="hl-6">room</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;disconnected&#39;</span><span class="hl-1">, (</span><span class="hl-6">room</span><span class="hl-1">, </span><span class="hl-6">error</span><span class="hl-1">) </span><span class="hl-3">=&gt;</span><span class="hl-1"> { ... });</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="passes-the-track-that-failed" class="tsd-anchor-link"><code>trackPublicationFailed</code> passes the track that failed<a href="#passes-the-track-that-failed" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Listeners receive <code>(error, localTrack?)</code> instead of <code>(error)</code>. <code>localTrack</code> is the instance
+passed to <code>publishTrack()</code>, or <code>undefined</code> when the failure cannot be attributed to a track
+this participant still holds.</p>
+<pre><code class="js"><span class="hl-7">// Before</span><br/><span class="hl-6">localParticipant</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;trackPublicationFailed&#39;</span><span class="hl-1">, </span><span class="hl-6">error</span><span class="hl-1"> </span><span class="hl-3">=&gt;</span><span class="hl-1"> { ... });</span><br/><br/><span class="hl-7">// After</span><br/><span class="hl-6">localParticipant</span><span class="hl-1">.</span><span class="hl-0">on</span><span class="hl-1">(</span><span class="hl-2">&#39;trackPublicationFailed&#39;</span><span class="hl-1">, (</span><span class="hl-6">error</span><span class="hl-1">, </span><span class="hl-6">localTrack</span><span class="hl-1">) </span><span class="hl-3">=&gt;</span><span class="hl-1"> { ... });</span>
+</code><button type="button">Copy</button></pre>
+
+<h2 id="features" class="tsd-anchor-link">Features<a href="#features" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li><code>RemoteVideoTrack.getStats()</code> / <code>RemoteAudioTrack.getStats()</code> return
+<code>DeliveryStats</code>: frames delivered, frames dropped, queue depth and the
+configured bound. Drops are counted in both the JS policy queue and the native
+transfer queue, so the number is the total the consumer never saw.</li>
+<li><code>LocalVideoTrack.getWriteStats()</code> / <code>LocalAudioTrack.getWriteStats()</code> return
+<code>WriteStats</code> for the publish direction.</li>
+<li>A coalesced <code>frameDropped(count, sinceLastUs)</code> event on remote media tracks.</li>
+<li><code>frames(options)</code> takes <code>mode</code> (<code>'latest'</code> | <code>'queue'</code>), <code>maxQueue</code> and <code>drop</code>
+(<code>'oldest'</code> | <code>'newest'</code>). Defaults are media-aware: video keeps only the
+newest frame, audio buffers a little to smooth jitter. <code>maxQueue</code> is capped so
+a misconfiguration cannot exhaust memory.</li>
+<li>The published type declarations no longer carry the SDK's <code>@internal</code>
+members. <code>_native</code>, <code>_attachFrameSink</code>, <code>_end</code> and the rest were annotated
+<code>@internal</code> but still landed in <code>index.d.ts</code>, so they appeared in consumer
+autocomplete as though they were API. None was documented or supported.</li>
+<li><code>VideoFrame.close()</code> / <code>AudioFrame.close()</code> release the buffers promptly.
+Optional - the frame is an owned copy and GC reclaims it. Idempotent; reading
+plane data after <code>close()</code> throws.</li>
+<li><code>CreateLocalVideoTrackOptions.source</code> pins the frame size, so a mismatched
+frame is rejected rather than silently rescaled.
+<code>CreateLocalAudioTrackOptions.source</code> bounds the publish queue.</li>
+<li><code>ConnectOptions.connectionTimeout</code> (default 30s) rejects with
+<code>RoomConnectTimeoutError</code>. There was previously no timeout at any layer, so a
+wedged connect hung the caller indefinitely.</li>
+<li>One error subclass per known Twilio code, 26 in all, plus typed SDK-local
+errors (<code>NativeBindingLoadError</code>, <code>UnsupportedPlatformError</code>,
+<code>RoomConnectTimeoutError</code>, <code>DataTrackSendError</code>). Previously only 5 of the 26
+codes had a class.</li>
+</ul>
+<h2 id="bug-fixes" class="tsd-anchor-link">Bug Fixes<a href="#bug-fixes" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li><code>VideoFrame.frameId</code> now advances. It was taken from libwebrtc's
+<code>VideoFrame::id()</code>, which is not populated on the receive path and read <code>0</code>
+for every frame, so gap and drop detection was impossible despite being the
+documented purpose of the field. It is now an SDK-generated monotonic
+per-track counter, matching what the audio path already did.</li>
+<li>Frames dropped at the native-to-JS boundary are counted instead of discarded
+silently. The transfer queue always had a fixed depth of 5 with a drop-oldest
+policy; nothing reported it.</li>
+<li><code>trackSubscribed</code> is now emitted for tracks a remote participant was already publishing when
+they joined. The observer the media engine calls is installed as soon as the participant
+connects, rather than one thread hop later, which is after the subscription has already
+completed. Rejoining participants were the most affected: the first join often reported its
+tracks and later ones silently did not.</li>
+<li><code>trackUnsubscribed</code> is now emitted for every track a participant was still publishing when they
+disconnected. It could previously be lost because it and <code>participantDisconnected</code> were
+delivered on independent internal queues with no guaranteed order between them.</li>
+<li>Fixed several cases where a <code>RemoteParticipant</code> stopped receiving further track events after
+the SDK built a second internal wrapper for it, which happened on reading <code>room.participants</code>
+or <code>room.dominantSpeaker</code>, on a reconnect, or for a participant who was already in the Room
+when the local participant connected. Reading <code>room.participants</code> even once after a
+participant connected could permanently stop delivery of <code>trackSubscribed</code>,
+<code>trackUnsubscribed</code>, and related events for that participant, with no error.</li>
+<li>Fixed the equivalent issue for <code>RemoteDataTrack</code>: reading a participant's <code>dataTracks</code> (or
+<code>tracks</code>) a second time could stop message delivery to a <code>RemoteDataTrack</code> object obtained
+from an earlier read. Every independently obtained <code>RemoteDataTrack</code> for the same underlying
+track now receives messages, matching how multiple <code>RemoteVideoTrack</code>/<code>RemoteAudioTrack</code>
+objects for the same track already each receive frames.</li>
+<li>A participant is no longer kept in memory for the rest of the Room's lifetime after they
+disconnect. Their cached wrapper was previously released only as a side effect of a later
+<code>room.participants</code> read; an application that only listens to events, without reading that
+getter, retained every departed participant until the Room itself was disposed.</li>
+<li><code>participantDisconnected</code> now arrives after that participant's final <code>trackUnsubscribed</code>
+events, and is emitted from the Room's own event queue so it stays in order with Room events
+raised before it, such as <code>dominantSpeakerChanged</code>. It is not ordered against a Room event
+raised in the same moment: a Room that ends as a participant leaves can report <code>disconnected</code>
+first, and an application that calls <code>room.dispose()</code> from that handler may not receive the
+<code>participantDisconnected</code> at all.</li>
+<li><code>participantDisconnected</code> now reports the same <code>RemoteParticipant</code> object the application
+already received from <code>participantConnected</code> or <code>room.participants</code>. A <code>room.participants</code>
+read while the participant was leaving dropped the cached instance, so the event carried a
+second one: a listener attached to the original never saw the disconnect, and that original
+was never disposed.</li>
+<li>Fixed a crash during teardown when an event listener disposes the Room it is handling an
+event for. The internal event queue continued to touch its own state after the listener
+returned, which the <code>dispose()</code> had already freed.</li>
+<li>A <code>RemoteDataTrack</code> no longer delivers a message after <code>trackUnsubscribed</code> has been emitted
+for it. A message that was already on its way to the JS thread when the track was
+unsubscribed is now dropped, matching the documented contract.</li>
+<li>Two Rooms in the same process subscribed to the same published data track now each receive
+messages. They were keyed by Track SID, which is shared between them, so only the first Room
+received messages and tearing that Room down stopped delivery for the other one.</li>
+<li>Data track observers are no longer retained for the process's lifetime. They were released
+only when a track was explicitly unsubscribed, so any other teardown, such as disposing a
+Room mid-call, left them behind.</li>
+</ul>
+<h2 id="documentation-1" class="tsd-anchor-link">Documentation<a href="#documentation-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="api-reference-on-github-pages" class="tsd-anchor-link">API reference on GitHub Pages<a href="#api-reference-on-github-pages" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The API reference for each release is published at <a href="https://twilio.github.io/twilio-video-node/">https://twilio.github.io/twilio-video-node/</a>,
+which opens the latest version.</p>
+<h3 id="ships-in-the-package" class="tsd-anchor-link"><code>SECURITY-PRIVACY.md</code> ships in the package<a href="#ships-in-the-package" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>It describes what the SDK does with decoded media and which obligations remain with the
+application.</p>
+<h1 id="100-preview3-september-2-2026" class="tsd-anchor-link">1.0.0-preview.3 (September 2, 2026)<a href="#100-preview3-september-2-2026" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h1>
+<h2 id="documentation-2" class="tsd-anchor-link">Documentation<a href="#documentation-2" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li>Added an API reference generated with TypeDoc, covering every exported symbol. Build it
+locally with <code>npm run docs</code>.</li>
+</ul>
+<h2 id="breaking-changes-1" class="tsd-anchor-link">Breaking Changes<a href="#breaking-changes-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li>
+<p><code>VideoCodec</code> only accepts <code>'VP8'</code>, the only video codec this SDK supports in Group Rooms.
+<code>'H264'</code> and <code>'VP9'</code> are removed from the type and now throw
+<code>TypeError: Unknown video codec: &lt;name&gt;</code> from <code>connect()</code> instead of being silently accepted.</p>
+</li>
+<li>
+<p><code>AudioCodec</code> only accepts <code>'opus'</code> and <code>'PCMU'</code>, the only audio codecs this SDK supports in
+Group Rooms. <code>'PCMA'</code> and <code>'G722'</code> are removed from the type and now throw
+<code>TypeError: Unknown audio codec: &lt;name&gt;</code> from <code>connect()</code>.</p>
+</li>
+<li>
+<p><code>LocalDataTrack.maxPacketLifeTime</code> and <code>maxRetransmits</code> are now <code>number | null</code>, reporting
+<code>null</code> when unset instead of <code>65535</code>. Check for <code>null</code>, or use <code>reliable</code>. Both now report the
+value passed to <code>createLocalDataTrack()</code>, so a limit of <code>65535</code> reads back as <code>65535</code>.</p>
+</li>
+<li>
+<p><code>ErrorCode.TRACK_NAME_TOO_LONG</code> is renamed to <code>ErrorCode.TRACK_NAME_INVALID</code>. The code it maps
+to, <code>53301</code>, is Twilio's <code>TrackNameInvalid</code>. <code>ErrorCode.TRACK_NAME_TOO_LONG</code> now maps to
+<code>53302</code>, the code that condition actually reports.</p>
+</li>
+<li>
+<p><code>createLocalDataTrack()</code> validates delivery options. <code>maxPacketLifeTime</code> and <code>maxRetransmits</code>
+must be integers in <code>[0, 65535]</code> (<code>RangeError</code>, replacing the plain <code>Error</code> for negatives);
+<code>ordered</code> must be a boolean (<code>TypeError</code>). Invalid values were previously coerced.</p>
+</li>
+</ul>
+<h2 id="features-1" class="tsd-anchor-link">Features<a href="#features-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li>
+<p><code>RemoteDataTrack</code> exposes <code>maxPacketLifeTime</code> and <code>maxRetransmits</code>, so a subscriber can tell
+how the publisher configured delivery. A publisher's limit of <code>65535</code> reads back as <code>null</code>,
+since a subscribed track reports it the same way it reports an unset limit.</p>
+</li>
+<li>
+<p><code>LocalDataTrackOptions.maxPacketLifeTime</code> and <code>maxRetransmits</code> accept <code>null</code>, so a value read
+off a track can be passed back into <code>createLocalDataTrack()</code>.</p>
+</li>
+<li>
+<p><code>trackSubscriptionFailed</code> passes a <code>RemoteTrackSubscriptionFailedEvent</code> (<code>trackSid</code>,
+<code>trackName</code>, <code>kind</code>) after the error, so a listener can tell which publication failed.
+Existing single-argument listeners are unaffected.</p>
+</li>
+</ul>
+<h2 id="bug-fixes-1" class="tsd-anchor-link">Bug Fixes<a href="#bug-fixes-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li>
+<p>Fixed a crash (<code>SIGSEGV</code>) during teardown of a Room that ended remotely. A remote track's
+frame sink was freed while still registered with the underlying WebRTC track, so the next
+frame delivered on an SDK-internal thread wrote through freed memory. Affected consumers
+using <code>RemoteAudioTrack.onFrame</code> or <code>RemoteVideoTrack.onFrame</code>.</p>
+</li>
+<li>
+<p>Data track options set to <code>undefined</code> are treated as unset. <code>{ maxRetransmits: undefined }</code>
+previously failed with <code>A number was expected</code>.</p>
+</li>
+<li>
+<p>Joining a Room that already had participants in it no longer misses their track
+events. <code>trackSubscribed</code>, <code>trackEnabled</code>, <code>trackDisabled</code>, <code>trackPublished</code>, and
+<code>trackUnpublished</code> were never emitted for participants who were already present.
+Participants who joined later were unaffected.</p>
+</li>
+<li>
+<p>Room now re-emits <code>trackSubscriptionFailed</code>. It was the only <code>RemoteParticipant</code> track
+event the Room did not forward, so <code>room</code> listeners never saw subscription failures.</p>
+</li>
+</ul>
+<h1 id="100-preview2-july-23-2026" class="tsd-anchor-link">1.0.0-preview.2 (July 23, 2026)<a href="#100-preview2-july-23-2026" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h1>
+<h2 id="breaking-changes-2" class="tsd-anchor-link">Breaking Changes<a href="#breaking-changes-2" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li>Room no longer emits a <code>connected</code> event. The underlying native signal was always
+one-shot and consumed internally to resolve <code>connect()</code>'s promise before the Room
+was returned, so a <code>room.on('connected', ...)</code> listener could never fire. TypeScript
+consumers with such a listener will see a compile error and should remove it;
+plain JavaScript consumers are unaffected.</li>
+</ul>
+</div></div>
+<div class="col-sidebar">
+<div class="page-menu">
+<div class="tsd-navigation settings">
+<details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>Settings</h3></summary>
+<div class="tsd-accordion-details">
+<div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span>
+<ul id="tsd-filter-options">
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div>
+<div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div>
+<details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>On This Page</h3></summary>
+<div class="tsd-accordion-details"><a href="#100-beta2-september-29-2026"><span>1.0.0-<wbr/>beta.2 (<wbr/>September 29, 2026)</span></a>
+<ul>
+<li><a href="#documentation"><span>Documentation</span></a></li></ul><a href="#100-beta1-september-25-2026"><span>1.0.0-<wbr/>beta.1 (<wbr/>September 25, 2026)</span></a>
+<ul>
+<li><a href="#breaking-changes"><span>Breaking <wbr/>Changes</span></a></li>
+<li>
+<ul>
+<li><a href="#is-no-longer-accepted-on-published-frames"><span> is no longer accepted on published frames</span></a></li>
+<li><a href="#is-no-longer-exported"><span> is no longer exported</span></a></li>
+<li><a href="#is-now-thrown"><span> is now thrown</span></a></li>
+<li><a href="#replaces"><span> replaces </span></a></li>
+<li><a href="#messages-are-an-event"><span> messages are an event</span></a></li>
+<li><a href="#timestamps-are-microseconds-as-not-nanoseconds-as"><span>Timestamps are microseconds as , not nanoseconds as </span></a></li>
+<li><a href="#is-planar"><span> is planar</span></a></li>
+<li><a href="#returns-a-promise-and-enforces-the-64-kb-limit"><span> returns a promise, and enforces the 64 <wbr/>KB limit</span></a></li>
+<li><a href="#audio-publish-is-bounded-and-rejects-rather-than-sheds"><span>Audio publish is bounded, and rejects rather than sheds</span></a></li>
+<li><a href="#and-are-removed-from-audio-track-options"><span> and  are removed from audio track options</span></a></li>
+<li><a href="#is-observability-only"><span> is observability-<wbr/>only</span></a></li>
+<li><a href="#the-package-ships-linux-x64-and-darwin-x64-prebuilds"><span>The package ships linux-<wbr/>x64 and darwin-<wbr/>x64 prebuilds</span></a></li>
+<li><a href="#and-pass-a"><span> and  pass a </span></a></li>
+<li><a href="#remote-track-events-carry-a"><span>Remote track events carry a </span></a></li>
+<li><a href="#an-event-listener-that-throws-is-no-longer-ignored"><span>An event listener that throws is no longer ignored</span></a></li>
+<li><a href="#passes-the-room-first"><span> passes the <wbr/>Room first</span></a></li>
+<li><a href="#passes-the-track-that-failed"><span> passes the track that failed</span></a></li></ul></li>
+<li><a href="#features"><span>Features</span></a></li>
+<li><a href="#bug-fixes"><span>Bug <wbr/>Fixes</span></a></li>
+<li><a href="#documentation-1"><span>Documentation</span></a></li>
+<li>
+<ul>
+<li><a href="#api-reference-on-github-pages"><span>API reference on <wbr/>Git<wbr/>Hub <wbr/>Pages</span></a></li>
+<li><a href="#ships-in-the-package"><span> ships in the package</span></a></li></ul></li></ul><a href="#100-preview3-september-2-2026"><span>1.0.0-<wbr/>preview.3 (<wbr/>September 2, 2026)</span></a>
+<ul>
+<li><a href="#documentation-2"><span>Documentation</span></a></li>
+<li><a href="#breaking-changes-1"><span>Breaking <wbr/>Changes</span></a></li>
+<li><a href="#features-1"><span>Features</span></a></li>
+<li><a href="#bug-fixes-1"><span>Bug <wbr/>Fixes</span></a></li></ul><a href="#100-preview2-july-23-2026"><span>1.0.0-<wbr/>preview.2 (<wbr/>July 23, 2026)</span></a>
+<ul>
+<li><a href="#breaking-changes-2"><span>Breaking <wbr/>Changes</span></a></li></ul></div></details></div>
+<div class="site-menu">
+<nav id="tsd-sidebar-links" class="tsd-navigation"><a href="https://github.com/twilio/twilio-video-node" class="tsd-nav-link">GitHub</a><a href="https://www.twilio.com/docs/video" class="tsd-nav-link">Twilio Video</a></nav>
+<nav class="tsd-navigation"><a href="../modules.html">@twilio/video-node-sdk - v1.0.0-beta.2</a>
+<ul class="tsd-small-nested-navigation" id="tsd-nav-container">
+<li>Loading...</li></ul></nav></div></div></div><footer>
+<p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer>
+<div class="overlay"></div></body></html>
