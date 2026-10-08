@@ -69,7 +69,8 @@
     "CHANGELOG.md",
     "FRAME_CONTRACT.md",
     "LIFECYCLE.md",
-    "SECURITY-PRIVACY.md"
+    "SECURITY-PRIVACY.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "engines": {
     "node": ">=24.0.0"

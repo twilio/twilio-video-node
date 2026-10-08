@@ -1,6 +1,13 @@
 This SDK is currently in beta. It supports Linux x86-64, and macOS 26+ on x86-64 for local
 development only. See the [README](README.md#requirements) for details.
 
+# 1.0.0-beta.3 (In Progress)
+
+## License
+
+- The SDK source is now licensed under the Apache License 2.0. Earlier releases, through
+  1.0.0-beta.2, were distributed under the Twilio Terms of Service.
+
 # 1.0.0-beta.2 (September 29, 2026)
 
 ## Documentation

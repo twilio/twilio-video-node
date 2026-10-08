@@ -587,6 +587,7 @@ jobs:
           LIFECYCLE.md
           README.md
           SECURITY-PRIVACY.md
+          THIRD_PARTY_NOTICES.md
           dist/index.cjs
           dist/index.d.cts
           dist/index.d.mts
