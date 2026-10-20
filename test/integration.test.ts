@@ -430,10 +430,30 @@ describe('Codec-restricted Group Rooms', () => {
       // A test that fails before awaiting `subscribed` would otherwise report its
       // later timeout as an unhandled rejection against whichever test runs next.
       subscribed.catch(() => {});
+      const cam = createLocalVideoTrack('cam');
       connA = await connectToRoom('alice', room.name, {
-        videoTracks: [createLocalVideoTrack('cam')],
+        videoTracks: [cam],
         audioTracks: [createLocalAudioTrack('mic')],
       });
+      // Attached before awaiting anything else, which is all the docs promise.
+      const local = connA.room.localParticipant;
+      const failed = new Promise<[TwilioError, LocalTrack | undefined]>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error("Timeout waiting for 'trackPublicationFailed'")),
+          TIMEOUT.subscribe,
+        );
+        local.once('trackPublicationFailed', (error, track) => {
+          clearTimeout(timer);
+          resolve([error, track]);
+        });
+      });
+      failed.catch(() => {});
+
+      const [error, track] = await failed;
+      expect(error).toBeInstanceOf(MediaNoSupportedCodecError);
+      expect(error.code).toBe(53404);
+      expect(track).toBe(cam);
+      expect(() => local.publishTrack(createLocalVideoTrack('cam'))).not.toThrow();
       expect((await subscribed).kind).toBe('audio');
       // Let a late video publication show up before asserting its absence.
       await sleep(TIMEOUT.negotiate);

@@ -225,8 +225,9 @@ export class MediaServerRemoteDescFailedError extends defineError(
  * No codec the peers both support could be negotiated. Surfaced through
  * `trackSubscriptionFailed` when a remote track cannot be decoded - notably an
  * H.264-only track, which this SDK does not decode. Also surfaced through the
- * local participant's `trackPublicationFailed` when `publishTrack` publishes a
- * video track to a Room whose video codecs exclude VP8. Code `53404`.
+ * local participant's `trackPublicationFailed` when a video track, from
+ * `publishTrack` or passed to `connect()`, is published to a Room whose video
+ * codecs exclude VP8. Code `53404`.
  */
 export class MediaNoSupportedCodecError extends defineError(
   'MediaNoSupportedCodecError',

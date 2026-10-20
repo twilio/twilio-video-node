@@ -1,6 +1,7 @@
 #include "room_observer_wrap.h"
 #include "room_wrap.h"
 #include "remote_participant_wrap.h"
+#include "local_participant_wrap.h"
 #include "../common/error.h"
 
 namespace twilio_video_node {
@@ -37,6 +38,12 @@ void RoomObserverWrap::close() {
     for (auto& entry : observers) {
         RemoteParticipantWrap::CloseObserver(entry.second.observer);
     }
+    std::shared_ptr<LocalParticipantObserverImpl> localObserver;
+    {
+        std::lock_guard<std::mutex> lock(localParticipantObserverMutex_);
+        localObserver.swap(localParticipantObserver_);
+    }
+    LocalParticipantWrap::CloseObserver(localObserver);
     // Closed but not destroyed: close() can run from a listener on this very
     // queue, for instance one that calls room.dispose(), and drain() is still
     // on the stack below it.
@@ -100,7 +107,25 @@ void RoomObserverWrap::dispatchEvent(const std::string& eventName, std::function
 }
 
 void RoomObserverWrap::onConnected(twilio::video::Room* room) {
+    // rtc-cpp reports a connect-time publication failure right after this
+    // returns, before any JS wrap exists, so install a buffering observer now.
+    if (auto participant = room->getLocalParticipant()) {
+        auto observer = LocalParticipantWrap::CreateObserver(participant);
+        std::lock_guard<std::mutex> lock(localParticipantObserverMutex_);
+        // close() sets closed_ before taking this lock, so either it sees the
+        // stored observer or this sees closed_. Nothing would ever bind it.
+        if (closed_.load(std::memory_order_acquire)) {
+            LocalParticipantWrap::CloseObserver(observer);
+            return;
+        }
+        localParticipantObserver_ = std::move(observer);
+    }
     dispatchEvent("connected");
+}
+
+std::shared_ptr<LocalParticipantObserverImpl> RoomObserverWrap::GetLocalParticipantObserver() {
+    std::lock_guard<std::mutex> lock(localParticipantObserverMutex_);
+    return localParticipantObserver_;
 }
 
 void RoomObserverWrap::onDisconnected(const twilio::video::Room* room, std::unique_ptr<twilio::video::Error> error) {

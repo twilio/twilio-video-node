@@ -19,6 +19,10 @@ development only. See the [README](README.md#requirements) for details.
   process. Load it on the main thread only; frames can still be transferred to a worker for
   processing. Test runners that run files in worker threads, such as AVA by default or vitest with
   `pool: 'threads'`, hit this too; run them in child processes instead.
+- A track passed to `connect()` that the Room rejects, such as VP8 video in an H.264-only Group
+  Room, now emits `trackPublicationFailed` on `room.localParticipant` just after `connect()`
+  resolves, and its name is free to reuse. Previously the failure was never reported, and
+  publishing a new track with that name threw.
 
 # 1.0.0-beta.2 (September 29, 2026)
 

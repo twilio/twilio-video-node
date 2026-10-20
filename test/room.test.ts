@@ -5,6 +5,7 @@ import { LocalParticipant } from '../lib/local_participant.js';
 import { RemoteVideoTrack } from '../lib/remote_track.js';
 
 import { TwilioError } from '../lib/errors.js';
+import type { LocalTrack } from '../lib/track_publication.js';
 import type {
   NativeLocalParticipant,
   NativeRemoteParticipant,
@@ -196,6 +197,44 @@ describe('Room lifecycle events', () => {
     native.emit('connected');
     native.emit('connected');
     expect(onConnected).toHaveBeenCalledTimes(1);
+  });
+
+  describe('local participant at connect', () => {
+    const seeded = () => ({ name: 'cam', kind: 'video' }) as unknown as LocalTrack;
+    const nativeLocal = (native: NativeRoom) =>
+      native.localParticipant as NativeLocalParticipant & { emit: NativeCallback };
+
+    it('binds the local participant in a microtask, not inline in the connected event', async () => {
+      const native = fakeRoom();
+      const bind = vi.spyOn(nativeLocal(native), 'setEventCallback');
+      new Room(native, [seeded()]);
+
+      native.emit('connected');
+      expect(bind).not.toHaveBeenCalled();
+      await Promise.resolve();
+      expect(bind).toHaveBeenCalledTimes(1);
+    });
+
+    it('frees the seeded name when its publication fails before localParticipant is read', async () => {
+      const native = fakeRoom();
+      const room = new Room(native, [seeded()]);
+      native.emit('connected');
+      await Promise.resolve();
+
+      nativeLocal(native).emit('trackPublicationFailed', { code: 53404, trackName: 'cam' });
+      expect(() => room.localParticipant.publishTrack(seeded())).not.toThrow();
+    });
+
+    // An error escaping the bind at connect would be uncaught, which vitest
+    // reports as an unhandled error that fails the run.
+    it('reports duplicate names passed to connect() only when the caller reads localParticipant', async () => {
+      const native = fakeRoom();
+      const room = new Room(native, [seeded(), seeded()]);
+
+      native.emit('connected');
+      await Promise.resolve();
+      expect(() => room.localParticipant).toThrow(/already published/);
+    });
   });
 
   it('lifts a connectFailure payload into a TwilioError', () => {

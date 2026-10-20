@@ -251,6 +251,19 @@ export class Room extends TypedEventEmitter<RoomEvents> {
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'connected') {
+        // Bind the local participant from a microtask. Native event queues don't
+        // run microtasks between events, so an inline bind could replay a
+        // connect-time publication failure before `await connect()` resumes.
+        queueMicrotask(() => {
+          // Undefined once the Room is disposed.
+          if (!this._native.localParticipant) return;
+          try {
+            void this.localParticipant;
+          } catch {
+            // Duplicate track names passed to connect(). The caller's own read
+            // of localParticipant throws the same error.
+          }
+        });
         this._seedExistingParticipants();
         onConnected?.();
         onConnected = undefined;
@@ -312,7 +325,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     return this._wrapRemoteParticipant(native);
   }
 
-  /** The {@link LocalParticipant} representing this client. Lazily created and cached on first access. */
+  /** The {@link LocalParticipant} representing this client. Created when the Room connects, or on first access if sooner, and cached. */
   get localParticipant(): LocalParticipant {
     if (!this._localParticipant) {
       this._localParticipant = new LocalParticipant(
