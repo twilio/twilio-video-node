@@ -86,4 +86,4 @@ const badTokens = {
   },
 };
 
-export { generateToken, badTokens };
+export { generateToken, badTokens, credentials };

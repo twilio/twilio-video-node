@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, onTestFinished } from 'vitest';
 import crypto from 'node:crypto';
 import { connectToRoom, describeLiveRooms } from './helpers/connect.js';
 import { generateToken, badTokens } from './helpers/token.js';
+import { createGroupRoom } from './helpers/rooms.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
 import type {
   RemoteVideoTrack,
@@ -11,6 +12,7 @@ import type {
   VideoFrame,
   AudioFrame,
   RemoteTrack,
+  LocalTrack,
   RemoteTrackPublication,
   StatsReport,
   VideoContentPreferences,
@@ -23,6 +25,7 @@ import {
   LocalVideoTrackPublication,
   RemoteVideoTrackPublication,
   TwilioError,
+  MediaNoSupportedCodecError,
 } from '../lib/index.js';
 import type { EventEmitter } from 'node:events';
 
@@ -308,6 +311,124 @@ describe('Error cases, provoked end to end', () => {
       expect(typeof videoTrack.write(base)).toBe('boolean');
     } finally {
       await conn.cleanup();
+    }
+  });
+});
+
+describe('Codec-restricted Group Rooms', () => {
+  it('rejects a VP8 video publication in an H.264-only room with 53404', async () => {
+    const room = await createGroupRoom({ videoCodecs: ['H264'] });
+    onTestFinished(room.complete);
+    expect(room.videoCodecs).toEqual(['H264']);
+    const { connA, connB, remoteA } = await connectPair(room.name);
+    try {
+      const local = connA.room.localParticipant;
+      // waitForEvent keeps only the first argument; the failing track is the second.
+      const failed = new Promise<[TwilioError, LocalTrack | undefined]>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error("Timeout waiting for 'trackPublicationFailed'")),
+          TIMEOUT.subscribe,
+        );
+        local.once('trackPublicationFailed', (error, track) => {
+          clearTimeout(timer);
+          resolve([error, track]);
+        });
+      });
+      const audioSubscribed = waitForEvent(remoteA, 'trackSubscribed', TIMEOUT.subscribe);
+      const video = createLocalVideoTrack('cam');
+      local.publishTrack(video);
+      local.publishTrack(createLocalAudioTrack('mic'));
+
+      const [error, track] = await failed;
+      expect(error).toBeInstanceOf(MediaNoSupportedCodecError);
+      expect(error.code).toBe(53404);
+      expect(track).toBe(video);
+      await audioSubscribed;
+      expect([...remoteA.tracks.values()].map(p => p.kind)).toEqual(['audio']);
+      expect(local.videoTracks.size).toBe(0);
+      expect(connA.room.state).toBe('connected');
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+
+  it('publishes and subscribes VP8 video in a VP8-only room', async () => {
+    const room = await createGroupRoom({ videoCodecs: ['VP8'] });
+    onTestFinished(room.complete);
+    expect(room.videoCodecs).toEqual(['VP8']);
+    const { connA, connB, remoteA } = await connectPair(room.name);
+    const videoTrack = createLocalVideoTrack('cam');
+    const trackPromise = waitForEvent<RemoteVideoTrack>(
+      remoteA,
+      'trackSubscribed',
+      TIMEOUT.subscribe,
+    );
+    connA.room.localParticipant.publishTrack(videoTrack);
+    let pushInterval: NodeJS.Timeout | undefined;
+    let iterator: ReturnType<RemoteVideoTrack['frames']> | undefined;
+    try {
+      const remoteTrack = await trackPromise;
+      // Wait for renegotiation so the encoder sink attaches before frames are written.
+      await sleep(TIMEOUT.negotiate);
+
+      const receivedFrames: VideoFrame[] = [];
+      iterator = remoteTrack.frames({ mode: 'queue', maxQueue: 8 });
+      pushInterval = setInterval(() => {
+        videoTrack.write(generateI420Frame(640, 480));
+      }, 33);
+      const framesPromise = (async () => {
+        for await (const frame of iterator) {
+          receivedFrames.push(frame);
+          if (receivedFrames.length >= 1) break;
+        }
+      })();
+      await Promise.race([
+        framesPromise,
+        sleep(TIMEOUT.mediaFlow).then(() => {
+          throw new Error(`Only received ${receivedFrames.length} frames`);
+        }),
+      ]);
+      expect(receivedFrames.length).toBeGreaterThanOrEqual(1);
+
+      const reports = await connA.room.getStats();
+      const codecs = reports.flatMap(r => r.localVideoTrackStats.map(s => s.codec));
+      expect(codecs).toEqual(['VP8']);
+    } finally {
+      clearInterval(pushInterval);
+      await iterator?.return?.();
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
+
+  it('leaves connect-time video unpublished in an H.264-only room, and audio still publishes', async () => {
+    const room = await createGroupRoom({ videoCodecs: ['H264'] });
+    onTestFinished(room.complete);
+    expect(room.videoCodecs).toEqual(['H264']);
+    const connB = await connectToRoom('bob', room.name);
+    let connA: Awaited<ReturnType<typeof connectToRoom>> | undefined;
+    try {
+      // A missed event is never replayed, so listen before alice connects.
+      const subscribed = waitForEvent<RemoteTrack>(
+        connB.room,
+        'trackSubscribed',
+        TIMEOUT.subscribe,
+      );
+      connA = await connectToRoom('alice', room.name, {
+        videoTracks: [createLocalVideoTrack('cam')],
+        audioTracks: [createLocalAudioTrack('mic')],
+      });
+      expect((await subscribed).kind).toBe('audio');
+      // Let a late video publication show up before asserting its absence.
+      await sleep(TIMEOUT.negotiate);
+
+      const remoteAlice = [...connB.room.participants.values()].find(
+        (p: RemoteParticipant) => p.identity === 'alice',
+      );
+      expect(connA.room.localParticipant.videoTracks.size).toBe(0);
+      expect([...remoteAlice!.tracks.values()].map(p => p.kind)).toEqual(['audio']);
+      expect(connA.room.state).toBe('connected');
+    } finally {
+      await Promise.all([connA?.cleanup(), connB.cleanup()]);
     }
   });
 });
