@@ -335,6 +335,10 @@ describe('Codec-restricted Group Rooms', () => {
         });
       });
       const audioSubscribed = waitForEvent(remoteA, 'trackSubscribed', TIMEOUT.subscribe);
+      // A test that fails before awaiting these would otherwise report their
+      // later timeouts as unhandled rejections against whichever test runs next.
+      failed.catch(() => {});
+      audioSubscribed.catch(() => {});
       const video = createLocalVideoTrack('cam');
       local.publishTrack(video);
       local.publishTrack(createLocalAudioTrack('mic'));
@@ -390,8 +394,15 @@ describe('Codec-restricted Group Rooms', () => {
       ]);
       expect(receivedFrames.length).toBeGreaterThanOrEqual(1);
 
-      const reports = await connA.room.getStats();
-      const codecs = reports.flatMap(r => r.localVideoTrackStats.map(s => s.codec));
+      // Local video stats can be empty, or carry no codec, until the encoder has
+      // sent packets, so poll rather than read once.
+      let codecs: string[] = [];
+      const deadline = Date.now() + TIMEOUT.mediaFlow;
+      while (codecs.length === 0 && Date.now() < deadline) {
+        const reports = await connA.room.getStats();
+        codecs = reports.flatMap(r => r.localVideoTrackStats.map(s => s.codec)).filter(Boolean);
+        if (codecs.length === 0) await sleep(250);
+      }
       expect(codecs).toEqual(['VP8']);
     } finally {
       clearInterval(pushInterval);
@@ -413,6 +424,9 @@ describe('Codec-restricted Group Rooms', () => {
         'trackSubscribed',
         TIMEOUT.subscribe,
       );
+      // A test that fails before awaiting `subscribed` would otherwise report its
+      // later timeout as an unhandled rejection against whichever test runs next.
+      subscribed.catch(() => {});
       connA = await connectToRoom('alice', room.name, {
         videoTracks: [createLocalVideoTrack('cam')],
         audioTracks: [createLocalAudioTrack('mic')],
