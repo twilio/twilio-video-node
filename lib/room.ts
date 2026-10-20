@@ -102,10 +102,11 @@ export type RoomEvents = {
   /**
    * A remote track was subscribed to and is now delivering media or messages.
    *
-   * A participant who was already publishing emits this after {@link connect}
-   * resolves. Subscriptions that completed before the listener was attached are
-   * not replayed; they appear in `participant.tracks` with `isSubscribed` set to
-   * `true`.
+   * For a participant who was already publishing, subscription can complete
+   * before {@link connect} resolves or before the caller attaches a listener.
+   * Subscriptions that completed before the listener was attached are not
+   * replayed; they appear in `participant.tracks` with `isSubscribed` set to
+   * `true`, so read that state as well as listening for this event.
    *
    * @param track - The subscribed track.
    * @param publication - The publication the track was subscribed from.
