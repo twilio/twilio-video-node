@@ -134,4 +134,4 @@ To report a bug or request a feature, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-See [LICENSE.md](LICENSE.md).
+The SDK source is licensed under the Apache License 2.0. The prebuilt native binaries also contain the Twilio Video SDK for C++, which is distributed under the [Twilio Terms of Service](https://www.twilio.com/legal/tos), and third-party software listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). See [LICENSE.md](LICENSE.md).

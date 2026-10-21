@@ -10,6 +10,7 @@
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE.md",
+    "THIRD_PARTY_NOTICES.md",
     "examples/README.md"
   ],
   "name": "@twilio/video-node-sdk",
