@@ -9,8 +9,8 @@ development only. See the [README](README.md#requirements) for details.
   and data tracks, and a `connect()` that failed immediately each left work registered with
   Node's event loop that was only released on garbage collection, if at all, so the process
   stayed alive until it called `process.exit()`.
-- Fixed a crash when a `participantDisconnected` listener calls `room.dispose()`. The SDK kept
-  using the Room after the listener returned, by which point `dispose()` had freed it.
+- Calling `room.dispose()` from a `participantDisconnected` listener no longer crashes the
+  process.
 
 # 1.0.0-beta.2 (September 29, 2026)
 

@@ -959,14 +959,15 @@ describe('participantDisconnected', () => {
       });
     });
     connB.room.disconnect();
-    await disposed;
 
-    // The native layer resumes after the handler returns; give it a turn so a
-    // crash there fails this test rather than a later one.
-    await new Promise(resolve => setImmediate(resolve));
+    try {
+      await disposed;
 
-    expect(connA.room.state).toBe('disconnected');
-    expect(connA.room.participants.size).toBe(0);
+      expect(connA.room.state).toBe('disconnected');
+      expect(connA.room.participants.size).toBe(0);
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
   });
 });
 
