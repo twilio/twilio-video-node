@@ -571,11 +571,12 @@ export interface VideoContentPreferences {
   renderDimensions?: VideoRenderDimensions;
 }
 
+// NOTE: `RemoteMediaTrack`'s type parameter refers to this interface, so it must stay in the
+// published declarations. `stripInternal` matches the internal tag's text anywhere in the doc
+// comment, so don't add or quote it there.
 /**
  * Raw native shape of a remote video track. The exported `RemoteVideoTrack`
  * class wraps this and owns the `frames()` iterator and its policy queue.
- *
- * @internal
  */
 export interface NativeRemoteVideoTrack {
   /** Track name, as set by the publishing participant. */
@@ -604,11 +605,12 @@ export interface NativeRemoteVideoTrack {
   setContentPreferences(preferences: VideoContentPreferences): void;
 }
 
+// NOTE: `RemoteMediaTrack`'s type parameter refers to this interface, so it must stay in the
+// published declarations. `stripInternal` matches the internal tag's text anywhere in the doc
+// comment, so don't add or quote it there.
 /**
  * Raw native shape of a remote audio track. The exported `RemoteAudioTrack`
  * class wraps this.
- *
- * @internal
  */
 export interface NativeRemoteAudioTrack {
   /** Track name, as set by the publishing participant. */

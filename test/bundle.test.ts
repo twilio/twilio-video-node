@@ -176,8 +176,12 @@ describe('type resolution for consumers', () => {
             target: 'es2022',
             strict: true,
             noEmit: true,
-            skipLibCheck: true,
-            types: [],
+            // Check the shipped declarations too; otherwise a reference to a
+            // type missing from the bundle silently becomes `any`.
+            skipLibCheck: false,
+            // The declarations use Node types such as Buffer.
+            typeRoots: [path.join(root, 'node_modules', '@types')],
+            types: ['node'],
           },
           files: ['consumer.ts'],
         }),
