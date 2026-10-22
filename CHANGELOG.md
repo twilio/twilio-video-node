@@ -9,6 +9,9 @@ development only. See the [README](README.md#requirements) for details.
   and data tracks, and a `connect()` that failed immediately each left work registered with
   Node's event loop that was only released on garbage collection, if at all, so the process
   stayed alive until it called `process.exit()`.
+- The published `.d.ts` files no longer reference declarations that were missing from the
+  package. Compiling against them with `skipLibCheck: false` failed with TS2552 on
+  `RemoteVideoTrack` and `RemoteAudioTrack`.
 
 # 1.0.0-beta.2 (September 29, 2026)
 
