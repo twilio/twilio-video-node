@@ -9,6 +9,8 @@ development only. See the [README](README.md#requirements) for details.
   and data tracks, and a `connect()` that failed immediately each left work registered with
   Node's event loop that was only released on garbage collection, if at all, so the process
   stayed alive until it called `process.exit()`.
+- Fixed a crash when a `participantDisconnected` listener calls `room.dispose()`. The SDK kept
+  using the Room after the listener returned, by which point `dispose()` had freed it.
 
 # 1.0.0-beta.2 (September 29, 2026)
 
@@ -340,8 +342,6 @@ localParticipant.on('trackPublicationFailed', (error, localTrack) => { ... });
 - Fixed a crash during teardown when an event listener disposes the Room it is handling an
   event for. The internal event queue continued to touch its own state after the listener
   returned, which the `dispose()` had already freed.
-- Fixed a crash when a `participantDisconnected` listener calls `room.dispose()`. The SDK kept
-  using the Room after the listener returned, by which point `dispose()` had freed it.
 - A `RemoteDataTrack` no longer delivers a message after `trackUnsubscribed` has been emitted
   for it. A message that was already on its way to the JS thread when the track was
   unsubscribed is now dropped, matching the documented contract.
