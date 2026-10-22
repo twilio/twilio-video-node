@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -200,5 +200,45 @@ describe('module loading in a clean process', () => {
        console.log('precedence-ok');`,
     ]);
     expect(out).toBe('precedence-ok');
+  });
+});
+
+/**
+ * A Node process exits once nothing is left for it to do. These run a script
+ * that never calls `process.exit` and require the process to end on its own,
+ * which it cannot do while the SDK holds the event loop open.
+ *
+ * Requires `npm run build:ts` and a built addon.
+ */
+describe('process exit', () => {
+  function exitsOnItsOwn(script: string): void {
+    const result = spawnSync(process.execPath, ['-e', script], {
+      cwd: ROOT,
+      encoding: 'utf-8',
+      timeout: 10_000,
+    });
+    // A timeout kills the child with SIGTERM, so `signal` is set only when the
+    // process was still running.
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(0);
+  }
+
+  it('exits after creating local tracks', () => {
+    exitsOnItsOwn(
+      `const sdk = require('./dist/index.cjs');
+       sdk.createLocalVideoTrack('video');
+       sdk.createLocalAudioTrack('audio');
+       sdk.createLocalDataTrack('data');`,
+    );
+  });
+
+  it('exits after a connect() rejected before reaching the network', () => {
+    exitsOnItsOwn(
+      `const sdk = require('./dist/index.cjs');
+       sdk.connect('token', { preferredVideoCodecs: [1] }).then(
+         () => { throw new Error('connect unexpectedly resolved'); },
+         err => { if (!(err instanceof TypeError)) throw err; },
+       );`,
+    );
   });
 });

@@ -45,9 +45,6 @@ bool MediaFactoryWrap::IsInstance(Napi::Object obj) {
 
 MediaFactoryWrap::MediaFactoryWrap(const Napi::CallbackInfo& info)
     : Napi::ObjectWrap<MediaFactoryWrap>(info) {
-    Napi::Env env = info.Env();
-    asyncContext_ = std::make_unique<AsyncContext>(env);
-
     auto options = std::make_unique<twilio::media::MediaOptions>();
     options->audio_device_factory = [this](webrtc::TaskQueueFactory* task_queue_factory) {
         adm_ = NodeAudioDevice::Create(task_queue_factory);
@@ -56,11 +53,7 @@ MediaFactoryWrap::MediaFactoryWrap(const Napi::CallbackInfo& info)
     factory_ = twilio::media::MediaFactory::create(std::move(options));
 }
 
-MediaFactoryWrap::~MediaFactoryWrap() {
-    if (asyncContext_) {
-        asyncContext_->close();
-    }
-}
+MediaFactoryWrap::~MediaFactoryWrap() = default;
 
 Napi::Value MediaFactoryWrap::CreateVideoTrack(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
