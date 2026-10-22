@@ -942,6 +942,33 @@ describe('participantDisconnected', () => {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
+
+  it('survives room.dispose() called from the participantDisconnected handler', async () => {
+    const roomName = uniqueRoom();
+    const { connA, connB } = await connectPair(roomName);
+
+    const disposed = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("Timeout waiting for 'participantDisconnected'")),
+        TIMEOUT.subscribe,
+      );
+      connA.room.once('participantDisconnected', () => {
+        clearTimeout(timer);
+        connA.room.dispose();
+        resolve();
+      });
+    });
+    connB.room.disconnect();
+
+    try {
+      await disposed;
+
+      expect(connA.room.state).toBe('disconnected');
+      expect(connA.room.participants.size).toBe(0);
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
 });
 
 describe('LocalParticipant observer events', () => {
