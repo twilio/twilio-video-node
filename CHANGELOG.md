@@ -12,8 +12,8 @@ development only. See the [README](README.md#requirements) for details.
 - The published `.d.ts` files no longer reference declarations that were missing from the
   package. Compiling against them with `skipLibCheck: false` failed with TS2552 on
   `RemoteVideoTrack` and `RemoteAudioTrack`.
-- Fixed a crash when a `participantDisconnected` listener calls `room.dispose()`. The SDK kept
-  using the Room after the listener returned, by which point `dispose()` had freed it.
+- Calling `room.dispose()` from a `participantDisconnected` listener no longer crashes the
+  process.
 
 # 1.0.0-beta.2 (September 29, 2026)
 
