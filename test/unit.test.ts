@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   getVersion,
   setLogLevel,
@@ -34,6 +34,25 @@ import type {
   RemoteTrackPublication as RawRemoteTrackPublication,
 } from '../lib/types.js';
 import { generateI420Frame, generateAudioSamples } from './helpers/media.js';
+import { addon } from '../lib/native.js';
+
+// Fails any test that gets a Room back from the real native connect, which has
+// by then started a signaling connection. It delegates so native option
+// rejections still reach the validation tests.
+let reachedNativeConnect = false;
+beforeEach(() => {
+  reachedNativeConnect = false;
+  const realConnect = addon.connect;
+  vi.spyOn(addon, 'connect').mockImplementation((token, options) => {
+    realConnect(token, options).dispose();
+    reachedNativeConnect = true;
+    throw new Error('Unit test reached the native connect; spy on addon.connect');
+  });
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  expect(reachedNativeConnect, 'unit test reached the native connect').toBe(false);
+});
 
 describe('Version', () => {
   it('getVersion returns string', () => {
@@ -704,7 +723,30 @@ describe('Track source option validation', () => {
   });
 });
 
+function fakeConnectingRoom() {
+  const native = {
+    state: 'connecting',
+    disconnected: 0,
+    disposed: 0,
+    emit: (() => {}) as (event: string, data?: unknown) => void,
+    setEventCallback(cb: (event: string, data?: unknown) => void) {
+      native.emit = cb;
+    },
+    disconnect() {
+      native.disconnected++;
+    },
+    dispose() {
+      native.disposed++;
+    },
+  };
+  return native as unknown as NativeRoom & typeof native;
+}
+
 describe('connect() connectionTimeout validation', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it.each([-1, NaN, Infinity, 'soon'])('rejects %s', async bad => {
     await expect(connect('token', { connectionTimeout: bad as never })).rejects.toThrow(RangeError);
   });
@@ -719,19 +761,34 @@ describe('connect() connectionTimeout validation', () => {
   });
 
   it('normalizes a networkQuality object before reaching the native layer', async () => {
-    // Valid config: gets past validation and fails later on the bogus token,
-    // rather than being rejected as out of range.
-    await expect(
-      connect('not-a-real-token', { networkQuality: { local: 1, remote: 1 } }),
-    ).rejects.not.toThrow(RangeError);
+    const native = fakeConnectingRoom();
+    const nativeConnect = vi.spyOn(addon, 'connect').mockReturnValue(native);
+    const pending = connect('not-a-real-token', { networkQuality: { remote: 1 } });
+    expect(nativeConnect).toHaveBeenCalledWith(
+      'not-a-real-token',
+      expect.objectContaining({
+        enableNetworkQuality: true,
+        networkQualityConfiguration: { local: 1, remote: 1 },
+      }),
+    );
+    native.emit('connectFailure', { code: 53000 });
+    await expect(pending).rejects.toBeInstanceOf(SignalingConnectionError);
+    expect(native.disposed).toBe(1);
   });
 
   it('accepts 0, meaning wait indefinitely', async () => {
-    // Reaches the native connect (and fails there on the fake token) rather
-    // than being rejected by validation.
-    await expect(connect('not-a-real-token', { connectionTimeout: 0 })).rejects.not.toThrow(
-      RangeError,
-    );
+    vi.useFakeTimers();
+    const native = fakeConnectingRoom();
+    const nativeConnect = vi.spyOn(addon, 'connect').mockReturnValue(native);
+    let settled = false;
+    const pending = connect('not-a-real-token', { connectionTimeout: 0 });
+    expect(nativeConnect).toHaveBeenCalledOnce();
+    pending.catch(() => {}).finally(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(settled).toBe(false);
+    expect(native.disconnected).toBe(0);
+    native.emit('connectFailure', { code: 53000 });
+    await expect(pending).rejects.toBeInstanceOf(SignalingConnectionError);
   });
 });
 
