@@ -17,7 +17,8 @@ development only. See the [README](README.md#requirements) for details.
 - Importing the SDK in a `worker_thread` now throws `UnsupportedPlatformError`, including in apps
   that load it only in a worker. Loading it on both the main thread and a worker used to crash the
   process. Load it on the main thread only; frames can still be transferred to a worker for
-  processing.
+  processing. Test runners that run files in worker threads, such as AVA by default or vitest with
+  `pool: 'threads'`, hit this too; run them in child processes instead.
 
 # 1.0.0-beta.2 (September 29, 2026)
 
