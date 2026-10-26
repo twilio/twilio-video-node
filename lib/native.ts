@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { isMainThread } from 'node:worker_threads';
 import { NativeBindingLoadError, UnsupportedPlatformError } from './errors.js';
 import type { NativeAddon } from './types.js';
 
@@ -39,6 +40,15 @@ const SUPPORTED_PLATFORMS: string[] = (PKG.os ?? ['darwin', 'linux']).flatMap(o 
 );
 
 function loadAddon(): NativeAddon {
+  // The addon's constructors are process-wide, so loading it in a worker would
+  // break the main thread.
+  if (!isMainThread) {
+    throw new UnsupportedPlatformError(
+      '@twilio/video-node-sdk can only be loaded on the main thread, not in a worker_thread. ' +
+        'Import it on the main thread; frames can still be transferred to a worker for processing.',
+    );
+  }
+
   const platformDir = getPlatformDir();
   const prebuiltPath = getPrebuiltPath(platformDir);
 
