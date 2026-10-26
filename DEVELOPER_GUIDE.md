@@ -153,12 +153,15 @@ credentials in [section 4](#4-credentials) and reach the live Twilio service.
 | `npm run test:unit:pure`   | The subset that does not load the addon                                   |
 | `npm run test:coverage`    | Unit suite with the coverage thresholds CI enforces                       |
 | `npm run test:integration` | End-to-end suite against live Twilio rooms                                |
-| `npm test`                 | Everything, unit and integration - needs the credentials in section 4     |
+| `npm run test:browser`     | Interop tests with a headless Google Chrome participant                   |
+| `npm test`                 | Everything - needs the credentials in section 4 and Google Chrome         |
 | `npm run lint`             | ESLint                                                                    |
 | `npm run format:check`     | Prettier, check only (`npm run format` writes)                            |
 | `npm run typecheck`        | `tsc --noEmit` over lib and tests (run `npm run build:ts` first)          |
 | `npm run check:examples`   | Syntax-checks the examples and typechecks them against the built `.d.cts` |
 | `npm run docs`             | TypeDoc API reference into `docs/`                                        |
+
+`npm run test:browser` needs Google Chrome installed and the same credentials as `test:integration`.
 
 ## 4. Credentials
 
