@@ -942,6 +942,29 @@ describe('participantDisconnected', () => {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
   });
+
+  it('survives room.dispose() called from the participantDisconnected handler', async () => {
+    const roomName = uniqueRoom();
+    const { connA, connB } = await connectPair(roomName);
+
+    // Listeners run in registration order, so the dispose happens before the
+    // waiter below resolves.
+    connA.room.once('participantDisconnected', () => connA.room.dispose());
+    const disconnected = waitForEvent<RemoteParticipant>(
+      connA.room,
+      'participantDisconnected',
+      TIMEOUT.subscribe,
+    );
+
+    try {
+      connB.room.disconnect();
+      const participant = await disconnected;
+
+      expect(participant.identity).toBe('bob');
+    } finally {
+      await Promise.all([connA.cleanup(), connB.cleanup()]);
+    }
+  });
 });
 
 describe('LocalParticipant observer events', () => {
