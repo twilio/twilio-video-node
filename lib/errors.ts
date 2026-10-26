@@ -267,7 +267,10 @@ export class NativeBindingLoadError extends TwilioError {
   }
 }
 
-/** The current platform, architecture, or Node version is not supported. */
+/**
+ * The current platform, architecture, or Node version is not supported, or the
+ * SDK was imported in a `worker_thread`.
+ */
 export class UnsupportedPlatformError extends defineError(
   'UnsupportedPlatformError',
   SDK_LOCAL_CODE,

@@ -39,6 +39,8 @@ On macOS, npm cannot check the OS version, so on a release older than macOS 26 `
 
 The addon is built with N-API, so it does not need rebuilding for each Node.js release.
 
+Load the SDK on the main thread. Importing it in a `worker_thread` throws `UnsupportedPlatformError`; frames can still be transferred to a worker for processing.
+
 ## Installation
 
 ```bash

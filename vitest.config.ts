@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // The SDK throws when imported in a worker thread, so test files run in child processes.
+    pool: 'forks',
     testTimeout: 60000,
     hookTimeout: 30000,
     typecheck: { enabled: false },

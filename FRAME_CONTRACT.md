@@ -180,6 +180,8 @@ optimization that can land without an API change.
 The SDK cannot stop an application blocking the loop with synchronous per-frame
 work. Heavy per-frame CPU work belongs in `worker_threads` or in an asynchronous
 service call; frames are structured to transfer to a worker without copying.
+Import the SDK on the main thread only; importing it in a worker throws
+`UnsupportedPlatformError`.
 
 A track supports a **single receiver**. Calling `frames()` while a receiver is
 active throws. An application that needs several consumers fans out inside its
