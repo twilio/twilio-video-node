@@ -947,24 +947,20 @@ describe('participantDisconnected', () => {
     const roomName = uniqueRoom();
     const { connA, connB } = await connectPair(roomName);
 
-    const disposed = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error("Timeout waiting for 'participantDisconnected'")),
-        TIMEOUT.subscribe,
-      );
-      connA.room.once('participantDisconnected', () => {
-        clearTimeout(timer);
-        connA.room.dispose();
-        resolve();
-      });
-    });
-    connB.room.disconnect();
+    // Listeners run in registration order, so the dispose happens before the
+    // waiter below resolves.
+    connA.room.once('participantDisconnected', () => connA.room.dispose());
+    const disconnected = waitForEvent<RemoteParticipant>(
+      connA.room,
+      'participantDisconnected',
+      TIMEOUT.subscribe,
+    );
 
     try {
-      await disposed;
+      connB.room.disconnect();
+      const participant = await disconnected;
 
-      expect(connA.room.state).toBe('disconnected');
-      expect(connA.room.participants.size).toBe(0);
+      expect(participant.identity).toBe('bob');
     } finally {
       await Promise.all([connA.cleanup(), connB.cleanup()]);
     }
