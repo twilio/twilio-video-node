@@ -1,8 +1,22 @@
 # Contributing
 
-We are not accepting external code contributions at this time. The most useful way to
-contribute is to build with the SDK, report the issues you hit, and share feedback on the
-API.
+This repository is publicly available and maintained by Twilio under a limited external contribution model.
+
+## Pull requests
+
+Due to limited maintenance capacity, external pull requests are not currently accepted.
+
+## GitHub Issues
+
+GitHub Issues may be used to report reproducible bugs or provide feature feedback about this SDK. Issues are reviewed on a best-effort basis, with no SLA or guaranteed response.
+
+GitHub Issues are not an official Twilio support channel. For production issues, general usage questions, or account-specific assistance, please contact [Twilio Support](https://help.twilio.com/). If you have a Twilio account manager, you may also escalate through them.
+
+Do not share [Personally Identifiable Information (PII)](https://www.twilio.com/docs/glossary/what-is-personally-identifiable-information-pii) or sensitive account information, including access tokens, API keys, and credentials, in issues, logs, or screenshots.
+
+## Security vulnerabilities
+
+Report security vulnerabilities privately through [Twilio's Vulnerability Disclosure Program](https://www.twilio.com/en-us/security/vulnerability-disclosure-program), rather than public GitHub Issues.
 
 ## Reporting a bug
 
