@@ -111,45 +111,94 @@ describe('module loading in a clean process', () => {
     expect(out).toBe('missing-addon-ok');
   });
 
-  it('rejects an unsupported platform by name instead of advising a build that cannot work', () => {
-    // process.arch is a plain value property, so it can be redefined before the
-    // module under test reads it. Apple Silicon is the real-world case: npm
-    // refuses to install under arm64 because package.json declares cpu x64.
-    // Run from a directory with no build output, which is what a consumer has:
-    // `files` excludes build/, so an installed package never carries one.
-    const out = runNode([
+  /**
+   * Imports the built entry point as `platform`/`arch` from a copy of the
+   * package that has no prebuilt and no local build, which is what a consumer
+   * has: `files` excludes build/, so an installed package never carries one.
+   * Returns `<error name>: <message>` for the load failure.
+   *
+   * process.platform and process.arch are plain value properties, so they can
+   * be redefined before the module under test reads them. `glibc`, when given,
+   * is what the process report claims the C library is, since the suite cannot
+   * run on every distro.
+   */
+  function importWithoutAddonOn(platform: string, arch: string, glibc?: string): string {
+    return runNode([
       '--input-type=module',
       '-e',
-      `Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+      `Object.defineProperty(process, 'platform', { value: '${platform}', configurable: true });
+       Object.defineProperty(process, 'arch', { value: '${arch}', configurable: true });
+       if ('${glibc ?? ''}') {
+         process.report.getReport = () => ({ header: { glibcVersionRuntime: '${glibc}' } });
+       }
        const fs = await import('node:fs');
        const os = await import('node:os');
        const path = await import('node:path');
-       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-unsupported-'));
+       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-platform-'));
        fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ version: '0.0.0-test' }));
        fs.mkdirSync(path.join(tmp, 'dist'));
        fs.copyFileSync('dist/index.mjs', path.join(tmp, 'dist', 'index.mjs'));
        try {
          await import(path.join(tmp, 'dist', 'index.mjs'));
-         throw new Error('expected an unsupported-platform failure');
+         throw new Error('expected a load failure');
        } catch (err) {
-         const msg = String(err && err.message);
-         if (!/darwin-arm64|linux-arm64/.test(msg)) throw new Error('does not name the platform: ' + msg);
-         if (!/not a supported platform/.test(msg)) throw new Error('wrong error: ' + msg);
-         if (/npm run build/.test(msg)) throw new Error('advises a build that cannot succeed: ' + msg);
-         console.log('unsupported-platform-ok');
+         console.log(err.name + ': ' + err.message);
        }`,
     ]);
-    expect(out).toBe('unsupported-platform-ok');
+  }
+
+  it.each([
+    ['darwin', 'x64'],
+    ['linux', 'arm64'],
+  ])('rejects %s-%s by name instead of advising a build that cannot work', (platform, arch) => {
+    // package.json lists os and cpu independently, so npm installs on these
+    // combinations. The loader must refuse them by name, and must not send
+    // the user to Rosetta or to a build that cannot succeed.
+    const out = importWithoutAddonOn(platform, arch);
+    expect(out).toMatch(/^UnsupportedPlatformError: /);
+    expect(out).toContain(`${platform}-${arch} is not a supported platform`);
+    expect(out).toContain('linux-x64 and darwin-arm64');
+    expect(out).not.toMatch(/Rosetta|npm run build/);
+  });
+
+  it('treats darwin-arm64 as supported, so a missing addon is a build problem', () => {
+    const out = importWithoutAddonOn('darwin', 'arm64');
+    expect(out).toMatch(/^NativeBindingLoadError: /);
+    expect(out).toContain('No prebuilt binary for darwin-arm64');
+    expect(out).toMatch(/npm run (build|fetch-deps)/);
+  });
+
+  it('rejects a glibc older than 2.38 by version instead of failing later', () => {
+    // The native library references glibc 2.38 symbols. On an older glibc the
+    // addon loads and the process dies with a symbol lookup error the first
+    // time that code runs, so refuse at import.
+    const out = importWithoutAddonOn('linux', 'x64', '2.35');
+    expect(out).toMatch(/^UnsupportedPlatformError: /);
+    expect(out).toContain('glibc 2.35');
+    expect(out).toContain('glibc 2.38 or later');
+    expect(out).not.toMatch(/npm run build/);
+  });
+
+  it('accepts glibc 2.38, so a missing addon is a build problem', () => {
+    const out = importWithoutAddonOn('linux', 'x64', '2.38');
+    expect(out).toMatch(/^NativeBindingLoadError: /);
+    expect(out).toContain('No prebuilt binary for linux-x64');
+  });
+
+  it('does not apply the glibc floor off Linux', () => {
+    const out = importWithoutAddonOn('darwin', 'arm64', '2.35');
+    expect(out).toMatch(/^NativeBindingLoadError: /);
   });
 
   it('loads a local build even on a platform the package does not list', () => {
     // A contributor who compiled the addon themselves must be able to load it.
     // The platform gate runs only after the prebuilt and local-build paths, so
-    // an unlisted process.arch is not, on its own, a refusal to load.
+    // an unlisted platform is not, on its own, a refusal to load.
     const out = runNode([
       '--input-type=module',
       '-e',
-      `Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+      `Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+       Object.defineProperty(process, 'arch', { value: 'x64', configurable: true });
        const fs = await import('node:fs');
        const os = await import('node:os');
        const path = await import('node:path');

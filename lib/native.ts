@@ -15,7 +15,7 @@ const ROOT = fs.existsSync(path.join(__dirname_, '..', 'package.json'))
   ? path.join(__dirname_, '..')
   : path.join(__dirname_, '..', '..');
 
-const PKG: { version: string; os?: string[]; cpu?: string[] } = JSON.parse(
+const PKG: { version: string } = JSON.parse(
   fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'),
 );
 export const SDK_VERSION = PKG.version;
@@ -30,14 +30,24 @@ function getPrebuiltPath(platformDir: string): string {
 }
 
 /**
- * Platforms the published package ships a prebuild for, derived from the `os`
- * and `cpu` fields npm itself enforces at install time. Deriving rather than
- * restating them means the runtime check cannot drift from what the package
- * declares.
+ * Platforms the published package ships a prebuild for. The `os` and `cpu`
+ * fields in package.json list operating systems and architectures separately,
+ * so npm also installs the combinations that have no prebuild.
  */
-const SUPPORTED_PLATFORMS: string[] = (PKG.os ?? ['darwin', 'linux']).flatMap(o =>
-  (PKG.cpu ?? ['x64']).map(c => `${o}-${c}`),
-);
+const SUPPORTED_PLATFORMS: string[] = ['linux-x64', 'darwin-arm64'];
+
+/**
+ * The native library references glibc 2.38 symbols. Older systems load the
+ * addon, then the process dies with a symbol lookup error when that code runs.
+ */
+const MIN_GLIBC_MINOR = 38;
+
+/** The runtime glibc version on Linux, or undefined elsewhere and on musl. */
+function glibcVersion(): string | undefined {
+  if (process.platform !== 'linux') return undefined;
+  const report = process.report.getReport() as { header: { glibcVersionRuntime?: string } };
+  return report.header.glibcVersionRuntime;
+}
 
 function loadAddon(): NativeAddon {
   // The addon's constructors are process-wide, so loading it in a worker would
@@ -57,6 +67,14 @@ function loadAddon(): NativeAddon {
   // stale prebuilt silently shadows it and the test suite reports on a binary
   // nobody built. Trying it before the platform check also lets someone who
   // compiled the addon on a platform this package does not list load it.
+  const glibc = glibcVersion();
+  if (glibc !== undefined && Number(glibc.split('.')[1]) < MIN_GLIBC_MINOR) {
+    throw new UnsupportedPlatformError(
+      `glibc ${glibc} is too old. This SDK needs glibc 2.${MIN_GLIBC_MINOR} or later ` +
+        '(Ubuntu 24.04+, Debian 13+).',
+    );
+  }
+
   // Consumers never reach this: `files` excludes build/, so an installed
   // package has no local build.
   for (const buildType of ['Release', 'Debug']) {
@@ -93,18 +111,12 @@ function loadAddon(): NativeAddon {
   }
 
   // Nothing to load. Fail with the real reason rather than advising a build
-  // that cannot succeed. Apple Silicon is the common case: package.json
-  // declares cpu x64, so npm refuses to install under an arm64 Node in the
-  // first place.
+  // that cannot succeed.
   if (!SUPPORTED_PLATFORMS.includes(platformDir)) {
     throw new UnsupportedPlatformError(
       `${platformDir} is not a supported platform. This SDK ships a prebuilt addon for ` +
-        `${SUPPORTED_PLATFORMS.join(' and ')}. ` +
-        (process.platform === 'darwin' && process.arch === 'arm64'
-          ? 'There is no arm64 build. On Apple Silicon, run Node under Rosetta so ' +
-            'process.arch reports x64 (install once with `softwareupdate --install-rosetta`, ' +
-            'then use an x64 Node).'
-          : 'Contact the Twilio Video team for access to other platforms.'),
+        `${SUPPORTED_PLATFORMS.join(' and ')}. Contact the Twilio Video team for access to ` +
+        'other platforms.',
     );
   }
 

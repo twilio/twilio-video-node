@@ -8,7 +8,7 @@
  *
  * Download the YOLOX-nano ONNX model to examples/.models/ before running (the
  * program prints instructions if it is missing; see the README). Requires
- * Node.js >= 24, x64 (see README).
+ * Node.js >= 24 (see README).
  *
  * Usage: node examples/cv_object_detection.js [room-name]
  */

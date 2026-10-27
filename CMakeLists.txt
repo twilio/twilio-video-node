@@ -26,8 +26,8 @@ endif()
 
 if(APPLE)
    set(TARGET_PLATFORM "darwin")
-   set(TARGET_ARCH "x86_64")
-   set(CMAKE_OSX_ARCHITECTURES "x86_64")
+   set(TARGET_ARCH "arm64")
+   set(CMAKE_OSX_ARCHITECTURES "arm64")
    # Pinned, or the addon inherits the SDK of the machine that built it.
    set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0")
 else()
