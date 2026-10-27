@@ -61,6 +61,9 @@ void AudioFrameSink::OnData(const void* audio_data,
 }
 
 void AudioFrameSink::deliverFrame(AudioFrameData frameData) {
+    // close() resets asyncContext_ on the JS thread while WebRTC may still
+    // deliver to a sink detached without RemoveSink().
+    std::lock_guard<std::mutex> lock(mutex_);
     if (closed_ || !asyncContext_) return;
 
     asyncContext_->dispatch([this, frameData = std::move(frameData)](Napi::Env env) {

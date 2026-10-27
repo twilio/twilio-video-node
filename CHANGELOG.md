@@ -37,6 +37,8 @@ SDK on them throws `UnsupportedPlatformError`.
   Room, now emits `trackPublicationFailed` on `room.localParticipant` just after `connect()`
   resolves, and its name is free to reuse. Previously the failure was never reported, and
   publishing a new track with that name threw.
+- Ending a remote track's `frames()` iterator after the Room ended remotely no longer risks
+  crashing the process if a frame arrives at the same moment.
 
 # 1.0.0-beta.2 (September 29, 2026)
 
