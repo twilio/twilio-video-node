@@ -2,29 +2,6 @@
 
 > This guide is for Twilio employees working on the SDK. If you're an external developer, the best way to contribute is by building with the SDK, reporting issues, and sharing feedback. See the [developer docs](https://www.twilio.com/docs/video/node) for usage and the [API reference](https://twilio.github.io/twilio-video-node/latest/) for API docs.
 
-## Apple Silicon (M1/M2/M3)
-
-The native binary is **x64-only**. On Apple Silicon you must run all build commands under Rosetta. Install Rosetta first if you haven't already:
-
-```sh
-softwareupdate --install-rosetta
-```
-
-Then prefix every command in this guide with:
-
-```sh
-arch -x86_64 bash -c 'source ~/.nvm/nvm.sh && nvm use 24 && <command>'
-```
-
-For example:
-
-```sh
-arch -x86_64 bash -c 'source ~/.nvm/nvm.sh && nvm use 24 && npm run fetch-deps'
-```
-
-Under a native arm64 Node, `npm install` fails with `EBADPLATFORM` and the SDK
-throws `UnsupportedPlatformError` at import.
-
 ## 1. Prerequisites
 
 | Tool          | Version                                | Install (macOS)          | Install (Debian/Ubuntu)           |
@@ -196,7 +173,7 @@ A `NativeBindingLoadError` with a local build present. It was built for a differ
 
 ### `<platform>-<arch> is not a supported platform.`
 
-An `UnsupportedPlatformError`: the addon is not built for this `process.platform`/`process.arch`. On Apple Silicon this means Node is running as arm64; see [Apple Silicon](#apple-silicon-m1m2m3).
+An `UnsupportedPlatformError`: the addon is not built for this `process.platform`/`process.arch`. The SDK builds for `linux-x64` and `darwin-arm64`; Intel Macs and Linux arm64 are not supported. On Linux it is also thrown for a glibc older than 2.38.
 
 ### `TWILIO_ACCOUNT_SID, TWILIO_API_KEY, and TWILIO_API_SECRET are required`
 

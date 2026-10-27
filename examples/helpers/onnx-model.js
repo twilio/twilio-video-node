@@ -38,7 +38,7 @@ const MODELS = {
 };
 
 // Cap ONNX Runtime's intra-op thread pool. By default it uses one thread per
-// core and can saturate the CPU (especially under Rosetta on Apple Silicon).
+// core and can saturate the CPU.
 // Override with CV_THREADS.
 const THREADS = Math.max(1, Number(process.env.CV_THREADS) || 2);
 

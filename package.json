@@ -79,7 +79,8 @@
     "linux"
   ],
   "cpu": [
-    "x64"
+    "x64",
+    "arm64"
   ],
   "keywords": [
     "twilio",

@@ -20,18 +20,18 @@ Server-side Node.js SDK for Twilio Video Group Rooms with raw media frame access
 The native binary is prebuilt and bundled, so there is no build step.
 
 - Node.js >= 24.0.0
-- Linux x86-64 with glibc: Ubuntu 22.04+ or Debian 12+
-- macOS 26+ on x86-64, for local development only. The macOS build is not supported in production.
+- Linux x86-64 with glibc: Ubuntu 24.04+ or Debian 13+
+- macOS 26+ on arm64 (Apple Silicon), for local development only. The macOS build is not supported in production.
 
-The binary is x86-64 only. On Apple Silicon, Node must run under Rosetta so that `process.arch` reports `x64`; under a native arm64 Node, `npm install` fails with `EBADPLATFORM`. Alpine and other musl-based distros, native arm64 and Windows are not supported.
+The binary is built for Linux x86-64 and macOS arm64 only. Intel Macs, Linux arm64, Alpine and other musl-based distros, and Windows are not supported.
 
 On Linux the addon is linked against glibc and requires:
 
 | Requirement           | Minimum |
 | --------------------- | ------- |
-| glibc                 | 2.34    |
+| glibc                 | 2.38    |
 | libstdc++ (`GLIBCXX`) | 3.4.30  |
-| C++ ABI (`CXXABI`)    | 1.3.11  |
+| C++ ABI (`CXXABI`)    | 1.3.13  |
 
 It also links `libX11.so.6`, which WebRTC requires unconditionally. Install your distro's X11 client library (`libx11-6` on Debian and Ubuntu) even on headless servers.
 

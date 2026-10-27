@@ -40,5 +40,5 @@ console.log('\nToken:\n');
 console.log(jwt);
 console.log('\n\nTo use:');
 console.log(`  export TWILIO_ACCESS_TOKEN="${jwt}"`);
-console.log(`  arch -x86_64 node examples/virtual_camera.js test-room`);
+console.log(`  node examples/virtual_camera.js test-room`);
 console.log('');

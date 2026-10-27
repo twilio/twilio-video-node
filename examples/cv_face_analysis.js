@@ -12,7 +12,7 @@
  *
  * It runs a single ONNX model (pose). Download it to examples/.models/ before
  * running (the program prints instructions if it is missing; see the README).
- * Requires Node.js >= 24, x64 (see README).
+ * Requires Node.js >= 24 (see README).
  *
  * The attention scoring is a plain geometric heuristic — see the "Attention
  * scoring" section at the bottom of this file.

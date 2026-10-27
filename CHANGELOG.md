@@ -1,7 +1,21 @@
-This SDK is currently in beta. It supports Linux x86-64, and macOS 26+ on x86-64 for local
+This SDK is currently in beta. It supports Linux x86-64, and macOS 26+ on arm64 for local
 development only. See the [README](README.md#requirements) for details.
 
 # 1.0.0-beta.3 (In Progress)
+
+## Breaking Changes
+
+### The macOS prebuild is arm64
+
+The package now ships linux-x64 and darwin-arm64 prebuilds, and no longer ships darwin-x64. On
+Apple Silicon, use a native arm64 Node. On an Intel Mac or on Linux arm64, `npm install`
+succeeds but importing the SDK throws `UnsupportedPlatformError`.
+
+### Linux requires glibc 2.38 or later
+
+The Linux addon now needs glibc 2.38 or later, libstdc++ `CXXABI_1.3.13` and `GLIBCXX_3.4.30`:
+Ubuntu 24.04+ or Debian 13+. Ubuntu 22.04 and Debian 12 are no longer supported; importing the
+SDK on them throws `UnsupportedPlatformError`.
 
 ## Bug Fixes
 
