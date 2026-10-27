@@ -648,7 +648,8 @@ Napi::Value RoomWrap::GetLocalParticipant(const Napi::CallbackInfo& info) {
         return localParticipantCache_.Value();
     }
 
-    auto obj = LocalParticipantWrap::NewInstance(info.Env(), participant);
+    auto observer = observer_ ? observer_->GetLocalParticipantObserver() : nullptr;
+    auto obj = LocalParticipantWrap::NewInstance(info.Env(), participant, observer);
     localParticipantCache_ = Napi::Persistent(obj);
     return obj;
 }

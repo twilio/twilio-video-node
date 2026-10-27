@@ -14,6 +14,7 @@ namespace twilio_video_node {
 
 class RoomWrap;
 class RemoteParticipantObserverImpl;
+class LocalParticipantObserverImpl;
 
 class RoomObserverWrap : public twilio::video::RoomObserver,
                          public std::enable_shared_from_this<RoomObserverWrap> {
@@ -61,6 +62,9 @@ public:
     /** Drops the registration for a participant's SID once they have disconnected. */
     void ForgetParticipantObserver(const std::string& sid);
 
+    /** The local participant observer installed by onConnected, or null before it. */
+    std::shared_ptr<LocalParticipantObserverImpl> GetLocalParticipantObserver();
+
 private:
     void dispatchEvent(const std::string& eventName, std::function<Napi::Value(Napi::Env)> createArgs = nullptr);
 
@@ -87,6 +91,9 @@ private:
 
     std::mutex participantObserversMutex_;
     std::unordered_map<std::string, ParticipantObserverRegistration> participantObservers_;
+
+    std::mutex localParticipantObserverMutex_;
+    std::shared_ptr<LocalParticipantObserverImpl> localParticipantObserver_;
 };
 
 }

@@ -33,6 +33,11 @@ export type LocalParticipantEvents = {
    * Publishing a local track failed. The track is not published, and remote
    * participants never see it.
    *
+   * Also emitted, just after `connect()` resolves, for a track passed to
+   * {@link connect} that the Room rejected. Attach the listener right after
+   * `await connect()`, before awaiting anything else, to receive it; it is not
+   * replayed. The track's name is then free to reuse.
+   *
    * @param error - Why publishing failed.
    * @param localTrack - The track that failed to publish, or `undefined` if the
    * failure could not be attributed to a track this participant still holds.

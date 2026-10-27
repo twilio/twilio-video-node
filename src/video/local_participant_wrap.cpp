@@ -3,19 +3,43 @@
 #include "../media/local_audio_track_wrap.h"
 #include "../media/local_data_track_wrap.h"
 #include "../common/error.h"
+#include <vector>
 
 namespace twilio_video_node {
 
 class LocalParticipantObserverImpl : public twilio::video::LocalParticipantObserver {
+    struct PendingEvent {
+        std::string name;
+        std::function<Napi::Value(Napi::Env)> createArgs;
+    };
+
 public:
-    LocalParticipantObserverImpl(LocalParticipantWrap* wrap, AsyncContext* ctx)
-        : wrap_(wrap), ctx_(ctx) {}
+    LocalParticipantObserverImpl() = default;
+
+    // Adopts the JS wrap and replays whatever arrived before it existed, in
+    // order. Runs on the JS thread. A no-op if a wrap is already bound.
+    void bind(LocalParticipantWrap* wrap, AsyncContext* ctx) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_.load(std::memory_order_acquire) || wrap_ != nullptr) return;
+        wrap_ = wrap;
+        ctx_ = ctx;
+
+        // Replay while still holding the lock, so a signaling thread callback
+        // arriving mid-replay cannot reach the queue ahead of these older events.
+        std::vector<PendingEvent> replay;
+        replay.swap(pending_);
+        for (auto& event : replay) {
+            dispatchLocked(std::move(event));
+        }
+    }
 
     void close() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_.load(std::memory_order_acquire)) return;
         closed_.store(true, std::memory_order_release);
         wrap_ = nullptr;
+        ctx_ = nullptr;
+        pending_.clear();
     }
 
     void onAudioTrackPublished(twilio::video::LocalParticipant*,
@@ -64,12 +88,24 @@ private:
         if (closed_.load(std::memory_order_acquire)) return;
 
         std::lock_guard<std::mutex> lock(mutex_);
-        if (closed_.load(std::memory_order_acquire) || !wrap_) return;
+        if (closed_.load(std::memory_order_acquire)) return;
 
-        ctx_->dispatch([this, eventName, createArgs](Napi::Env env) {
+        // Buffer until bind() supplies the wrap. The createArgs lambdas only touch
+        // Napi when invoked, so holding them off the JS thread is safe.
+        if (!wrap_ || !ctx_) {
+            pending_.push_back({eventName, std::move(createArgs)});
+            return;
+        }
+
+        dispatchLocked({eventName, std::move(createArgs)});
+    }
+
+    // Requires mutex_ held and wrap_/ctx_ set.
+    void dispatchLocked(PendingEvent event) {
+        ctx_->dispatch([this, event = std::move(event)](Napi::Env env) {
             if (closed_.load(std::memory_order_acquire) || !wrap_) return;
-            Napi::Value arg = createArgs ? createArgs(env) : env.Undefined();
-            wrap_->emitEvent(eventName, arg);
+            Napi::Value arg = event.createArgs ? event.createArgs(env) : env.Undefined();
+            wrap_->emitEvent(event.name, arg);
         });
     }
 
@@ -95,8 +131,9 @@ private:
         });
     }
 
-    LocalParticipantWrap* wrap_;
-    AsyncContext* ctx_;
+    LocalParticipantWrap* wrap_ = nullptr;
+    AsyncContext* ctx_ = nullptr;
+    std::vector<PendingEvent> pending_;
     std::atomic<bool> closed_{false};
     std::mutex mutex_;
 };
@@ -124,15 +161,27 @@ void LocalParticipantWrap::Init(Napi::Env env, Napi::Object exports) {
     exports.Set("LocalParticipant", func);
 }
 
-Napi::Object LocalParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<twilio::video::LocalParticipant> participant) {
+std::shared_ptr<LocalParticipantObserverImpl> LocalParticipantWrap::CreateObserver(
+    std::shared_ptr<twilio::video::LocalParticipant> participant) {
+    auto observer = std::make_shared<LocalParticipantObserverImpl>();
+    participant->setObserver(observer);
+    return observer;
+}
+
+void LocalParticipantWrap::CloseObserver(const std::shared_ptr<LocalParticipantObserverImpl>& observer) {
+    if (observer) observer->close();
+}
+
+Napi::Object LocalParticipantWrap::NewInstance(Napi::Env env, std::shared_ptr<twilio::video::LocalParticipant> participant,
+                                              std::shared_ptr<LocalParticipantObserverImpl> observer) {
     Napi::EscapableHandleScope scope(env);
 
     Napi::Object obj = constructor_.New({});
     LocalParticipantWrap* wrap = Napi::ObjectWrap<LocalParticipantWrap>::Unwrap(obj);
     wrap->participant_ = participant;
     wrap->asyncContext_ = std::make_unique<AsyncContext>(env, 0);
-    wrap->observer_ = std::make_shared<LocalParticipantObserverImpl>(wrap, wrap->asyncContext_.get());
-    participant->setObserver(wrap->observer_);
+    wrap->observer_ = observer ? std::move(observer) : CreateObserver(participant);
+    wrap->observer_->bind(wrap, wrap->asyncContext_.get());
 
     return scope.Escape(obj).ToObject();
 }

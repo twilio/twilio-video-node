@@ -14,7 +14,16 @@ class LocalParticipantObserverImpl;
 class LocalParticipantWrap : public Napi::ObjectWrap<LocalParticipantWrap> {
 public:
     static void Init(Napi::Env env, Napi::Object exports);
-    static Napi::Object NewInstance(Napi::Env env, std::shared_ptr<twilio::video::LocalParticipant> participant);
+    /** Installs an observer that buffers events until a wrap binds it. */
+    static std::shared_ptr<LocalParticipantObserverImpl> CreateObserver(
+        std::shared_ptr<twilio::video::LocalParticipant> participant);
+
+    /** Binds `observer` (or a new one, if null) to the new wrap, replaying its buffer. */
+    static Napi::Object NewInstance(Napi::Env env, std::shared_ptr<twilio::video::LocalParticipant> participant,
+                                    std::shared_ptr<LocalParticipantObserverImpl> observer = nullptr);
+
+    /** Stops delivery and drops any buffered events. Safe on null. */
+    static void CloseObserver(const std::shared_ptr<LocalParticipantObserverImpl>& observer);
 
     LocalParticipantWrap(const Napi::CallbackInfo& info);
     ~LocalParticipantWrap();
