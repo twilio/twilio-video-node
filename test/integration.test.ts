@@ -2324,4 +2324,84 @@ describe('Process exit', () => {
       await bob.cleanup();
     }
   }, 90_000);
+
+  /**
+   * Runs `body` in a child process with `sdk`, `room` (connected, `track`
+   * published) and `track` in scope. `body` prints what the test asserts on;
+   * the child must then exit on its own.
+   */
+  async function runDataTrackScript(body: string): Promise<string> {
+    const roomName = uniqueRoom();
+    const script = `
+      const sdk = require('./dist/index.cjs');
+      const guard = setTimeout(() => {
+        console.error('timed out with the process still held');
+        process.exit(2);
+      }, 30000).unref();
+      (async () => {
+        const track = sdk.createLocalDataTrack('chat');
+        const room = await sdk.connect(process.env.TOKEN, { name: process.env.ROOM });
+        const published = new Promise(resolve =>
+          room.localParticipant.once('trackPublished', resolve));
+        room.localParticipant.publishTrack(track);
+        await published;
+        ${body}
+        clearTimeout(guard);
+      })().catch(err => {
+        console.error(err);
+        process.exit(3);
+      });
+    `;
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const child = spawn(process.execPath, ['-e', script], {
+      cwd: root,
+      env: { ...process.env, TOKEN: generateToken('alice', roomName), ROOM: roomName },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => (stdout += chunk));
+    child.stderr.on('data', chunk => (stderr += chunk));
+    const { code, signal } = await new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>(resolve => {
+      const timer = setTimeout(() => child.kill(), 45_000);
+      child.on('close', (code, signal) => {
+        clearTimeout(timer);
+        resolve({ code, signal });
+      });
+    });
+    if (signal !== null || code !== 0) {
+      throw new Error(
+        `child did not exit cleanly (code ${code}, signal ${signal})\n` +
+          `stdout:\n${stdout}\nchild stderr (tail):\n${stderr.slice(-2000)}`,
+      );
+    }
+    return stdout.trim();
+  }
+
+  it('exits after a send() pending at room.dispose() settles with ok: false', async () => {
+    const out = await runDataTrackScript(`
+      const pending = track.send('hello');
+      room.dispose();
+      const result = await pending;
+      console.log('ok=' + result.ok);
+    `);
+    expect(out).toBe('ok=false');
+  }, 90_000);
+
+  // A send already issued is still reported by the engine after unpublish, so
+  // only its settling is asserted. A send made after unpublish has no Room.
+  it('settles sends made before and after unpublishTrack(), then exits', async () => {
+    const out = await runDataTrackScript(`
+      const before = track.send('before');
+      room.localParticipant.unpublishTrack(track);
+      const after = track.send('after');
+      before.then(result => console.log('before=' + result.ok));
+      after.then(result => console.log('after=' + result.ok));
+      await Promise.all([before, after]);
+      room.dispose();
+    `);
+    expect(out.split('\n').sort()).toEqual(['after=false', expect.stringMatching(/^before=/)]);
+  }, 90_000);
 });

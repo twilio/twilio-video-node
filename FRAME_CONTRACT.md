@@ -201,3 +201,9 @@ fire-and-forget send cannot produce an unhandled rejection. It resolves to
 If the track is destroyed while a send is still in flight, the outstanding
 promise resolves with `ok: false` and an `error` naming the teardown, rather
 than being left pending.
+
+The engine reports a send's outcome only through a Room. A `send()` on a track
+that is not published to a Room, never published or since unpublished, resolves
+at once with `ok: false`. A send still pending when the track's last Room is
+disposed resolves with `ok: false` inside `room.dispose()`. A send made before
+`unpublishTrack()` is still reported by the engine.

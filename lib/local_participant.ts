@@ -1,5 +1,6 @@
 import type {
   NativeLocalParticipant,
+  NativeLocalDataTrack,
   EncodingParameters,
   LocalVideoTrack,
   LocalAudioTrack,
@@ -18,6 +19,27 @@ import {
   type LocalTrackPublication,
   type LocalTrack,
 } from './track_publication.js';
+
+/**
+ * @internal A Room's data tracks, each mapped to whether it is still published
+ * there. Owned by the Room, since its LocalParticipant is created lazily.
+ */
+export type RoomDataTracks = Map<NativeLocalDataTrack, boolean>;
+
+/** @internal Counts `track` as published in the Room that owns `dataTracks`. */
+export function markPublished(dataTracks: RoomDataTracks, track: LocalTrack): void {
+  const dataTrack = track as NativeLocalDataTrack;
+  if (track.kind !== 'data' || dataTracks.get(dataTrack)) return;
+  dataTracks.set(dataTrack, true);
+  dataTrack._attachRoom();
+}
+
+function markUnpublished(dataTracks: RoomDataTracks, track: LocalTrack): void {
+  const dataTrack = track as NativeLocalDataTrack;
+  if (!dataTracks.get(dataTrack)) return;
+  dataTracks.set(dataTrack, false);
+  dataTrack._detachRoom();
+}
 
 /** Listener signatures for every event a {@link LocalParticipant} can emit. */
 export type LocalParticipantEvents = {
@@ -63,15 +85,18 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   /** @internal */
   readonly _native: NativeLocalParticipant;
   private _publishedTracks = new Map<string, LocalTrack>();
+  private _dataTracks: RoomDataTracks;
   private _unpublishFn = (track: LocalTrack): boolean => this.unpublishTrack(track);
 
   /** @internal */
   constructor(
     nativeParticipant: NativeLocalParticipant,
     seededTracks: ReadonlyArray<LocalTrack> = [],
+    dataTracks: RoomDataTracks = new Map(),
   ) {
     super();
     this._native = nativeParticipant;
+    this._dataTracks = dataTracks;
     // Seed before setEventCallback wires up so a synchronously-delivered
     // native event resolves against a fully-populated publication map.
     for (const track of seededTracks) {
@@ -181,6 +206,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     const result = this._native.publishTrack(track);
     if (result) {
       this._publishedTracks.set(track.name, track as LocalTrack);
+      markPublished(this._dataTracks, track as LocalTrack);
     }
     return result;
   }
@@ -195,6 +221,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
     const result = this._native.unpublishTrack(track);
     if (result) {
       this._publishedTracks.delete(track.name);
+      markUnpublished(this._dataTracks, track as LocalTrack);
     }
     return result;
   }

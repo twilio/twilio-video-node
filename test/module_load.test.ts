@@ -81,6 +81,38 @@ describe('module loading in a clean process', () => {
     expect(out).toBe('version-ok');
   });
 
+  // runNode returns only once the child exits, so a send() that never settles,
+  // or that keeps the event loop alive, fails this on the timeout instead.
+  it('settles a send() on an unpublished data track and lets the process exit', () => {
+    const out = runNode([
+      '-e',
+      `const sdk = require('./dist/index.cjs');
+       const track = sdk.createLocalDataTrack('unpublished');
+       track.send('hello').then(result => console.log('ok=' + result.ok));`,
+    ]);
+    expect(out).toBe('ok=false');
+  });
+
+  // A fake native Room never reports the send, so only dispose() can settle it
+  // and release the hold it took.
+  it('settles a send() pending at room.dispose() and lets the process exit', () => {
+    const out = runNode([
+      '-e',
+      `const sdk = require('./dist/index.cjs');
+       const nativeRoom = {
+         localParticipant: { setEventCallback() {} },
+         remoteParticipants: [],
+         setEventCallback() {},
+         dispose() {},
+       };
+       const track = sdk.createLocalDataTrack('pending-at-dispose');
+       const room = new sdk.Room(nativeRoom, [track]);
+       track.send('hello').then(result => console.log('ok=' + result.ok));
+       room.dispose();`,
+    ]);
+    expect(out).toBe('ok=false');
+  });
+
   it('fails with a typed, actionable error when the addon is missing', () => {
     // Point the loader at a directory with no prebuilds and no build output, so
     // the failure path runs. It must name the platform and say what to do -

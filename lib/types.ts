@@ -534,7 +534,9 @@ export interface LocalDataTrack {
    *
    * The returned promise **always resolves** - never rejects - so a
    * fire-and-forget `send()` cannot produce an unhandled rejection. Await it
-   * only when the outcome matters.
+   * only when the outcome matters. It resolves with `ok: false` at once when
+   * the track is not published to a Room, and a send still pending when the
+   * track's last Room is disposed resolves with `ok: false` then.
    *
    * @throws {RangeError} Synchronously, if the message exceeds 64 KB
    *   (`kMaxMessageSize`). Oversize messages are never transmitted.
@@ -546,7 +548,7 @@ export interface LocalDataTrack {
 /**
  * Outcome of a {@link LocalDataTrack.send}. `ok` is `false` when the message
  * could not be sent or queued - most often because the send buffer had no room
- * for it.
+ * for it - or when the track is not published to a Room.
  */
 export interface DataTrackSendResult {
   /** Whether the message was sent or queued for sending. */
@@ -827,6 +829,18 @@ export interface NativeLocalParticipant {
   unpublishTrack(track: LocalVideoTrack | LocalAudioTrack | LocalDataTrack): boolean;
   setEncodingParameters(params?: EncodingParameters): void;
   setEventCallback(cb: (event: string, data?: unknown) => void): void;
+}
+
+/**
+ * @internal The native data track's count of Rooms it is published in. The
+ * engine reports a send's outcome only through a Room, so with none the track
+ * settles sends itself.
+ */
+export interface NativeLocalDataTrack extends LocalDataTrack {
+  _attachRoom(): void;
+  _detachRoom(): void;
+  /** Resolves every pending send with `ok: false` if the track is in no Room. */
+  _settlePendingIfUnpublished(reason: string): void;
 }
 
 /** @internal */

@@ -30,6 +30,7 @@ import {
 } from '../lib/errors.js';
 import type {
   NativeRoom,
+  NativeLocalParticipant,
   NativeRemoteParticipant,
   RemoteTrackPublication as RawRemoteTrackPublication,
 } from '../lib/types.js';
@@ -822,14 +823,129 @@ describe('Data Track send limits', () => {
     const result = track.send('hello');
     expect(result).toBeInstanceOf(Promise);
     // Never rejects, so a fire-and-forget send cannot cause an unhandled
-    // rejection. Unpublished, the result settles only when the track is
-    // destroyed, so this only asserts the shape.
+    // rejection.
     result.catch(() => expect.unreachable('send() must not reject'));
   });
 
   it('rejects a non-string, non-Buffer payload', () => {
     const track = createLocalDataTrack('bad-payload');
     expect(() => track.send(42 as never)).toThrow(TypeError);
+  });
+});
+
+// The engine reports a send's outcome only while the track is in a Room, so
+// these use a real native track with a fake native Room and participant: a
+// send stays pending until the SDK itself settles it.
+describe('Data Track send without a Room', () => {
+  type Outcome = { done: boolean; value?: { ok: boolean; messageId: number; error?: string } };
+
+  function observe(promise: Promise<Outcome['value']>): Outcome {
+    const outcome: Outcome = { done: false };
+    void promise.then(value => {
+      outcome.done = true;
+      outcome.value = value;
+    });
+    return outcome;
+  }
+
+  // One macrotask: long enough for any promise resolved synchronously by the
+  // SDK to have run its handlers.
+  const nextTurn = () => new Promise(resolve => setImmediate(resolve));
+
+  function fakeNativeRoom() {
+    const localParticipant = {
+      setEventCallback() {},
+      publishTrack: () => true,
+      unpublishTrack: () => true,
+    } as unknown as NativeLocalParticipant;
+    return {
+      localParticipant,
+      remoteParticipants: [],
+      setEventCallback() {},
+      dispose() {},
+    } as unknown as NativeRoom;
+  }
+
+  it('resolves with ok: false when the track was never published', async () => {
+    const outcome = observe(createLocalDataTrack('never-published').send('hello'));
+    await nextTurn();
+
+    expect(outcome).toMatchObject({
+      done: true,
+      value: { ok: false, messageId: expect.any(Number) },
+    });
+    expect(outcome.value?.error).toMatch(/not published/);
+  });
+
+  it('resolves a send made after unpublishTrack() with ok: false', async () => {
+    const room = new Room(fakeNativeRoom());
+    const track = createLocalDataTrack('sent-after-unpublish');
+    room.localParticipant.publishTrack(track);
+    room.localParticipant.unpublishTrack(track);
+
+    const outcome = observe(track.send('hello'));
+    await nextTurn();
+
+    expect(outcome).toMatchObject({ done: true, value: { ok: false } });
+    expect(outcome.value?.error).toMatch(/not published/);
+    room.dispose();
+  });
+
+  // The engine still reports a send made before unpublish, so unpublish leaves
+  // it pending; dispose is what settles it if no report ever comes.
+  it('leaves a send pending at unpublishTrack() for dispose to settle', async () => {
+    const room = new Room(fakeNativeRoom());
+    const track = createLocalDataTrack('pending-at-unpublish');
+    room.localParticipant.publishTrack(track);
+    const outcome = observe(track.send('hello'));
+
+    room.localParticipant.unpublishTrack(track);
+    await nextTurn();
+    expect(outcome.done).toBe(false);
+
+    room.dispose();
+    await nextTurn();
+    expect(outcome).toMatchObject({ done: true, value: { ok: false } });
+    expect(outcome.value?.error).toMatch(/disposed/);
+  });
+
+  it('resolves pending sends with ok: false when the Room is disposed', async () => {
+    // One track passed at connect and one published after, without ever reading
+    // room.localParticipant for the first: it is created lazily.
+    const seeded = createLocalDataTrack('seeded');
+    const room = new Room(fakeNativeRoom(), [seeded]);
+    const seededOutcome = observe(seeded.send('hello'));
+    await nextTurn();
+    expect(seededOutcome.done).toBe(false);
+
+    const later = createLocalDataTrack('published-later');
+    room.localParticipant.publishTrack(later);
+    const laterOutcome = observe(later.send('hello'));
+    await nextTurn();
+    expect(laterOutcome.done).toBe(false);
+
+    room.dispose();
+    await nextTurn();
+
+    for (const outcome of [seededOutcome, laterOutcome]) {
+      expect(outcome).toMatchObject({ done: true, value: { ok: false } });
+      expect(outcome.value?.error).toMatch(/disposed/);
+    }
+  });
+
+  it('keeps a send pending while the track is still in another Room', async () => {
+    const track = createLocalDataTrack('two-rooms');
+    const first = new Room(fakeNativeRoom(), [track]);
+    const second = new Room(fakeNativeRoom(), [track]);
+    const outcome = observe(track.send('hello'));
+
+    first.dispose();
+    await nextTurn();
+    expect(outcome.done).toBe(false);
+
+    second.dispose();
+    await nextTurn();
+    expect(outcome).toMatchObject({ done: true, value: { ok: false } });
   });
 });
 

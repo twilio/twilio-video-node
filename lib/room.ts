@@ -1,4 +1,4 @@
-import { LocalParticipant } from './local_participant.js';
+import { LocalParticipant, markPublished, type RoomDataTracks } from './local_participant.js';
 import { RemoteParticipant, type RemoteParticipantEvents } from './remote_participant.js';
 import { TypedEventEmitter } from './typed_emitter.js';
 import type { RemoteVideoTrack, RemoteAudioTrack, RemoteDataTrack } from './remote_track.js';
@@ -235,6 +235,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
   private _localParticipant: LocalParticipant | null = null;
   private _remoteParticipantCache = new Map<Participant.SID, RemoteParticipant>();
   private _seededTracks: ReadonlyArray<LocalTrack>;
+  private _dataTracks: RoomDataTracks = new Map();
 
   /**
    * @internal `onConnected` fires once for the native connect signal, which is
@@ -248,6 +249,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     super();
     this._native = nativeRoom;
     this._seededTracks = seededTracks;
+    for (const track of seededTracks) markPublished(this._dataTracks, track);
 
     this._native.setEventCallback((event: string, data?: unknown) => {
       if (event === 'connected') {
@@ -331,6 +333,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
       this._localParticipant = new LocalParticipant(
         this._native.localParticipant,
         this._seededTracks,
+        this._dataTracks,
       );
     }
     return this._localParticipant;
@@ -408,6 +411,13 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     // Ends every active frames() iterator; without this a `for await` loop on a
     // subscribed track would hang after the Room goes away.
     this._tracks.releaseAllRemoteTracks();
+    // The engine reports sends only through a Room, so a send on a track left
+    // in no Room would otherwise never settle and would hold the process open.
+    for (const [track, published] of this._dataTracks) {
+      if (published) track._detachRoom();
+      track._settlePendingIfUnpublished('Room was disposed before the send completed');
+    }
+    this._dataTracks.clear();
     this._native.dispose();
     this.removeAllListeners();
   }
