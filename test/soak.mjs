@@ -8,7 +8,7 @@
  * hours, and the point is the time series, not an assertion at the end.
  *
  * Usage:
- *   node test/soak.mjs --minutes 60 [--out soak-60m.json] [--sample 30]
+ *   node test/soak.mjs --minutes 60 [--out soak-60m.json] [--sample 30] [--rss-advisory]
  *
  * Requires TWILIO_ACCOUNT_SID / TWILIO_API_KEY / TWILIO_API_SECRET, a built
  * addon, and `npm run build:ts`.
@@ -19,7 +19,9 @@
  *   - every sample interval: RSS, heap, external, fd count, thread count,
  *     frames written/delivered/dropped
  *
- * Exit code is 0 when the run completes and no leak threshold is breached.
+ * --rss-advisory reports RSS growth without failing the run, for sanitizer builds.
+ *
+ * Exit code: 0 OK, 1 threshold breached or Room dropped, 2 script error.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -28,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import twilio from 'twilio';
 // The built bundle, not lib/: this runs under plain node with no TS loader.
 import { connect, createLocalVideoTrack, createLocalAudioTrack } from '../dist/index.mjs';
+import { soakFindings } from './soak_findings.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { AccessToken } = twilio.jwt;
@@ -62,6 +65,7 @@ if (!['idle', 'publish', 'full'].includes(MODE)) {
   process.exit(2);
 }
 const OUT = path.resolve(ROOT, arg('out', `soak-${MINUTES}m.json`));
+const RSS_ADVISORY = process.argv.includes('--rss-advisory');
 
 const VIDEO_FPS = 15;
 const AUDIO_CHUNK_MS = 10;
@@ -174,7 +178,8 @@ async function main() {
 
   log(
     `starting ${MINUTES} minute soak, mode=${MODE}, sampling every ${SAMPLE_SECONDS}s` +
-      (rotating ? `, rotating rooms every ${ROTATE_SECONDS / 3600}h` : ''),
+      (rotating ? `, rotating rooms every ${ROTATE_SECONDS / 3600}h` : '') +
+      (RSS_ADVISORY ? ', RSS rules advisory' : ''),
   );
 
   const samples = [];
@@ -447,9 +452,6 @@ async function main() {
   log(`wrote ${OUT}`);
   log(JSON.stringify(summary, null, 2));
 
-  // Thresholds are deliberately loose: this flags a trend worth investigating,
-  // it does not certify the absence of a leak.
-  const problems = [];
   if (!trendIsMeaningful) {
     log(
       `NOTE: the analysed window spans ${analysedSpanMinutes.toFixed(1)} minutes over ` +
@@ -464,33 +466,14 @@ async function main() {
         'so the trend below is dominated by start-up allocation and should not be read as a leak signal.',
     );
   }
-  // A long-lived server is the target, so the slope is the meaningful check;
-  // the half-over-half figure is kept as a sanity cross-check.
-  if (trendIsMeaningful && rssSlopeMBPerHour > 20) {
-    problems.push(`RSS trending +${rssSlopeMBPerHour.toFixed(1)} MB/hour after warm-up`);
-  }
-  if (trendIsMeaningful && rssGrowthPct > 15) {
-    problems.push(`RSS grew ${rssGrowthPct.toFixed(1)}% between halves of the steady-state window`);
-  }
-  if (summary.fdEnd > summary.fdStart * 1.5 && summary.fdEnd - summary.fdStart > 20) {
-    problems.push(`fd count rose ${summary.fdStart} -> ${summary.fdEnd}`);
-  }
-  if (summary.threadEnd > summary.threadStart + 10) {
-    problems.push(`thread count rose ${summary.threadStart} -> ${summary.threadEnd}`);
-  }
   if (roomFailure) {
     log(`SOAK ABORTED: ${roomFailure}. Samples up to the disconnect are in ${OUT}.`);
-    process.exitCode = 1;
-    return;
+    // Open local tracks would keep the process alive.
+    process.exit(1);
   }
-  if (MODE === 'full' && summary.videoDelivered === 0) {
-    problems.push('no video frames were received');
-  }
-  if (MODE === 'full' && summary.audioDelivered === 0) {
-    problems.push('no audio frames were received');
-  }
-  if (publishing && summary.videoWritten === 0) problems.push('no video frames were written');
 
+  const { problems, advisories } = soakFindings(summary, { rssAdvisory: RSS_ADVISORY });
+  if (advisories.length) log(`SOAK ADVISORIES (not failing the run): ${advisories.join('; ')}`);
   if (problems.length) {
     log(`SOAK FINDINGS: ${problems.join('; ')}`);
     process.exit(1);
