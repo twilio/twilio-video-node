@@ -58,6 +58,9 @@ private:
     Napi::Value GetName(const Napi::CallbackInfo& info);
     Napi::Value GetKind(const Napi::CallbackInfo& info);
     Napi::Value Send(const Napi::CallbackInfo& info);
+    Napi::Value AttachRoom(const Napi::CallbackInfo& info);
+    Napi::Value DetachRoom(const Napi::CallbackInfo& info);
+    Napi::Value SettlePendingIfUnpublished(const Napi::CallbackInfo& info);
 
     /** @internal Resolves the pending promise for `id`. JS thread only. */
     void settleSend(uint64_t id, bool ok, const std::string& error);
@@ -78,6 +81,10 @@ private:
     // Keyed by the message id rtc-cpp returns from send(). Touched only on the
     // JS thread, so no lock is needed.
     std::map<uint64_t, Napi::Promise::Deferred> pendingSends_;
+    // Rooms the track is currently published in, as counted by the JS layer.
+    // rtc-cpp reports a send's outcome only through a Room, so with none every
+    // send is settled here instead. JS thread only.
+    int rooms_ = 0;
 
     // Requested values, kept because LocalDataTrack's getters narrow them to uint16_t.
     int max_packet_life_time_ = -1;

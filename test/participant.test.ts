@@ -25,7 +25,9 @@ import type {
 type NativeCallback = (event: string, data?: unknown) => void;
 
 function localTrack(name: string, kind: 'video' | 'audio' | 'data' = 'video'): LocalTrack {
-  return { name, kind } as unknown as LocalTrack;
+  // A native data track also carries the Room count that publish and unpublish update.
+  const roomCount = { _attachRoom() {}, _detachRoom() {}, _settlePendingIfUnpublished() {} };
+  return { name, kind, ...(kind === 'data' ? roomCount : {}) } as unknown as LocalTrack;
 }
 
 function rawPub(

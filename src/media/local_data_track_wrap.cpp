@@ -62,6 +62,9 @@ void LocalDataTrackWrap::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor("reliable", &LocalDataTrackWrap::IsReliable, nullptr),
         InstanceAccessor("ordered", &LocalDataTrackWrap::IsOrdered, nullptr),
         InstanceMethod("send", &LocalDataTrackWrap::Send),
+        InstanceMethod("_attachRoom", &LocalDataTrackWrap::AttachRoom),
+        InstanceMethod("_detachRoom", &LocalDataTrackWrap::DetachRoom),
+        InstanceMethod("_settlePendingIfUnpublished", &LocalDataTrackWrap::SettlePendingIfUnpublished),
     });
 
     constructor_ = Napi::Persistent(func);
@@ -220,10 +223,40 @@ Napi::Value LocalDataTrackWrap::Send(const Napi::CallbackInfo& info) {
     }
 
     auto deferred = Napi::Promise::Deferred::New(env);
+    if (rooms_ == 0) {
+        // No Room will ever report this send, so settle it now and take no hold.
+        auto result = Napi::Object::New(env);
+        result.Set("ok", Napi::Boolean::New(env, false));
+        result.Set("messageId", Napi::Number::New(env, static_cast<double>(id)));
+        result.Set("error", Napi::String::New(env, "Data track is not published to a Room"));
+        deferred.Resolve(result);
+        return deferred.Promise();
+    }
     pendingSends_.emplace(static_cast<uint64_t>(id), deferred);
     // Keep the process alive until every send() has settled.
     if (pendingSends_.size() == 1) asyncContext_->ref();
     return deferred.Promise();
+}
+
+Napi::Value LocalDataTrackWrap::AttachRoom(const Napi::CallbackInfo& info) {
+    rooms_++;
+    return info.Env().Undefined();
+}
+
+Napi::Value LocalDataTrackWrap::DetachRoom(const Napi::CallbackInfo& info) {
+    if (rooms_ > 0) rooms_--;
+    return info.Env().Undefined();
+}
+
+// Called when a Room the track was in is disposed. A send made while the track
+// was published there will never be reported once no Room is left, so it is
+// resolved with ok:false and the hold it took is released.
+Napi::Value LocalDataTrackWrap::SettlePendingIfUnpublished(const Napi::CallbackInfo& info) {
+    if (rooms_ == 0 && !pendingSends_.empty()) {
+        settleAllPending(info[0].As<Napi::String>().Utf8Value());
+        asyncContext_->unref();
+    }
+    return info.Env().Undefined();
 }
 
 }
