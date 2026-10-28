@@ -535,8 +535,9 @@ export interface LocalDataTrack {
    * The returned promise **always resolves** - never rejects - so a
    * fire-and-forget `send()` cannot produce an unhandled rejection. Await it
    * only when the outcome matters. It resolves with `ok: false` at once when
-   * the track is not published to a Room, and a send still pending when the
-   * track's last Room is disposed resolves with `ok: false` then.
+   * the track is not published to a Room. A send still pending when the
+   * track's last Room is disposed, or when its publication fails
+   * (`trackPublicationFailed`), resolves with `ok: false` then.
    *
    * @throws {RangeError} Synchronously, if the message exceeds 64 KB
    *   (`kMaxMessageSize`). Oversize messages are never transmitted.

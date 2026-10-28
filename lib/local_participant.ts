@@ -115,6 +115,13 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
         // the instance that failed.
         const failedTrack = trackName ? this._publishedTracks.get(trackName) : undefined;
         if (trackName) this._publishedTracks.delete(trackName);
+        // A track that never got published has no Room to report its sends.
+        if (failedTrack?.kind === 'data') {
+          markUnpublished(this._dataTracks, failedTrack);
+          (failedTrack as NativeLocalDataTrack)._settlePendingIfUnpublished(
+            'Data track publication failed before the send completed',
+          );
+        }
         this.emit(event, liftTwilioError(data), failedTrack);
       } else if (event === 'trackPublished') {
         const pub = this._resolvePublishedTrack(data as RawTrackPublication | undefined);

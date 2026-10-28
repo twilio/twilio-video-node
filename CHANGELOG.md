@@ -22,8 +22,10 @@ SDK on them throws `UnsupportedPlatformError`.
 - `LocalDataTrack.send()` now always settles. On a track that is not published to a Room, it
   resolves at once with `ok: false`; before, it never settled and kept the process alive. A send
   still pending when `room.dispose()` is called resolves with `ok: false`, unless the track is still
-  published in another Room. A send made after `unpublishTrack()` now resolves with `ok: false`
-  instead of reporting success.
+  published in another Room. The same applies when the track's publication fails
+  (`trackPublicationFailed`): pending sends resolve with `ok: false`, and later ones resolve with
+  `ok: false` at once. A send made after `unpublishTrack()` now resolves with `ok: false` instead
+  of reporting success.
 - The process can now exit on its own after `room.dispose()`. Local tracks, remote participants
   and data tracks, and a `connect()` that failed immediately each left work registered with
   Node's event loop that was only released on garbage collection, if at all, so the process

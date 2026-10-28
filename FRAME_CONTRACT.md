@@ -205,5 +205,7 @@ than being left pending.
 The engine reports a send's outcome only through a Room. A `send()` on a track
 that is not published to a Room, never published or since unpublished, resolves
 at once with `ok: false`. A send still pending when the track's last Room is
-disposed resolves with `ok: false` inside `room.dispose()`. A send made before
+disposed resolves with `ok: false` inside `room.dispose()`, and one pending when
+the track's publication fails resolves with `ok: false` as
+`trackPublicationFailed` is emitted. A send made before
 `unpublishTrack()` is still reported by the engine.

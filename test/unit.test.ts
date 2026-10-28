@@ -852,9 +852,13 @@ describe('Data Track send without a Room', () => {
   // SDK to have run its handlers.
   const nextTurn = () => new Promise(resolve => setImmediate(resolve));
 
-  function fakeNativeRoom() {
+  // `events.emit` is set to the participant's event callback once the SDK
+  // binds it, so a test can deliver native participant events.
+  function fakeNativeRoom(events: { emit?: (event: string, data?: unknown) => void } = {}) {
     const localParticipant = {
-      setEventCallback() {},
+      setEventCallback(callback: (event: string, data?: unknown) => void) {
+        events.emit = callback;
+      },
       publishTrack: () => true,
       unpublishTrack: () => true,
     } as unknown as NativeLocalParticipant;
@@ -946,6 +950,45 @@ describe('Data Track send without a Room', () => {
     second.dispose();
     await nextTurn();
     expect(outcome).toMatchObject({ done: true, value: { ok: false } });
+  });
+
+  it('settles sends when a publishTrack() publication later fails', async () => {
+    const events: { emit?: (event: string, data?: unknown) => void } = {};
+    const room = new Room(fakeNativeRoom(events));
+    const track = createLocalDataTrack('publish-rejected');
+    room.localParticipant.publishTrack(track);
+    const before = observe(track.send('hello'));
+    await nextTurn();
+    expect(before.done).toBe(false);
+
+    events.emit!('trackPublicationFailed', { code: 53300, trackName: 'publish-rejected' });
+    const after = observe(track.send('hello'));
+    await nextTurn();
+
+    expect(before).toMatchObject({ done: true, value: { ok: false } });
+    expect(before.value?.error).toMatch(/publication failed/);
+    expect(after).toMatchObject({ done: true, value: { ok: false } });
+    expect(after.value?.error).toMatch(/not published/);
+    room.dispose();
+  });
+
+  it('settles sends when a track passed to connect() fails to publish', async () => {
+    const events: { emit?: (event: string, data?: unknown) => void } = {};
+    const track = createLocalDataTrack('connect-rejected');
+    const room = new Room(fakeNativeRoom(events), [track]);
+    // Binds the participant's event callback, as connecting does.
+    void room.localParticipant;
+    const before = observe(track.send('hello'));
+
+    events.emit!('trackPublicationFailed', { code: 53300, trackName: 'connect-rejected' });
+    const after = observe(track.send('hello'));
+    await nextTurn();
+
+    expect(before).toMatchObject({ done: true, value: { ok: false } });
+    expect(before.value?.error).toMatch(/publication failed/);
+    expect(after).toMatchObject({ done: true, value: { ok: false } });
+    expect(after.value?.error).toMatch(/not published/);
+    room.dispose();
   });
 });
 
