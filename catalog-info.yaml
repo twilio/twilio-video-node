@@ -16,7 +16,7 @@ metadata:
     twilio.com/in-scope-hipaa: "false"
     twilio.com/in-scope-pci: "false"
   labels: {}
-  tags: []
+  tags: [sdk]
   links: []
 spec:
   type: service
