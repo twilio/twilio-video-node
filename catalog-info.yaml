@@ -22,4 +22,4 @@ spec:
   type: service
   lifecycle: production
   owner: group:default/sup-org-2101
-  system: sdk-client
+  system: video-sdks
