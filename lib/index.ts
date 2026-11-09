@@ -176,6 +176,8 @@ const DISPOSE_GRACE_MS = 5_000;
 
 /** Upper bound for a data track's `maxPacketLifeTime`/`maxRetransmits`; both are `unsigned short` in RTCDataChannelInit. */
 const MAX_DATA_TRACK_LIMIT = 65535;
+// VP8 stores frame width and height in 14 bits (RFC 6386 section 9.1).
+const MAX_VIDEO_DIMENSION = 16383;
 
 // --- Default MediaFactory ---
 
@@ -436,6 +438,11 @@ function validateVideoSource(source: RawVideoSourceOptions): void {
     }
     if ((v as number) % 2 !== 0) {
       throw new RangeError(`source.${key} must be even; got ${String(v)}`);
+    }
+    if ((v as number) > MAX_VIDEO_DIMENSION) {
+      throw new RangeError(
+        `source.${key} must be at most ${MAX_VIDEO_DIMENSION}; got ${String(v)}`,
+      );
     }
   }
   if (source.fps !== undefined && (!Number.isInteger(source.fps) || source.fps <= 0)) {

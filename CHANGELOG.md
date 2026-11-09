@@ -19,6 +19,9 @@ SDK on them throws `UnsupportedPlatformError`.
 
 ## Bug Fixes
 
+- `LocalVideoTrack.write()` and `createLocalVideoTrack()` now throw a `RangeError` when a frame's or
+  source's width or height is above 16383 pixels, the largest size the video encoder supports.
+  Before, a large enough frame crashed the process.
 - `LocalDataTrack.send()` now always settles. On a track that is not published to a Room, it
   resolves at once with `ok: false`; before, it never settled and kept the process alive. A send
   still pending when `room.dispose()` is called resolves with `ok: false`, unless the track is still

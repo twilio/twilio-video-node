@@ -6,6 +6,9 @@
 namespace twilio_video_node {
 
 namespace {
+// VP8 stores frame width and height in 14 bits (RFC 6386 section 9.1).
+constexpr int32_t kMaxVideoDimension = 16383;
+
 bool ToFiniteInt32(Napi::Value v, int32_t* out) {
     if (!v.IsNumber()) return false;
     double d = v.As<Napi::Number>().DoubleValue();
@@ -184,6 +187,14 @@ Napi::Value LocalVideoTrackWrap::Write(const Napi::CallbackInfo& info) {
     // have no well-defined chroma plane size.
     if ((width & 1) || (height & 1)) {
         Napi::RangeError::New(env, "VideoFrameInput width and height must be even")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // VP8 can't encode a larger frame, and I420Buffer::Copy computes its
+    // allocation size in int, which overflows for large dimensions.
+    if (width > kMaxVideoDimension || height > kMaxVideoDimension) {
+        Napi::RangeError::New(env, "VideoFrameInput width and height must be at most 16383")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
