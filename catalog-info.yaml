@@ -10,11 +10,11 @@ metadata:
     jira/project-key: VIDEO
     pagerduty.com/service-id: replace-me
     twilio.com/email: voice-blocks-eng@twilio.com
-    twilio.com/service-tier: "5"
+    twilio.com/service-tier: '5'
     twilio.com/slack-channel-name: eng-voice-blocks-alerts
-    twilio.com/in-scope-sox: "false"
-    twilio.com/in-scope-hipaa: "false"
-    twilio.com/in-scope-pci: "false"
+    twilio.com/in-scope-sox: 'false'
+    twilio.com/in-scope-hipaa: 'false'
+    twilio.com/in-scope-pci: 'false'
   labels: {}
   tags: [sdk]
   links: []
