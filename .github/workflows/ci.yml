@@ -132,5 +132,63 @@ jobs:
       - name: Build native addon
         if: ${{ matrix.native }}
         run: npm run build
+      - name: Verify DT_NEEDED and ABI floors
+        if: ${{ matrix.native && runner.os == 'Linux' }}
+        run: scripts/check-linux-abi.sh build/Release/twilio_video_sdk_node.node
       - name: ${{ matrix.name }}
         run: ${{ matrix.run }}
+      # Pinned so a new 26.x cannot turn main red.
+      - name: Unit tests on Node 26
+        if: ${{ matrix.name == 'build-and-test' }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '26.13'
+      - name: Run unit tests on Node 26
+        if: ${{ matrix.name == 'build-and-test' }}
+        run: |
+          node --version
+          npm run test:unit
+      # Real loader in real images; test/module_load mocks glibc.
+      - name: Check supported and unsupported Linux images
+        if: ${{ matrix.name == 'build-and-test' }}
+        run: |
+          set -euo pipefail
+
+          LOAD='require("./dist/index.cjs"); process.exit(0)'
+
+          # Slim images ship no package lists and no libX11.
+          for IMAGE in \
+            node:26-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 \
+            node:24-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d
+          do
+            echo "::group::${IMAGE} must load"
+            docker run --rm -v "$PWD":/w -w /w "$IMAGE" \
+              sh -c "apt-get update -qq && apt-get install -y -qq libx11-6 && node -e '${LOAD}'"
+            echo '::endgroup::'
+          done
+
+          expect_load_failure() {
+            local IMAGE="$1"; shift
+            local OUTPUT
+            echo "::group::${IMAGE} must fail to load"
+            OUTPUT=$(docker run --rm -v "$PWD":/w -w /w "$IMAGE" node -e "$LOAD" 2>&1) && LOADED=1 || LOADED=0
+            echo "$OUTPUT"
+            echo '::endgroup::'
+            if [ "$LOADED" = 1 ]; then
+              echo "::error::${IMAGE} loaded the package but is not a supported image."
+              exit 1
+            fi
+            for EXPECTED in "$@"; do
+              if ! grep -qF "$EXPECTED" <<<"$OUTPUT"; then
+                echo "::error::${IMAGE} failed to load, but the output does not contain '${EXPECTED}'."
+                exit 1
+              fi
+            done
+          }
+
+          # Node 24 on Debian 12: glibc 2.36, below the floor.
+          expect_load_failure node:24@sha256:8fa96264f302f58bbb13aa7339c541547b56975766ce956c875da149452a3e40 \
+            UnsupportedPlatformError 'glibc 2.36 is too old'
+          # musl.
+          expect_load_failure node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 \
+            NativeBindingLoadError
