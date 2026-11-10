@@ -267,6 +267,28 @@ describe('Video Track', () => {
     expect(() => track.write({ ...base, height: 241 })).toThrow(/must be even/);
   });
 
+  // The planes stay 320x240, so the cap must run before the stride and
+  // buffer-length checks to be the error reported.
+  it.each(['width', 'height'] as const)('write rejects a %s above 16383', key => {
+    const track = createLocalVideoTrack(`too-large-${key}`);
+    const base = generateI420Frame(320, 240);
+    expect(() => track.write({ ...base, [key]: 16384 })).toThrow(
+      new RangeError('VideoFrameInput width and height must be at most 16383'),
+    );
+  });
+
+  it('write lets a width of 16382 through the size cap', () => {
+    const track = createLocalVideoTrack('max-width');
+    const base = generateI420Frame(320, 240);
+    expect(() => track.write({ ...base, width: 16382 })).toThrow(/strides must be >= plane widths/);
+  });
+
+  it('write lets a height of 16382 through the size cap', () => {
+    const track = createLocalVideoTrack('max-height');
+    const base = generateI420Frame(320, 240);
+    expect(() => track.write({ ...base, height: 16382 })).toThrow(/smaller than stride/);
+  });
+
   it('write rejects a non-I420 format', () => {
     const track = createLocalVideoTrack('bad-format');
     const base = generateI420Frame(320, 240);
@@ -564,6 +586,18 @@ describe('Track source option validation', () => {
     expect(() =>
       createLocalVideoTrack({ name: `v-odd-${key}`, source: { ...videoSource, [key]: 321 } }),
     ).toThrow(/must be even/);
+  });
+
+  it.each(['width', 'height'] as const)('rejects a %s above 16383', key => {
+    expect(() =>
+      createLocalVideoTrack({ name: `v-big-${key}`, source: { ...videoSource, [key]: 16384 } }),
+    ).toThrow(new RangeError(`source.${key} must be at most 16383; got 16384`));
+  });
+
+  it.each(['width', 'height'] as const)('accepts a %s of 16382', key => {
+    expect(() =>
+      createLocalVideoTrack({ name: `v-max-${key}`, source: { ...videoSource, [key]: 16382 } }),
+    ).not.toThrow();
   });
 
   it('rejects a non-positive-integer fps', () => {

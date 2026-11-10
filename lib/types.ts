@@ -32,8 +32,8 @@ export interface I420Plane {
  * received frame can be re-published without reshaping it.
  *
  * Each plane's `data` must be at least `stride * height` bytes (`ceil(height / 2)`
- * for the 2x-subsampled `u`/`v` planes). `width` and `height` must be positive
- * and even; odd dimensions are rejected with a `RangeError`.
+ * for the 2x-subsampled `u`/`v` planes). `width` and `height` must be positive,
+ * even and at most 16383; other dimensions are rejected with a `RangeError`.
  *
  * Buffers are copied synchronously during `write()`, so the caller may reuse or
  * free them as soon as it returns.
@@ -41,9 +41,9 @@ export interface I420Plane {
 export interface VideoFrameInput {
   /** Always `'I420'`. Optional; rejected if present and not `'I420'`. */
   format?: 'I420';
-  /** Frame width in pixels. Must be positive and even. */
+  /** Frame width in pixels. Must be positive, even and at most 16383. */
   width: number;
-  /** Frame height in pixels. Must be positive and even. */
+  /** Frame height in pixels. Must be positive, even and at most 16383. */
   height: number;
   /** Luminance plane. */
   y: I420Plane;
@@ -212,9 +212,9 @@ export interface RawVideoSourceOptions {
   type: 'raw';
   /** Always `'I420'`. */
   format: 'I420';
-  /** Encoder width hint, in pixels. */
+  /** Encoder width hint, in pixels. Must be positive, even and at most 16383. */
   width: number;
-  /** Encoder height hint, in pixels. */
+  /** Encoder height hint, in pixels. Must be positive, even and at most 16383. */
   height: number;
   /** Encoder frame-rate hint. */
   fps?: number;

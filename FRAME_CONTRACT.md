@@ -162,8 +162,10 @@ published frame by its `timestamp`.
 - **No dynamic resize.** Where a track was created with a `source`, a frame whose
   dimensions disagree is rejected rather than rescaled. Without a `source`, the
   encoder follows what is written.
-- **Dimensions must be positive and even.** I420 chroma is subsampled by two in
-  each dimension, so an odd dimension has no well-defined chroma plane size.
+- **Dimensions must be positive, even and at most 16383.** I420 chroma is
+  subsampled by two in each dimension, so an odd dimension has no well-defined
+  chroma plane size. VP8 stores width and height in 14 bits, so a larger frame
+  can't be encoded and is rejected with a `RangeError`.
 - **Strides must be at least the plane width.** Padding beyond that is fine and
   is preserved through the copy.
 
