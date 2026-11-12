@@ -8,23 +8,24 @@ import fs from 'node:fs';
 
 const LINUX = process.platform === 'linux';
 
-/** Output lines of a command, minus its header line. Throws if the command fails. */
-function countLines(command, args) {
+/** Output lines of a command. Throws if the command fails. */
+function lines(command, args) {
   const out = execFileSync(command, args, {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'ignore'],
   });
-  return out.trim().split('\n').length - 1;
+  return out.trim().split('\n');
 }
 
 /** Open file descriptors of process `pid`. */
 export function fdCount(pid) {
   if (LINUX) return fs.readdirSync(`/proc/${pid}/fd`).length;
-  return countLines('lsof', ['-p', String(pid)]);
+  // One `f<fd>` line per file; cwd, txt and mapped files are listed too but aren't descriptors.
+  return lines('lsof', ['-p', String(pid), '-F', 'f']).filter(line => /^f\d/.test(line)).length;
 }
 
 /** Threads of process `pid`. */
 export function threadCount(pid) {
   if (LINUX) return fs.readdirSync(`/proc/${pid}/task`).length;
-  return countLines('ps', ['-M', String(pid)]);
+  return lines('ps', ['-M', String(pid)]).length - 1;
 }

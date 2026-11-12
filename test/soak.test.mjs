@@ -91,7 +91,8 @@ describe('soak counters', () => {
       expect(fdCount(process.pid)).toBeGreaterThan(0);
       expect(threadCount(process.pid)).toBeGreaterThan(0);
     } finally {
-      process.env.PATH = savedPath;
+      if (savedPath === undefined) delete process.env.PATH;
+      else process.env.PATH = savedPath;
     }
   });
 
@@ -111,8 +112,11 @@ const FAKE_CREDENTIALS = {
 };
 const SOAK_ARGS = ['test/soak.mjs', '--minutes', '1', '--sample', '1', '--out', 'out.json'];
 
-/** Copies the real script beside a fake dist/index.mjs and returns the directory. */
-function stageSoak() {
+/**
+ * Copies the real script beside a fake dist/index.mjs and returns the directory.
+ * `counters` replaces soak_counters.mjs with a helper of that name.
+ */
+function stageSoak({ counters } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soak-test-'));
   fs.mkdirSync(path.join(dir, 'test'));
   fs.mkdirSync(path.join(dir, 'dist'));
@@ -123,6 +127,12 @@ function stageSoak() {
     path.join(HERE, 'helpers', 'soak_fake_sdk.mjs'),
     path.join(dir, 'dist', 'index.mjs'),
   );
+  if (counters) {
+    fs.copyFileSync(
+      path.join(HERE, 'helpers', counters),
+      path.join(dir, 'test', 'soak_counters.mjs'),
+    );
+  }
   fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'));
   return dir;
 }
@@ -165,11 +175,37 @@ describe('soak.mjs on room failure', () => {
   });
 });
 
+describe('soak.mjs when a counter fails mid-run', () => {
+  let dir;
+  let run;
+
+  beforeAll(() => {
+    dir = stageSoak({ counters: 'soak_failing_counters.mjs' });
+    run = spawnSync(process.execPath, SOAK_ARGS, {
+      cwd: dir,
+      encoding: 'utf-8',
+      timeout: 20_000,
+      killSignal: 'SIGKILL',
+      env: { ...process.env, ...FAKE_CREDENTIALS },
+    });
+  }, 30_000);
+
+  afterAll(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('exits with status 2, a script error', () => {
+    expect(run.status, run.stdout + run.stderr).toBe(2);
+    expect(run.stdout).toContain('SOAK FAILED: Error: fd counter failed on a sampler tick');
+  });
+});
+
 describe('soak.mjs killed before the end of the run', () => {
   let dir;
 
   beforeAll(() => {
     dir = stageSoak();
+    fs.writeFileSync(path.join(dir, 'out.json'), '{"left over from an earlier run":true}');
   });
 
   afterAll(() => {
@@ -181,14 +217,18 @@ describe('soak.mjs killed before the end of the run', () => {
     const child = spawn(process.execPath, SOAK_ARGS, {
       cwd: dir,
       env: { ...process.env, ...FAKE_CREDENTIALS },
-      stdio: 'ignore',
     });
+    let output = '';
+    child.stdout.on('data', chunk => (output += chunk));
+    child.stderr.on('data', chunk => (output += chunk));
     const exited = new Promise(resolve => child.once('exit', resolve));
     try {
       // The run writes its JSON about 4 s in; kill it as soon as a sample is on disk.
       const deadline = Date.now() + 10_000;
       while (!(fs.existsSync(jsonl) && fs.readFileSync(jsonl, 'utf-8').includes('\n'))) {
-        if (child.exitCode !== null) throw new Error('soak exited before writing a JSONL sample');
+        if (child.exitCode !== null || child.signalCode !== null) {
+          throw new Error(`soak exited before writing a JSONL sample:\n${output}`);
+        }
         if (Date.now() > deadline) throw new Error('no JSONL sample within 10 s');
         await new Promise(r => setTimeout(r, 20));
       }

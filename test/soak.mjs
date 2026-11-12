@@ -8,7 +8,7 @@
  * hours, and the point is the time series, not an assertion at the end.
  *
  * Usage:
- *   node test/soak.mjs --minutes 60 [--out soak-60m.json] [--sample 30] [--rss-advisory]
+ *   node test/soak.mjs --minutes 60 [--out soak-full-60m.json] [--sample 30] [--rss-advisory]
  *
  * Requires TWILIO_ACCOUNT_SID / TWILIO_API_KEY / TWILIO_API_SECRET, a built
  * addon, and `npm run build:ts`.
@@ -22,7 +22,7 @@
  * --rss-advisory reports RSS growth without failing the run, for sanitizer builds.
  *
  * Each sample is also appended, as it is taken, to a .jsonl file named after
- * --out (soak-60m.jsonl by default), so a run that crashes or is killed keeps
+ * --out (soak-full-60m.jsonl by default), so a run that crashes or is killed keeps
  * its samples.
  *
  * Exit code: 0 OK, 1 threshold breached or Room dropped, 2 script error.
@@ -68,7 +68,7 @@ if (!['idle', 'publish', 'full'].includes(MODE)) {
   console.error(`--mode must be idle, publish or full; got ${MODE}`);
   process.exit(2);
 }
-const OUT = path.resolve(ROOT, arg('out', `soak-${MINUTES}m.json`));
+const OUT = path.resolve(ROOT, arg('out', `soak-${MODE}-${MINUTES}m.json`));
 const SAMPLES_OUT = `${OUT.replace(/\.json$/, '')}.jsonl`;
 const RSS_ADVISORY = process.argv.includes('--rss-advisory');
 
@@ -164,6 +164,8 @@ async function main() {
   fdCount(process.pid);
   threadCount(process.pid);
   fs.writeFileSync(SAMPLES_OUT, '');
+  // Drop an earlier run's summary.
+  fs.rmSync(OUT, { force: true });
 
   log(
     `starting ${MINUTES} minute soak, mode=${MODE}, sampling every ${SAMPLE_SECONDS}s` +
