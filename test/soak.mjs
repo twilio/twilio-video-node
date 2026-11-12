@@ -8,7 +8,7 @@
  * hours, and the point is the time series, not an assertion at the end.
  *
  * Usage:
- *   node test/soak.mjs --minutes 60 [--out soak-60m.json] [--sample 30] [--rss-advisory]
+ *   node test/soak.mjs --minutes 60 [--out soak-full-60m.json] [--sample 30] [--rss-advisory]
  *
  * Requires TWILIO_ACCOUNT_SID / TWILIO_API_KEY / TWILIO_API_SECRET, a built
  * addon, and `npm run build:ts`.
@@ -21,9 +21,12 @@
  *
  * --rss-advisory reports RSS growth without failing the run, for sanitizer builds.
  *
+ * Each sample is also appended, as it is taken, to a .jsonl file named after
+ * --out (soak-full-60m.jsonl by default), so a run that crashes or is killed keeps
+ * its samples.
+ *
  * Exit code: 0 OK, 1 threshold breached or Room dropped, 2 script error.
  */
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +34,7 @@ import twilio from 'twilio';
 // The built bundle, not lib/: this runs under plain node with no TS loader.
 import { connect, createLocalVideoTrack, createLocalAudioTrack } from '../dist/index.mjs';
 import { soakFindings } from './soak_findings.mjs';
+import { fdCount, threadCount } from './soak_counters.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { AccessToken } = twilio.jwt;
@@ -64,7 +68,8 @@ if (!['idle', 'publish', 'full'].includes(MODE)) {
   console.error(`--mode must be idle, publish or full; got ${MODE}`);
   process.exit(2);
 }
-const OUT = path.resolve(ROOT, arg('out', `soak-${MINUTES}m.json`));
+const OUT = path.resolve(ROOT, arg('out', `soak-${MODE}-${MINUTES}m.json`));
+const SAMPLES_OUT = `${OUT.replace(/\.json$/, '')}.jsonl`;
 const RSS_ADVISORY = process.argv.includes('--rss-advisory');
 
 const VIDEO_FPS = 15;
@@ -101,33 +106,12 @@ function i420(width, height) {
 
 const pcmChunk = Buffer.alloc(960); // 480 samples of silence, 10ms at 48kHz
 
-/** Open file descriptors for this process. Best-effort; 0 if lsof is unavailable. */
-function fdCount() {
-  try {
-    const out = execFileSync('lsof', ['-p', String(process.pid)], {
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return out.trim().split('\n').length - 1;
-  } catch {
-    return 0;
-  }
-}
-
-/** Thread count for this process. Best-effort; 0 if unavailable. */
-function threadCount() {
-  try {
-    const out = execFileSync('ps', ['-M', String(process.pid)], {
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return out.trim().split('\n').length - 1;
-  } catch {
-    return 0;
-  }
-}
-
 const log = msg => console.log(`[${new Date().toISOString()}] ${msg}`);
+
+function fail(err) {
+  log(`SOAK FAILED: ${err?.stack || err}`);
+  process.exit(2);
+}
 
 /**
  * Twilio disconnects participants at `MaxParticipantDuration`, which defaults
@@ -176,10 +160,18 @@ async function main() {
   const publishing = MODE !== 'idle';
   const rotating = totalMs > ROTATE_SECONDS * 1000;
 
+  // Throws before connecting if either counter can't run on this machine.
+  fdCount(process.pid);
+  threadCount(process.pid);
+  fs.writeFileSync(SAMPLES_OUT, '');
+  // Drop an earlier run's summary.
+  fs.rmSync(OUT, { force: true });
+
   log(
     `starting ${MINUTES} minute soak, mode=${MODE}, sampling every ${SAMPLE_SECONDS}s` +
       (rotating ? `, rotating rooms every ${ROTATE_SECONDS / 3600}h` : '') +
-      (RSS_ADVISORY ? ', RSS rules advisory' : ''),
+      (RSS_ADVISORY ? ', RSS rules advisory' : '') +
+      `, samples to ${SAMPLES_OUT}`,
   );
 
   const samples = [];
@@ -205,8 +197,8 @@ async function main() {
       heapUsedMB: +(mem.heapUsed / 1048576).toFixed(2),
       externalMB: +(mem.external / 1048576).toFixed(2),
       arrayBuffersMB: +(mem.arrayBuffers / 1048576).toFixed(2),
-      fds: fdCount(),
-      threads: threadCount(),
+      fds: fdCount(process.pid),
+      threads: threadCount(process.pid),
       videoWritten: cum.videoWritten + vw.framesWritten,
       videoWriteDropped: cum.videoWriteDropped + vw.framesDropped,
       audioWritten: cum.audioWritten + aw.framesWritten,
@@ -217,6 +209,7 @@ async function main() {
       audioRecvDropped: s?.tracks.audio?.getStats().framesDropped ?? 0,
     };
     samples.push(entry);
+    fs.appendFileSync(SAMPLES_OUT, `${JSON.stringify(entry)}\n`);
     log(
       `t=${entry.t}s sess=${entry.session} rss=${entry.rssMB}MB heap=${entry.heapUsedMB}MB ` +
         `ext=${entry.externalMB}MB fds=${entry.fds} thr=${entry.threads} ` +
@@ -344,7 +337,14 @@ async function main() {
     session.alice.dispose();
   }
 
-  const sampler = setInterval(sample, SAMPLE_SECONDS * 1000);
+  // A throw from a timer callback bypasses main().catch, so it exits through fail() here.
+  const sampler = setInterval(() => {
+    try {
+      sample();
+    } catch (err) {
+      fail(err);
+    }
+  }, SAMPLE_SECONDS * 1000);
 
   while (Date.now() < deadline && !sessionFailure) {
     const remainingMs = deadline - Date.now();
@@ -488,7 +488,4 @@ async function main() {
   process.exit(0);
 }
 
-main().catch(err => {
-  log(`SOAK FAILED: ${err?.stack || err}`);
-  process.exit(2);
-});
+main().catch(fail);
