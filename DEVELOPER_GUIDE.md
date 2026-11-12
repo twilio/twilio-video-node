@@ -23,7 +23,8 @@ sudo apt-get install -y --no-install-recommends \
   libxcomposite-dev libxrandr-dev libxtst-dev
 ```
 
-`docker/Dockerfile` installs the same set, so a container build needs no extra step.
+`docker/Dockerfile` installs the same set, so a container build needs no extra step. `docker/build.sh`
+builds the image and `docker/run.sh` opens a shell in it.
 
 ### macOS: deployment target and Xcode
 
