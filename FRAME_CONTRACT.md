@@ -205,9 +205,8 @@ promise resolves with `ok: false` and an `error` naming the teardown, rather
 than being left pending.
 
 The engine reports a send's outcome only through a Room. A `send()` on a track
-that is not published to a Room, never published or since unpublished, resolves
-at once with `ok: false`. A send still pending when the track's last Room is
-disposed resolves with `ok: false` inside `room.dispose()`, and one pending when
-the track's publication fails resolves with `ok: false` as
-`trackPublicationFailed` is emitted. A send made before
-`unpublishTrack()` is still reported by the engine.
+in no Room (never published, unpublished, or its Room disconnected) resolves at
+once with `ok: false`. A pending send resolves with `ok: false` when the track's
+last Room emits `disconnected` or is disposed, or when its publication fails
+(`trackPublicationFailed`). A send made before `unpublishTrack()` is still
+reported by the engine.

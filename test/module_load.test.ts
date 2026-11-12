@@ -113,6 +113,25 @@ describe('module loading in a clean process', () => {
     expect(out).toBe('ok=false');
   });
 
+  it('settles a send() pending at disconnect without dispose() and lets the process exit', () => {
+    const out = runNode([
+      '-e',
+      `const sdk = require('./dist/index.cjs');
+       let emitRoomEvent;
+       const nativeRoom = {
+         localParticipant: { setEventCallback() {} },
+         remoteParticipants: [],
+         setEventCallback(callback) { emitRoomEvent = callback; },
+         dispose() {},
+       };
+       const track = sdk.createLocalDataTrack('pending-at-disconnect');
+       new sdk.Room(nativeRoom, [track]);
+       track.send('hello').then(result => console.log('ok=' + result.ok));
+       emitRoomEvent('disconnected');`,
+    ]);
+    expect(out).toBe('ok=false');
+  });
+
   it('fails with a typed, actionable error when the addon is missing', () => {
     // Point the loader at a directory with no prebuilds and no build output, so
     // the failure path runs. It must name the platform and say what to do -

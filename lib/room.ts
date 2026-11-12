@@ -277,9 +277,10 @@ export class Room extends TypedEventEmitter<RoomEvents> {
           this._remoteParticipantCache.delete(wrapped.sid);
         }
       } else if (event === 'disconnected') {
-        // End every active frames() iterator before surfacing the event, so a
-        // `for await` loop completes rather than hanging on a dead Room.
+        // End every frames() iterator and settle pending data track sends
+        // before surfacing the event, so neither hangs on a dead Room.
         this._tracks.releaseAllRemoteTracks();
+        this._releaseDataTracks('Room disconnected before the send completed');
         this.emit(event, this, data ? liftTwilioError(data) : undefined);
       } else if (ROOM_ERROR_EVENTS.has(event)) {
         this.emit(event, liftTwilioError(data));
@@ -411,15 +412,22 @@ export class Room extends TypedEventEmitter<RoomEvents> {
     // Ends every active frames() iterator; without this a `for await` loop on a
     // subscribed track would hang after the Room goes away.
     this._tracks.releaseAllRemoteTracks();
-    // The engine reports sends only through a Room, so a send on a track left
-    // in no Room would otherwise never settle and would hold the process open.
-    for (const [track, published] of this._dataTracks) {
-      if (published) track._detachRoom();
-      track._settlePendingIfUnpublished('Room was disposed before the send completed');
-    }
-    this._dataTracks.clear();
+    this._releaseDataTracks('Room was disposed before the send completed');
     this._native.dispose();
     this.removeAllListeners();
+  }
+
+  /**
+   * Detaches this Room's data tracks and settles the sends of any now in no
+   * Room. The engine reports sends only through a Room, so they would
+   * otherwise never settle and would hold the process open.
+   */
+  private _releaseDataTracks(reason: string): void {
+    for (const [track, published] of this._dataTracks) {
+      if (published) track._detachRoom();
+      track._settlePendingIfUnpublished(reason);
+    }
+    this._dataTracks.clear();
   }
 
   /**
