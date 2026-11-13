@@ -3,8 +3,9 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { execSync, execFileSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const DEPS_DIR = path.join(ROOT, 'deps');
@@ -62,7 +63,6 @@ const repo = process.env.MAVEN_REPO || 'releases';
 // same host the token was issued for.
 const baseUrl = (process.env.ARTIFACTORY_URL || 'https://twilio.jfrog.io').replace(/\/+$/, '');
 const repoUrl = `${baseUrl}/artifactory/${repo}`;
-const tmpFile = path.join(ROOT, '.tmp-twilio-video.tar.bz2');
 
 // Runs one fetch attempt up to RETRIES times. Returns the error from the final
 // attempt, so each caller decides how much of it is safe to surface.
@@ -83,8 +83,7 @@ function withRetries(attemptFetch) {
 // Fetch with an Artifactory access token instead of Maven credentials. Separate
 // from npm's token so it can be scoped to this artifact's repository. CI mints a
 // short-lived one via OIDC; locally a personal token works.
-function curlGet(token) {
-  const version = resolveVersion();
+function curlGet(token, version, dest) {
   // The artifact the Maven coordinates in mvnGet resolve to, addressed directly.
   const downloadUrl = `${repoUrl}/com/twilio/sdk/twilio-video/${version}/twilio-video-${version}-${platform}.tar.bz2`;
   log(`Fetching twilio-video from Artifactory`);
@@ -96,18 +95,7 @@ function curlGet(token) {
     // and the retries below never get a turn.
     execFileSync(
       'curl',
-      [
-        '-fsSL',
-        '--connect-timeout',
-        '30',
-        '--max-time',
-        '900',
-        '-K',
-        '-',
-        '-o',
-        tmpFile,
-        downloadUrl,
-      ],
+      ['-fsSL', '--connect-timeout', '30', '--max-time', '900', '-K', '-', '-o', dest, downloadUrl],
       {
         input: `header = "Authorization: Bearer ${token}"\n`,
         stdio: ['pipe', 'inherit', 'inherit'],
@@ -124,8 +112,8 @@ function curlGet(token) {
   );
 }
 
-function mvnGet() {
-  const artifact = `com.twilio.sdk:twilio-video:${resolveVersion()}:tar.bz2:${platform}`;
+function mvnGet(version, dest) {
+  const artifact = `com.twilio.sdk:twilio-video:${version}:tar.bz2:${platform}`;
   log(`Fetching twilio-video via Maven`);
   log(`  artifact: ${artifact}`);
   log(`  repo:     ${repoUrl}`);
@@ -140,7 +128,7 @@ function mvnGet() {
         `-DrepoUrl=${repoUrl}`,
         '-Dtransitive=false',
         `-Dartifact=${artifact}`,
-        `-Ddest=${tmpFile}`,
+        `-Ddest=${dest}`,
       ],
       { stdio: 'inherit' },
     ),
@@ -156,25 +144,40 @@ function mvnGet() {
 }
 
 function main() {
+  let tmpDir;
   try {
     const args = process.argv.slice(2);
     const pkgIndex = args.indexOf('--twilio-video-pkg');
     const localArchive =
       (pkgIndex !== -1 ? args[pkgIndex + 1] : null) || process.env.RTC_CPP_ARCHIVE;
+    let archive;
     if (localArchive) {
       const resolved = path.resolve(localArchive);
       if (!fs.existsSync(resolved)) {
         throw new Error(`Local archive not found: ${resolved}`);
       }
+      // deps/ is cleared before extraction, which would delete the archive. The
+      // native realpath also normalizes case on case-insensitive volumes.
+      const depsReal = fs.existsSync(DEPS_DIR) ? fs.realpathSync.native(DEPS_DIR) : DEPS_DIR;
+      if (fs.realpathSync.native(resolved).startsWith(depsReal + path.sep)) {
+        throw new Error(`Local archive must be outside deps/: ${resolved}`);
+      }
       log(`Using local archive: ${resolved}`);
-      fs.copyFileSync(resolved, tmpFile);
-    } else if (process.env.RTC_CPP_ARTIFACTORY_TOKEN) {
-      curlGet(process.env.RTC_CPP_ARTIFACTORY_TOKEN);
+      archive = resolved;
     } else {
-      mvnGet();
+      const version = resolveVersion();
+      // Outside the checkout: docker/run.sh bind-mounts it, so a download there
+      // is written through to the host.
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'twilio-video-'));
+      archive = path.join(tmpDir, 'twilio-video.tar.bz2');
+      if (process.env.RTC_CPP_ARTIFACTORY_TOKEN) {
+        curlGet(process.env.RTC_CPP_ARTIFACTORY_TOKEN, version, archive);
+      } else {
+        mvnGet(version, archive);
+      }
     }
 
-    const size = fs.statSync(tmpFile).size;
+    const size = fs.statSync(archive).size;
     log(`Downloaded ${(size / 1024 / 1024).toFixed(1)} MB`);
 
     // docker/run.sh mounts a volume at deps/, which can't be removed
@@ -190,9 +193,9 @@ function main() {
     fs.mkdirSync(DEPS_DIR, { recursive: true });
 
     log('Extracting...');
-    execSync(`tar xjf "${tmpFile}" -C "${DEPS_DIR}"`, { stdio: 'inherit' });
+    execFileSync('tar', ['xjf', archive, '-C', DEPS_DIR], { stdio: 'inherit' });
 
-    fs.unlinkSync(tmpFile);
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true });
 
     // The Maven artifact extracts to deps/twilio-video/ which CMakeLists.txt expects
     const videoDir = path.join(DEPS_DIR, 'twilio-video');
@@ -248,7 +251,7 @@ function main() {
     log(`rtc-cpp artifacts ready at deps/twilio-video/ (${buildType})`);
   } catch (err) {
     console.error(`[fetch-deps] Failed: ${err.message}`);
-    if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
     process.exit(1);
   }
 }
