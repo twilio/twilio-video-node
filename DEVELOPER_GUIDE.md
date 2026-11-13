@@ -24,7 +24,8 @@ sudo apt-get install -y --no-install-recommends \
 ```
 
 `docker/Dockerfile` installs the same set, so a container build needs no extra step. `docker/build.sh`
-builds the image and `docker/run.sh` opens a shell in it.
+builds the image and `docker/run.sh` opens a shell in it. It mounts `../rtc-cpp` at
+`/opt/twilio/rtc-cpp` when that checkout exists, for a source build.
 
 ### macOS: deployment target and Xcode
 
