@@ -22,13 +22,11 @@ SDK on them throws `UnsupportedPlatformError`.
 - `LocalVideoTrack.write()` and `createLocalVideoTrack()` now throw a `RangeError` when a frame's or
   source's width or height is above 16383 pixels, the largest size the video encoder supports.
   Before, a large enough frame crashed the process.
-- `LocalDataTrack.send()` now always settles. On a track that is not published to a Room, it
-  resolves at once with `ok: false`; before, it never settled and kept the process alive. A send
-  still pending when `room.dispose()` is called resolves with `ok: false`, unless the track is still
-  published in another Room. The same applies when the track's publication fails
-  (`trackPublicationFailed`): pending sends resolve with `ok: false`, and later ones resolve with
-  `ok: false` at once. A send made after `unpublishTrack()` now resolves with `ok: false` instead
-  of reporting success.
+- `LocalDataTrack.send()` now always settles. On a track in no Room, including after a disconnect,
+  it resolves at once with `ok: false`; before, it never settled and kept the process alive, or
+  reported success after a disconnect or `unpublishTrack()`. A pending send resolves with
+  `ok: false` when the track's publication fails (`trackPublicationFailed`), or when the Room
+  disconnects or `room.dispose()` is called, unless the track is still published in another Room.
 - The process can now exit on its own after `room.dispose()`. Local tracks, remote participants
   and data tracks, and a `connect()` that failed immediately each left work registered with
   Node's event loop that was only released on garbage collection, if at all, so the process

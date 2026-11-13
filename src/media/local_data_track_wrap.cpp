@@ -248,14 +248,19 @@ Napi::Value LocalDataTrackWrap::DetachRoom(const Napi::CallbackInfo& info) {
     return info.Env().Undefined();
 }
 
-// Called when a Room the track was in is disposed. A send made while the track
-// was published there will never be reported once no Room is left, so it is
-// resolved with ok:false and the hold it took is released.
+// Called when a Room the track was in disconnects or is disposed. A send made
+// while the track was published there will never be reported once no Room is
+// left, so it is resolved with ok:false and the hold it took is released.
+// Dispatched so results the engine already queued on this track settle first:
+// Room events arrive on a different queue, in no fixed order.
 Napi::Value LocalDataTrackWrap::SettlePendingIfUnpublished(const Napi::CallbackInfo& info) {
-    if (rooms_ == 0 && !pendingSends_.empty()) {
-        settleAllPending(info[0].As<Napi::String>().Utf8Value());
-        asyncContext_->unref();
-    }
+    std::string reason = info[0].As<Napi::String>().Utf8Value();
+    asyncContext_->dispatch([this, reason](Napi::Env) {
+        if (rooms_ == 0 && !pendingSends_.empty()) {
+            settleAllPending(reason);
+            asyncContext_->unref();
+        }
+    });
     return info.Env().Undefined();
 }
 

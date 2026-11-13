@@ -2404,4 +2404,21 @@ describe('Process exit', () => {
     `);
     expect(out.split('\n').sort()).toEqual(['after=false', expect.stringMatching(/^before=/)]);
   }, 90_000);
+
+  // The engine may report the earlier send before disconnected, so only its
+  // settling is asserted. Both must settle before dispose().
+  it('settles sends made before and after the Room disconnects, without dispose()', async () => {
+    const out = await runDataTrackScript(`
+      const before = track.send('before');
+      const disconnected = new Promise(resolve => room.once('disconnected', resolve));
+      room.disconnect();
+      await disconnected;
+      const after = track.send('after');
+      before.then(result => console.log('before=' + result.ok));
+      after.then(result => console.log('after=' + result.ok));
+      await Promise.all([before, after]);
+      room.dispose();
+    `);
+    expect(out.split('\n').sort()).toEqual(['after=false', expect.stringMatching(/^before=/)]);
+  }, 90_000);
 });
