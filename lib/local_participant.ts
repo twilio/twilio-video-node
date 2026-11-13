@@ -23,21 +23,25 @@ import {
 /**
  * @internal A Room's data tracks, each mapped to whether it is still published
  * there. Owned by the Room, since its LocalParticipant is created lazily.
+ * `released` is set on disconnect or dispose, after which none is counted.
  */
-export type RoomDataTracks = Map<NativeLocalDataTrack, boolean>;
+export type RoomDataTracks = {
+  published: Map<NativeLocalDataTrack, boolean>;
+  released: boolean;
+};
 
-/** @internal Counts `track` as published in the Room that owns `dataTracks`. */
+/** @internal Counts `track` as published in the Room that owns `dataTracks`, unless released. */
 export function markPublished(dataTracks: RoomDataTracks, track: LocalTrack): void {
   const dataTrack = track as NativeLocalDataTrack;
-  if (track.kind !== 'data' || dataTracks.get(dataTrack)) return;
-  dataTracks.set(dataTrack, true);
+  if (track.kind !== 'data' || dataTracks.released || dataTracks.published.get(dataTrack)) return;
+  dataTracks.published.set(dataTrack, true);
   dataTrack._attachRoom();
 }
 
 function markUnpublished(dataTracks: RoomDataTracks, track: LocalTrack): void {
   const dataTrack = track as NativeLocalDataTrack;
-  if (!dataTracks.get(dataTrack)) return;
-  dataTracks.set(dataTrack, false);
+  if (!dataTracks.published.get(dataTrack)) return;
+  dataTracks.published.set(dataTrack, false);
   dataTrack._detachRoom();
 }
 
@@ -92,7 +96,7 @@ export class LocalParticipant extends TypedEventEmitter<LocalParticipantEvents> 
   constructor(
     nativeParticipant: NativeLocalParticipant,
     seededTracks: ReadonlyArray<LocalTrack> = [],
-    dataTracks: RoomDataTracks = new Map(),
+    dataTracks: RoomDataTracks = { published: new Map(), released: false },
   ) {
     super();
     this._native = nativeParticipant;

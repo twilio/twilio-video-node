@@ -1045,6 +1045,42 @@ describe('Data Track send without a Room', () => {
     second.dispose();
   });
 
+  it('resolves a send on a track published after the Room disconnects with ok: false at once', async () => {
+    const events: { emitRoom?: NativeEvent } = {};
+    const room = new Room(fakeNativeRoom(events));
+    events.emitRoom!('disconnected');
+    const track = createLocalDataTrack('published-after-disconnect');
+    room.localParticipant.publishTrack(track);
+
+    const outcome = observe(track.send('hello'));
+    await nextTurn();
+
+    expect(outcome).toMatchObject({ done: true, value: { ok: false } });
+    expect(outcome.value?.error).toMatch(/not published/);
+    room.dispose();
+  });
+
+  it('settles a send when its last live Room disconnects, after a publish on a disconnected Room', async () => {
+    const firstEvents: { emitRoom?: NativeEvent } = {};
+    const secondEvents: { emitRoom?: NativeEvent } = {};
+    const track = createLocalDataTrack('republished-on-disconnected-room');
+    const first = new Room(fakeNativeRoom(firstEvents), [track]);
+    const second = new Room(fakeNativeRoom(secondEvents), [track]);
+    firstEvents.emitRoom!('disconnected');
+    first.localParticipant.publishTrack(track);
+
+    const outcome = observe(track.send('hello'));
+    await nextTurn();
+    expect(outcome.done).toBe(false);
+
+    secondEvents.emitRoom!('disconnected');
+    await nextTurn();
+    expect(outcome).toMatchObject({ done: true, value: { ok: false } });
+    expect(outcome.value?.error).toMatch(/disconnected/);
+    first.dispose();
+    second.dispose();
+  });
+
   it('settles sends when a publishTrack() publication later fails', async () => {
     const events: { emit?: (event: string, data?: unknown) => void } = {};
     const room = new Room(fakeNativeRoom(events));
