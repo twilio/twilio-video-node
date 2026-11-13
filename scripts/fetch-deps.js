@@ -177,8 +177,15 @@ function main() {
     const size = fs.statSync(tmpFile).size;
     log(`Downloaded ${(size / 1024 / 1024).toFixed(1)} MB`);
 
+    // docker/run.sh mounts a volume at deps/, which can't be removed
     if (fs.existsSync(DEPS_DIR)) {
-      fs.rmSync(DEPS_DIR, { recursive: true });
+      if (fs.lstatSync(DEPS_DIR).isSymbolicLink()) {
+        fs.unlinkSync(DEPS_DIR);
+      } else {
+        for (const entry of fs.readdirSync(DEPS_DIR)) {
+          fs.rmSync(path.join(DEPS_DIR, entry), { recursive: true });
+        }
+      }
     }
     fs.mkdirSync(DEPS_DIR, { recursive: true });
 

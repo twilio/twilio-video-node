@@ -6,9 +6,9 @@ cd "$SCRIPT_DIR/.."
 
 IMAGE_NAME="twilio-video-node-linux"
 
-# Build Docker image with Node.js
+# rtc-cpp has no Linux arm64 build
 echo "Building Docker image..."
-docker build -t $IMAGE_NAME -f docker/Dockerfile .
+docker build --platform linux/amd64 -t $IMAGE_NAME -f docker/Dockerfile .
 
 echo ""
 echo "Image built: $IMAGE_NAME"

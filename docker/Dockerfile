@@ -1,5 +1,11 @@
-ARG BASE_IMAGE=rtc-cpp-29
+ARG BASE_IMAGE=ubuntu:24.04
 FROM $BASE_IMAGE
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake bzip2 ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 24
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
