@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import twilio from 'twilio';
 import { credentials } from './token.js';
+import { callVendor, usingVendor } from './vendor.js';
 
 type RoomVideoCodec = 'VP8' | 'H264';
 
@@ -12,6 +13,9 @@ type RoomVideoCodec = 'VP8' | 'H264';
  * nobody joins.
  */
 async function createGroupRoom(settings: { videoCodecs: RoomVideoCodec[] }) {
+  if (usingVendor()) {
+    return createVendedGroupRoom(settings);
+  }
   const { accountSid, apiKey, apiSecret } = credentials();
   const client = twilio(apiKey, apiSecret, { accountSid });
   const room = await client.video.v1.rooms.create({
@@ -31,6 +35,25 @@ async function createGroupRoom(settings: { videoCodecs: RoomVideoCodec[] }) {
         .rooms(room.sid)
         .update({ status: 'completed' })
         .catch(e => console.warn(`Could not complete room ${room.sid}: ${e.message}`));
+    },
+  };
+}
+
+async function createVendedGroupRoom(settings: { videoCodecs: RoomVideoCodec[] }) {
+  const room = (await callVendor('create-room', {
+    name: `test-${crypto.randomUUID()}`,
+    type: 'group',
+    roomOptions: { videoCodecs: settings.videoCodecs, emptyRoomTimeout: 1, unusedRoomTimeout: 1 },
+  })) as { uniqueName: string; sid: string; videoCodecs: RoomVideoCodec[] };
+  return {
+    name: room.uniqueName,
+    sid: room.sid,
+    videoCodecs: room.videoCodecs,
+    async complete(): Promise<void> {
+      // Called from cleanup: a throw here would hide the test's own failure.
+      await callVendor('complete-room', { nameOrSid: room.sid }).catch(e =>
+        console.warn(`Could not complete room ${room.sid}: ${e.message}`),
+      );
     },
   };
 }
