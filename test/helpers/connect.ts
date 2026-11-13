@@ -87,7 +87,7 @@ async function connectToRoom(
   roomName: string,
   opts: ConnectTrackOptions = {},
 ): Promise<{ room: Room; cleanup: () => Promise<void> }> {
-  const token = generateToken(identity, roomName);
+  const token = await generateToken(identity, roomName);
 
   const roomPromise = connect(token, {
     name: roomName,

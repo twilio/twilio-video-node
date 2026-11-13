@@ -1,10 +1,29 @@
 import twilio from 'twilio';
+import { callVendor, usingVendor } from './vendor.js';
 const AccessToken = twilio.jwt.AccessToken;
 const VideoGrant = AccessToken.VideoGrant;
 
 const PREFIX = 'TWILIO_';
 
-function generateToken(identity: string, roomName?: string): string {
+/** An Access Token minted by the vendor. `grant` is `'video'` or `null` (no grant). */
+async function vendToken(params: {
+  identity: string;
+  grant: 'video' | null;
+  room?: string;
+  ttl: number;
+}): Promise<string> {
+  const { token } = await callVendor('mint-token', params);
+  if (typeof token !== 'string') {
+    throw new Error('Vendor action mint-token returned no token');
+  }
+  return token;
+}
+
+/** A Video Access Token: from the vendor if `VENDOR_URL` is set, else signed with `TWILIO_*`. */
+async function generateToken(identity: string, roomName?: string): Promise<string> {
+  if (usingVendor()) {
+    return vendToken({ identity, grant: 'video', room: roomName, ttl: 3600 });
+  }
   const accountSid = process.env[`${PREFIX}ACCOUNT_SID`];
   const apiKey = process.env[`${PREFIX}API_KEY`];
   const apiSecret = process.env[`${PREFIX}API_SECRET`];
@@ -61,7 +80,10 @@ const badTokens = {
    * seconds, and the helper accepts a negative value, so the token is minted
    * with an `exp` in the past.
    */
-  expired(identity = 'expired-user', roomName?: string): string {
+  async expired(identity = 'expired-user', roomName?: string): Promise<string> {
+    if (usingVendor()) {
+      return vendToken({ identity, grant: 'video', room: roomName, ttl: -3600 });
+    }
     const { accountSid, apiKey, apiSecret } = credentials();
     const token = new AccessToken(accountSid, apiKey, apiSecret, { identity, ttl: -3600 });
     const grant = new VideoGrant();
@@ -71,14 +93,17 @@ const badTokens = {
   },
 
   /** Valid and unexpired, but carries no Video grant. */
-  noVideoGrant(identity = 'no-grant-user'): string {
+  async noVideoGrant(identity = 'no-grant-user'): Promise<string> {
+    if (usingVendor()) {
+      return vendToken({ identity, grant: null, ttl: 600 });
+    }
     const { accountSid, apiKey, apiSecret } = credentials();
     return new AccessToken(accountSid, apiKey, apiSecret, { identity, ttl: 600 }).toJwt();
   },
 
   /** A valid token whose signature has been altered, so verification fails. */
-  badSignature(identity = 'tampered-user', roomName?: string): string {
-    const jwt = generateToken(identity, roomName);
+  async badSignature(identity = 'tampered-user', roomName?: string): Promise<string> {
+    const jwt = await generateToken(identity, roomName);
     const [header, payload, signature] = jwt.split('.');
     // Flip one character of the signature, keeping the base64url alphabet.
     const flipped = (signature[0] === 'A' ? 'B' : 'A') + signature.slice(1);

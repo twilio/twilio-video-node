@@ -229,7 +229,7 @@ describe('Error cases, provoked end to end', () => {
       20107,
     ],
   ])('rejects %s with %s', async (_label, makeToken, expectedName, expectedCode) => {
-    const error = await connect(makeToken(), {
+    const error = await connect(await makeToken(), {
       name: uniqueRoom(),
       connectionTimeout: 20_000,
     }).then(
@@ -526,7 +526,7 @@ describe('connectionTimeout', () => {
   it('rejects with RoomConnectTimeoutError when the deadline passes first', async () => {
     // A real token against a real room, but a deadline far shorter than any
     // connect can complete in, so the timeout path is what settles the promise.
-    const token = generateToken('timeout-probe', uniqueRoom());
+    const token = await generateToken('timeout-probe', uniqueRoom());
     const started = Date.now();
 
     await expect(connect(token, { connectionTimeout: 1 })).rejects.toThrow(/Timed out after 1 ms/);
@@ -2291,7 +2291,7 @@ describe('Process exit', () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     const child = spawn(process.execPath, ['-e', script], {
       cwd: root,
-      env: { ...process.env, TOKEN: generateToken('alice', roomName), ROOM: roomName },
+      env: { ...process.env, TOKEN: await generateToken('alice', roomName), ROOM: roomName },
     });
     let stdout = '';
     let stderr = '';
@@ -2355,7 +2355,7 @@ describe('Process exit', () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     const child = spawn(process.execPath, ['-e', script], {
       cwd: root,
-      env: { ...process.env, TOKEN: generateToken('alice', roomName), ROOM: roomName },
+      env: { ...process.env, TOKEN: await generateToken('alice', roomName), ROOM: roomName },
     });
     let stdout = '';
     let stderr = '';

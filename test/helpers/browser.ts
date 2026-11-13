@@ -100,7 +100,7 @@ async function joinFromBrowser(
         await new Promise(resolve => setTimeout(resolve, 250));
       }
     },
-    { token: generateToken(identity, roomName), roomName, videoCodec },
+    { token: await generateToken(identity, roomName), roomName, videoCodec },
   );
   let timer: NodeJS.Timeout | undefined;
   try {
