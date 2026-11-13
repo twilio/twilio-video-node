@@ -235,7 +235,7 @@ export class Room extends TypedEventEmitter<RoomEvents> {
   private _localParticipant: LocalParticipant | null = null;
   private _remoteParticipantCache = new Map<Participant.SID, RemoteParticipant>();
   private _seededTracks: ReadonlyArray<LocalTrack>;
-  private _dataTracks: RoomDataTracks = new Map();
+  private _dataTracks: RoomDataTracks = { published: new Map(), released: false };
 
   /**
    * @internal `onConnected` fires once for the native connect signal, which is
@@ -418,16 +418,18 @@ export class Room extends TypedEventEmitter<RoomEvents> {
   }
 
   /**
-   * Detaches this Room's data tracks and settles the sends of any now in no
-   * Room. The engine reports sends only through a Room, so they would
-   * otherwise never settle and would hold the process open.
+   * Detaches this Room's data tracks, stops counting any published later, and
+   * settles the sends of any now in no Room. The engine reports sends only
+   * through a Room, so they would otherwise never settle and would hold the
+   * process open.
    */
   private _releaseDataTracks(reason: string): void {
-    for (const [track, published] of this._dataTracks) {
+    for (const [track, published] of this._dataTracks.published) {
       if (published) track._detachRoom();
       track._settlePendingIfUnpublished(reason);
     }
-    this._dataTracks.clear();
+    this._dataTracks.published.clear();
+    this._dataTracks.released = true;
   }
 
   /**
