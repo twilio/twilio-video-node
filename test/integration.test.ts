@@ -25,6 +25,7 @@ import {
   createLocalVideoTrack,
   createLocalAudioTrack,
   createLocalDataTrack,
+  isH264Enabled,
   LocalVideoTrackPublication,
   RemoteVideoTrackPublication,
   TwilioError,
@@ -318,7 +319,13 @@ describe('Error cases, provoked end to end', () => {
   });
 });
 
-describe('Codec-restricted Group Rooms', () => {
+// test/h264/integration.test.ts covers the same rooms with enableH264(), where
+// these 53404 outcomes don't hold.
+describe('Codec-restricted Group Rooms, without enableH264()', () => {
+  beforeAll(() => {
+    expect(isH264Enabled()).toBe(false);
+  });
+
   it('rejects a VP8 video publication in an H.264-only room with 53404', async () => {
     const room = await createGroupRoom({ videoCodecs: ['H264'] });
     onTestFinished(room.complete);

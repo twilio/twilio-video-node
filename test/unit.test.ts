@@ -149,11 +149,10 @@ describe('connect() validation', () => {
     );
   });
 
-  it('rejects H264 in preferredVideoCodecs', async () => {
-    // @ts-expect-error testing runtime validation: H264 is not a supported VideoCodec
-    await expect(connect('token', { preferredVideoCodecs: ['H264'] })).rejects.toThrow(
-      /Unknown video codec: H264/,
-    );
+  it('rejects H264 in preferredVideoCodecs without enableH264()', async () => {
+    const result = connect('token', { preferredVideoCodecs: ['H264'] });
+    await expect(result).rejects.toThrow(TypeError);
+    await expect(result).rejects.toThrow(/H264 requires enableH264\(\)/);
   });
 
   it('rejects VP9 in preferredVideoCodecs', async () => {

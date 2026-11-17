@@ -224,10 +224,11 @@ export class MediaServerRemoteDescFailedError extends defineError(
 /**
  * No codec the peers both support could be negotiated. Surfaced through
  * `trackSubscriptionFailed` when a remote track cannot be decoded - notably an
- * H.264-only track, which this SDK does not decode. Also surfaced through the
- * local participant's `trackPublicationFailed` when a video track, from
- * `publishTrack` or passed to `connect()`, is published to a Room whose video
- * codecs exclude VP8. Code `53404`.
+ * H.264-only track before {@link enableH264} has been called. Also surfaced
+ * through the local participant's `trackPublicationFailed` when a video track,
+ * from `publishTrack` or passed to `connect()`, is published to a Room whose
+ * video codecs exclude every codec this SDK can encode: VP8, plus H.264 once
+ * enabled. Code `53404`.
  */
 export class MediaNoSupportedCodecError extends defineError(
   'MediaNoSupportedCodecError',
@@ -251,8 +252,8 @@ export class MediaConnectionError extends defineError(
 /**
  * The native addon could not be loaded for this platform.
  *
- * Hand-written rather than generated, because it is the only error that takes a
- * `cause`. The static `code` is declared so it satisfies the same
+ * Hand-written rather than generated, like {@link H264LibraryLoadError}, because
+ * it takes a `cause`. The static `code` is declared so it satisfies the same
  * {@link TwilioErrorClass} contract as every generated subclass.
  */
 export class NativeBindingLoadError extends TwilioError {
@@ -262,6 +263,24 @@ export class NativeBindingLoadError extends TwilioError {
   constructor(message?: string, options?: { cause?: unknown }) {
     super(SDK_LOCAL_CODE, message || 'Failed to load the native addon');
     this.name = 'NativeBindingLoadError';
+    if (options && 'cause' in options) {
+      Object.defineProperty(this, 'cause', { value: options.cause, configurable: true });
+    }
+  }
+}
+
+/**
+ * {@link enableH264} could not load the OpenH264 library: the file is missing
+ * or can't be loaded, or it isn't OpenH264 2.7.x. The message carries the
+ * dynamic loader's text, and `cause` the underlying error.
+ */
+export class H264LibraryLoadError extends TwilioError {
+  /** The code every instance carries: {@link SDK_LOCAL_CODE}. */
+  static readonly code = SDK_LOCAL_CODE;
+
+  constructor(message?: string, options?: { cause?: unknown }) {
+    super(SDK_LOCAL_CODE, message || 'Failed to load the OpenH264 library');
+    this.name = 'H264LibraryLoadError';
     if (options && 'cause' in options) {
       Object.defineProperty(this, 'cause', { value: options.cause, configurable: true });
     }

@@ -114,6 +114,10 @@ add_library(${PROJECT_NAME} SHARED
    src/common/async_context.cpp
    src/common/napi_options.cpp
    src/media/media_factory_wrap.cpp
+   src/media/openh264_loader.cpp
+   src/media/openh264_factories.cpp
+   src/media/openh264_encoder.cpp
+   src/media/openh264_decoder.cpp
    src/media/local_video_track_wrap.cpp
    src/media/local_audio_track_wrap.cpp
    src/media/remote_video_track_wrap.cpp
@@ -137,6 +141,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 
 target_include_directories(${PROJECT_NAME} PRIVATE
    ${CMAKE_CURRENT_SOURCE_DIR}/src
+   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openh264/include
    ${CMAKE_CURRENT_SOURCE_DIR}/node_modules/node-api-headers/include
    ${CMAKE_CURRENT_SOURCE_DIR}/node_modules/node-addon-api
    ${TWILIO_VIDEO_INCLUDE_DIRS}

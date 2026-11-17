@@ -29,6 +29,7 @@ import {
   MediaNoSupportedCodecError,
   MediaConnectionError,
   NativeBindingLoadError,
+  H264LibraryLoadError,
   UnsupportedPlatformError,
   RoomConnectTimeoutError,
   DataTrackSendError,
@@ -115,6 +116,7 @@ describe('SDK-local errors', () => {
     ['UnsupportedPlatformError', UnsupportedPlatformError],
     ['RoomConnectTimeoutError', RoomConnectTimeoutError],
     ['DataTrackSendError', DataTrackSendError],
+    ['H264LibraryLoadError', H264LibraryLoadError],
   ] as const)('%s carries the SDK-local code', (name, Cls) => {
     const err = new Cls();
     expect(err).toBeInstanceOf(TwilioError);
@@ -138,11 +140,18 @@ describe('SDK-local errors', () => {
     expect('cause' in err).toBe(false);
   });
 
+  it('H264LibraryLoadError works without a cause', () => {
+    const err = new H264LibraryLoadError();
+    expect(err.message).toBe('Failed to load the OpenH264 library');
+    expect('cause' in err).toBe(false);
+  });
+
   it.each([
     ['UnsupportedPlatformError', UnsupportedPlatformError],
     ['RoomConnectTimeoutError', RoomConnectTimeoutError],
     ['DataTrackSendError', DataTrackSendError],
     ['NativeBindingLoadError', NativeBindingLoadError],
+    ['H264LibraryLoadError', H264LibraryLoadError],
   ] as const)('%s exposes a static code, like every other exported error', (_name, Cls) => {
     // NativeBindingLoadError is hand-written rather than generated, and used to
     // be the one exported error with no static `code`, so it silently failed

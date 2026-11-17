@@ -36,12 +36,17 @@ interface PageGlobals {
 
 /**
  * Join `roomName` from headless Google Chrome and publish a fake camera with
- * `videoCodec`. Resolves once Chrome is sending that codec. Closes the browser
+ * `videoCodec`, plus a fake microphone when `audio` is set. Resolves once
+ * Chrome is sending that codec. Closes the browser
  * through `onTestFinished`; the caller owns the Room.
  */
 async function joinFromBrowser(
   roomName: string,
-  { identity, videoCodec }: { identity: string; videoCodec: BrowserVideoCodec },
+  {
+    identity,
+    videoCodec,
+    audio = false,
+  }: { identity: string; videoCodec: BrowserVideoCodec; audio?: boolean },
 ): Promise<void> {
   const launched = chromium.launch({
     channel: 'chrome',
@@ -73,11 +78,11 @@ async function joinFromBrowser(
   await page.goto(`${ORIGIN}/`);
 
   const join = page.evaluate(
-    async ({ token, roomName, videoCodec }) => {
+    async ({ token, roomName, videoCodec, audio }) => {
       const g = globalThis as unknown as PageGlobals;
       g.room = await g.Twilio.Video.connect(token, {
         name: roomName,
-        audio: false,
+        audio,
         video: true,
         preferredVideoCodecs: [videoCodec],
       });
@@ -100,7 +105,7 @@ async function joinFromBrowser(
         await new Promise(resolve => setTimeout(resolve, 250));
       }
     },
-    { token: await generateToken(identity, roomName), roomName, videoCodec },
+    { token: await generateToken(identity, roomName), roomName, videoCodec, audio },
   );
   let timer: NodeJS.Timeout | undefined;
   try {

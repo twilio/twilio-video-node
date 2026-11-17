@@ -1,8 +1,9 @@
-import { describe, it, expect, onTestFinished } from 'vitest';
-import { connectToRoom, describeLiveRooms } from '../helpers/connect.js';
+import { describe, it, expect, beforeAll, onTestFinished } from 'vitest';
+import { connectToRoom, describeLiveRooms, watchTrackKind } from '../helpers/connect.js';
 import { createGroupRoom } from '../helpers/rooms.js';
 import { joinFromBrowser } from '../helpers/browser.js';
 import type { RemoteTrack, RemoteVideoTrack, VideoFrame } from '../../lib/index.js';
+import { isH264Enabled, MediaNoSupportedCodecError } from '../../lib/index.js';
 
 const SUBSCRIBE_TIMEOUT = 15_000;
 const MEDIA_FLOW_TIMEOUT = 10_000;
@@ -18,6 +19,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number, what: () => string): Pr
 }
 
 describe('Google Chrome participant', () => {
+  beforeAll(() => {
+    // test/h264/integration.test.ts covers Chrome's H.264 with enableH264(),
+    // where the 53404 outcomes below don't hold.
+    expect(isH264Enabled()).toBe(false);
+  });
+
   it('Node receives I420 frames from Chrome in a VP8-only room', async () => {
     const room = await createGroupRoom({ videoCodecs: ['VP8'] });
     onTestFinished(room.complete);
@@ -72,4 +79,46 @@ describe('Google Chrome participant', () => {
       joinFromBrowser(room.name, { identity: 'chrome', videoCodec }),
     ).resolves.toBeUndefined();
   });
+
+  it('Node fails to subscribe to Chrome H.264 in an H.264-only room with 53404', async () => {
+    const room = await createGroupRoom({ videoCodecs: ['H264'] });
+    onTestFinished(room.complete);
+    const node = await connectToRoom('node', room.name);
+    onTestFinished(node.cleanup);
+    const video = watchTrackKind(node.room, 'video');
+
+    await joinFromBrowser(room.name, { identity: 'chrome', videoCodec: 'H264' });
+    const [error] = await withTimeout(
+      video.failed,
+      SUBSCRIBE_TIMEOUT,
+      () => `'trackSubscriptionFailed' for video\n${describeLiveRooms()}`,
+    );
+
+    expect(error).toBeInstanceOf(MediaNoSupportedCodecError);
+    expect(error.code).toBe(53404);
+  }, 90_000);
+
+  it("a 53404 on Chrome's H.264 video doesn't block its audio in a VP8 and H.264 room", async () => {
+    const room = await createGroupRoom({ videoCodecs: ['VP8', 'H264'] });
+    onTestFinished(room.complete);
+    const node = await connectToRoom('node', room.name);
+    onTestFinished(node.cleanup);
+    const video = watchTrackKind(node.room, 'video');
+    const audio = watchTrackKind(node.room, 'audio');
+
+    await joinFromBrowser(room.name, { identity: 'chrome', videoCodec: 'H264', audio: true });
+    const [error] = await withTimeout(
+      video.failed,
+      SUBSCRIBE_TIMEOUT,
+      () => `'trackSubscriptionFailed' for video\n${describeLiveRooms()}`,
+    );
+    await withTimeout(
+      audio.subscribed,
+      SUBSCRIBE_TIMEOUT,
+      () => `the browser's audio track\n${describeLiveRooms()}`,
+    );
+
+    expect(error).toBeInstanceOf(MediaNoSupportedCodecError);
+    expect(error.code).toBe(53404);
+  }, 90_000);
 });

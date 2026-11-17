@@ -1,4 +1,10 @@
-import type { Room, ConnectOptions } from '../../lib/index.js';
+import type {
+  Room,
+  ConnectOptions,
+  RemoteTrack,
+  RemoteTrackPublication,
+  TwilioError,
+} from '../../lib/index.js';
 import { connect } from '../../lib/index.js';
 import { generateToken } from './token.js';
 
@@ -80,6 +86,7 @@ type ConnectTrackOptions = Pick<
   | 'enableDominantSpeaker'
   | 'networkQuality'
   | 'bandwidthProfile'
+  | 'preferredVideoCodecs'
 >;
 
 async function connectToRoom(
@@ -97,6 +104,7 @@ async function connectToRoom(
     ...('enableDominantSpeaker' in opts && { enableDominantSpeaker: opts.enableDominantSpeaker }),
     ...('networkQuality' in opts && { networkQuality: opts.networkQuality }),
     ...('bandwidthProfile' in opts && { bandwidthProfile: opts.bandwidthProfile }),
+    ...('preferredVideoCodecs' in opts && { preferredVideoCodecs: opts.preferredVideoCodecs }),
   });
 
   const timeoutPromise = new Promise<never>((_, reject) =>
@@ -128,4 +136,27 @@ async function connectToRoom(
   };
 }
 
-export { connectToRoom, describeLiveRooms };
+// The first `kind` track `room` subscribes to, and the first `kind` track it
+// fails to subscribe to. Call it before the track is published: missed events
+// aren't replayed.
+function watchTrackKind(room: Room, kind: 'audio' | 'video') {
+  const subscribed = new Promise<RemoteTrack>(resolve => {
+    const onSubscribed = (track: RemoteTrack) => {
+      if (track.kind !== kind) return;
+      room.removeListener('trackSubscribed', onSubscribed);
+      resolve(track);
+    };
+    room.on('trackSubscribed', onSubscribed);
+  });
+  const failed = new Promise<[TwilioError, RemoteTrackPublication]>(resolve => {
+    const onFailed = (error: TwilioError, publication: RemoteTrackPublication) => {
+      if (publication.kind !== kind) return;
+      room.removeListener('trackSubscriptionFailed', onFailed);
+      resolve([error, publication]);
+    };
+    room.on('trackSubscriptionFailed', onFailed);
+  });
+  return { subscribed, failed };
+}
+
+export { connectToRoom, describeLiveRooms, watchTrackKind };

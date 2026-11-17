@@ -18,13 +18,15 @@
  *
  * @packageDocumentation
  */
+import fs from 'node:fs';
 import { Room } from './room.js';
 import { MAX_QUEUE_CEILING } from './frame_stream.js';
-import { RoomConnectTimeoutError } from './errors.js';
+import { H264LibraryLoadError, RoomConnectTimeoutError } from './errors.js';
 import { addon, SDK_VERSION } from './native.js';
 import type {
   NativeMediaFactory,
   ConnectOptions,
+  EnableH264Options,
   CreateLocalVideoTrackOptions,
   CreateLocalAudioTrackOptions,
   CreateLocalTracksOptions,
@@ -89,6 +91,7 @@ export type {
   RoomState,
   ParticipantState,
   LogLevel,
+  EnableH264Options,
   VideoTrackOptions,
   AudioTrackOptions,
   StatsReport,
@@ -156,6 +159,7 @@ export {
   UnsupportedPlatformError,
   RoomConnectTimeoutError,
   DataTrackSendError,
+  H264LibraryLoadError,
   twilioErrorFromCode,
 } from './errors.js';
 export type { TwilioErrorClass } from './errors.js';
@@ -200,6 +204,8 @@ function getDefaultMediaFactory(): NativeMediaFactory {
  * @param options - Room name, tracks to publish on join, and feature toggles.
  * @returns A promise resolving to the connected {@link Room}.
  * @throws {TypeError} (as a rejection) If `token` is not a non-empty string, or `options` is not an object.
+ * @throws {TypeError} (as a rejection) If `options.preferredVideoCodecs` includes `H264` and
+ *   {@link enableH264} hasn't succeeded.
  * @throws {RangeError} (as a rejection) If `options.networkQuality` verbosities are out of range.
  *
  * @example
@@ -255,6 +261,15 @@ export function connect(token: string, options: ConnectOptions = {}): Promise<Ro
   };
   internalOpts.platformInfo = platformInfo;
 
+  // Checked before the media factory exists, so this refusal doesn't stop a
+  // later enableH264() from taking effect.
+  if (
+    !h264Enabled &&
+    Array.isArray(options.preferredVideoCodecs) &&
+    options.preferredVideoCodecs.includes('H264')
+  ) {
+    return Promise.reject(new TypeError('H264 requires enableH264() before connect()'));
+  }
   internalOpts.mediaFactory = getDefaultMediaFactory();
 
   return new Promise((resolve, reject) => {
@@ -677,4 +692,76 @@ export function getVersion(): string {
  */
 export function setLogLevel(level: LogLevel | number): void {
   addon.setLogLevel(level);
+}
+
+const H264_PATENT_WARNING =
+  'H.264 enabled via user-provided library. The developer is responsible for obtaining all applicable patent licenses.';
+
+let h264Enabled = false;
+
+/**
+ * Load an OpenH264 2.7.x library so Rooms can negotiate H.264. Process-wide.
+ *
+ * Call it before the first {@link connect} or `createLocal*Track()` call: the
+ * media factory those create reads the library once, so a later call throws.
+ * Once enabled, H.264 is offered after VP8, and `preferredVideoCodecs` may
+ * name `H264`. It stays enabled for the life of the process. Calling it again
+ * before the first connect or track loads the given library instead.
+ *
+ * A frame larger than 1280x720 (3600 macroblocks) is scaled down to fit H.264
+ * level 3.1, keeping its aspect ratio.
+ *
+ * Every successful call writes a patent-licensing notice with `console.warn`.
+ *
+ * @param options - The library path, and the required licensing confirmation.
+ * @throws {TypeError} If `confirmPatentLicensingCompliance` isn't `true`, or
+ *   `openh264Path` isn't a non-empty string without NUL characters. Nothing is loaded.
+ * @throws {Error} If called after the first connect() or createLocal*Track().
+ * @throws {H264LibraryLoadError} If the library can't be loaded or isn't OpenH264 2.7.x.
+ */
+export function enableH264(options: EnableH264Options): void {
+  if (typeof options !== 'object' || options === null) {
+    throw new TypeError('enableH264() options must be an object');
+  }
+  if (options.confirmPatentLicensingCompliance !== true) {
+    throw new TypeError(
+      'enableH264() requires confirmPatentLicensingCompliance: true. The developer is ' +
+        'responsible for obtaining all applicable patent licenses.',
+    );
+  }
+  const { openh264Path } = options;
+  if (typeof openh264Path !== 'string' || openh264Path === '') {
+    throw new TypeError('openh264Path must be a non-empty string');
+  }
+  // dlopen() would stop at the NUL and load whatever file the prefix names.
+  if (openh264Path.includes('\0')) {
+    throw new TypeError('openh264Path must not contain a NUL character');
+  }
+  if (defaultFactory) {
+    throw new Error(
+      'enableH264() must be called before the first connect() or createLocal*Track() call',
+    );
+  }
+  try {
+    addon.loadOpenH264(openh264Path);
+  } catch (cause) {
+    let message = (cause as Error).message;
+    // glibc reports a library built for another architecture as missing. A
+    // missing dependency reads the same, but dlerror() names the dependency.
+    if (
+      message.includes(`${openh264Path}: `) &&
+      message.includes('No such file or directory') &&
+      fs.existsSync(openh264Path)
+    ) {
+      message += '. The file exists, so it may be built for a different architecture or C library.';
+    }
+    throw new H264LibraryLoadError(message, { cause });
+  }
+  h264Enabled = true;
+  console.warn(H264_PATENT_WARNING);
+}
+
+/** Whether an {@link enableH264} call has succeeded in this process. */
+export function isH264Enabled(): boolean {
+  return h264Enabled;
 }

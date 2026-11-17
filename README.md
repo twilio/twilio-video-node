@@ -150,4 +150,4 @@ See [CONTRIBUTING.md](https://github.com/twilio/twilio-video-node/blob/main/CONT
 
 ## License
 
-See [LICENSE.md](LICENSE.md).
+The SDK source is licensed under the Apache License 2.0. The prebuilt native binaries also contain the Twilio Video SDK for C++, which is distributed under the [Twilio Terms of Service](https://www.twilio.com/legal/tos), and third-party software listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). See [LICENSE.md](LICENSE.md), which also covers third-party codecs you load, such as OpenH264.
