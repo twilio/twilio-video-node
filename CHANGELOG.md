@@ -17,6 +17,15 @@ The Linux addon now needs glibc 2.38 or later, libstdc++ `CXXABI_1.3.13` and `GL
 Ubuntu 24.04+ or Debian 13+. Ubuntu 22.04 and Debian 12 are no longer supported; importing the
 SDK on them throws `UnsupportedPlatformError`.
 
+## Features
+
+### H.264
+
+`enableH264()` loads an OpenH264-compatible 2.7.x shared library that you provide, so Rooms can
+send and receive H.264. `VideoCodec` now includes `'H264'`, and `isH264Enabled()`,
+`EnableH264Options` and `H264LibraryLoadError` are new. You're responsible for obtaining all
+applicable patent licenses for your use of H.264.
+
 ## Bug Fixes
 
 - `LocalVideoTrack.write()` and `createLocalVideoTrack()` now throw a `RangeError` when a frame's or
@@ -47,6 +56,18 @@ SDK on them throws `UnsupportedPlatformError`.
   publishing a new track with that name threw.
 - Ending a remote track's `frames()` iterator after the Room ended remotely no longer risks
   crashing the process if a frame arrives at the same moment.
+
+## Documentation
+
+### `THIRD_PARTY_NOTICES` ships in the package
+
+It lists the licenses of the third-party libraries in the prebuilt native addons.
+
+## License
+
+- The SDK source is now licensed under the Apache License 2.0. Earlier releases, through
+  1.0.0-beta.2, were distributed under the Twilio Terms of Service. `LICENSE.md` also adds a
+  disclaimer and indemnification clause for third-party codecs you load, such as OpenH264.
 
 # 1.0.0-beta.2 (September 29, 2026)
 

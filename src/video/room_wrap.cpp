@@ -5,6 +5,7 @@
 #include "../media/local_video_track_wrap.h"
 #include "../media/local_audio_track_wrap.h"
 #include "../media/local_data_track_wrap.h"
+#include "../media/openh264_loader.h"
 #include "../common/error.h"
 
 #include <cmath>
@@ -196,7 +197,14 @@ static bool parseConnectOptions(Napi::Env env, const Napi::Object& opts,
             }
             std::string n = el.As<Napi::String>().Utf8Value();
             if (n == "VP8") videoCodecs.push_back(std::make_shared<twilio::media::Vp8Codec>());
-            else {
+            else if (n == "H264") {
+                if (!LoadedOpenH264()) {
+                    Napi::TypeError::New(env, "H264 requires enableH264() before connect()")
+                        .ThrowAsJavaScriptException();
+                    return false;
+                }
+                videoCodecs.push_back(std::make_shared<twilio::media::H264Codec>());
+            } else {
                 Napi::TypeError::New(env, "Unknown video codec: " + n).ThrowAsJavaScriptException();
                 return false;
             }

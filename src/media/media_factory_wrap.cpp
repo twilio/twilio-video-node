@@ -2,6 +2,7 @@
 #include "local_video_track_wrap.h"
 #include "local_audio_track_wrap.h"
 #include "local_data_track_wrap.h"
+#include "openh264_factories.h"
 #include "../common/napi_options.h"
 #include <twilio/media/data_track_options.h>
 #include <atomic>
@@ -50,6 +51,10 @@ MediaFactoryWrap::MediaFactoryWrap(const Napi::CallbackInfo& info)
         adm_ = NodeAudioDevice::Create(task_queue_factory);
         return rtc::scoped_refptr<webrtc::AudioDeviceModule>(adm_);
     };
+    if (auto codecs = CreateOpenH264Factories()) {
+        options->rtc_video_encoder_factory = std::move(codecs->encoder);
+        options->rtc_video_decoder_factory = std::move(codecs->decoder);
+    }
     factory_ = twilio::media::MediaFactory::create(std::move(options));
 }
 

@@ -34,6 +34,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --exclude '**/integration.test.ts' --exclude 'test/browser/**' --exclude '**/node_modules/**'",
     "test:integration": "vitest run test/integration.test.ts",
+    "test:h264": "vitest run test/h264/integration.test.ts",
     "test:browser": "vitest run test/browser/",
     "test:coverage": "vitest run --coverage --exclude '**/integration.test.ts' --exclude 'test/browser/**' --exclude '**/node_modules/**'",
     "lint": "eslint .",
@@ -73,7 +74,8 @@
     "CHANGELOG.md",
     "FRAME_CONTRACT.md",
     "LIFECYCLE.md",
-    "SECURITY-PRIVACY.md"
+    "SECURITY-PRIVACY.md",
+    "THIRD_PARTY_NOTICES"
   ],
   "engines": {
     "node": ">=24.0.0"

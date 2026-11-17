@@ -324,8 +324,11 @@ export interface EncodingParameters {
 
 /** Audio codecs that may be negotiated, in preference order. */
 export type AudioCodec = 'opus' | 'PCMU';
-/** Video codec that may be negotiated. */
-export type VideoCodec = 'VP8';
+/**
+ * Video codec that may be negotiated. `H264` requires {@link enableH264} to be
+ * called first.
+ */
+export type VideoCodec = 'VP8' | 'H264';
 
 /** Video encoding strategy. Currently only `auto` (server-driven) is supported. */
 export type VideoEncodingMode = 'auto';
@@ -400,7 +403,10 @@ export interface ConnectOptions {
   networkQuality?: boolean | NetworkQualityConfiguration;
   /** Preferred audio codecs in descending priority. */
   preferredAudioCodecs?: AudioCodec[];
-  /** Preferred video codecs in descending priority. */
+  /**
+   * Preferred video codecs in descending priority. Preferring `H264` without
+   * calling {@link enableH264} first makes {@link connect} reject with `TypeError`.
+   */
   preferredVideoCodecs?: VideoCodec[];
   /** How outgoing video encodings are selected. */
   videoEncodingMode?: VideoEncodingMode;
@@ -782,6 +788,20 @@ export type RoomState = 'connecting' | 'connected' | 'reconnecting' | 'disconnec
 /** Native SDK log verbosity, from `off` (silent) to `all` (most verbose). Set via {@link setLogLevel}. */
 export type LogLevel = 'off' | 'fatal' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'all';
 
+/** Options for {@link enableH264}. */
+export interface EnableH264Options {
+  /**
+   * Path to an OpenH264 2.7.x shared library. A path without a `/` is read
+   * relative to the working directory, never through the library search path.
+   */
+  openh264Path: string;
+  /**
+   * Must be `true`. Confirms that you have obtained all patent licenses that
+   * using H.264 requires; the SDK does not provide them.
+   */
+  confirmPatentLicensingCompliance: true;
+}
+
 // Internal: the shape of the native C++ addon
 /** @internal */
 export interface NativeAddon {
@@ -789,6 +809,42 @@ export interface NativeAddon {
   setLogLevel(level: LogLevel | number): void;
   connect(token: string, options: Record<string, unknown>): NativeRoom;
   MediaFactory: new () => NativeMediaFactory;
+  /**
+   * Loads the OpenH264 library at `path` and returns its version. Throws if it
+   * can't be loaded or isn't the supported major.minor. Never unloaded.
+   */
+  loadOpenH264(path: string): { major: number; minor: number; revision: number };
+  /**
+   * The video formats the encoder and decoder factories of a MediaFactory
+   * created now would report, before WebRTC adds its RTX, RED and FEC entries
+   * to the SDP, or `null` when no OpenH264 library is loaded and rtc-cpp's
+   * built-in factories apply.
+   */
+  videoCodecFormats(): { encoders: NativeVideoFormat[]; decoders: NativeVideoFormat[] } | null;
+  /**
+   * Runs one key frame with the given luma plane (`width * height` bytes,
+   * neutral chroma) through the OpenH264 encoder and decoder a MediaFactory
+   * would create, and returns the Annex B bitstream, the size the encoder
+   * reported, and the decoded luma plane. For tests. Throws if no OpenH264
+   * library is loaded or either codec fails.
+   */
+  encodeH264Frame(
+    width: number,
+    height: number,
+    maxFramerate: number,
+    luma: Buffer,
+  ): {
+    bitstream: Buffer;
+    encodedWidth: number;
+    encodedHeight: number;
+    decoded: { width: number; height: number; luma: Buffer };
+  };
+}
+
+/** @internal */
+export interface NativeVideoFormat {
+  name: string;
+  parameters: Record<string, string>;
 }
 
 /** @internal */
