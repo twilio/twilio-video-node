@@ -1073,7 +1073,12 @@ describe('Track publish/unpublish lifecycle', () => {
 
     const { connA, connB, remoteA } = await connectPair(roomName);
 
-    const trackPromise = waitForEvent(remoteA, 'trackSubscribed', TIMEOUT.subscribe);
+    // videoTracks lists a track only once the server confirms the publish,
+    // which can arrive after Bob's subscription.
+    const trackPromise = Promise.all([
+      waitForEvent(remoteA, 'trackSubscribed', TIMEOUT.subscribe),
+      waitForEvent(connA.room.localParticipant, 'trackPublished', TIMEOUT.subscribe),
+    ]);
     connA.room.localParticipant.publishTrack(videoTrack);
     await trackPromise;
 
