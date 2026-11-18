@@ -1,7 +1,7 @@
 This SDK is currently in beta. It supports Linux x86-64, and macOS 26+ on arm64 for local
 development only. See the [README](README.md#requirements) for details.
 
-# 1.0.0-beta.3 (In Progress)
+# 1.0.0-rc.4 (November 18, 2026)
 
 ## Breaking Changes
 
@@ -19,7 +19,7 @@ SDK on them throws `UnsupportedPlatformError`.
 
 ### `getVersion()` returns the package version
 
-`getVersion()` now returns this package's version, such as `1.0.0-beta.3`. It used to return the
+`getVersion()` now returns this package's version, such as `1.0.0-rc.4`. It used to return the
 version of the native video engine.
 
 ## Features
