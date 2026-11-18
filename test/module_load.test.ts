@@ -70,12 +70,12 @@ describe('module loading in a clean process', () => {
     expect(out).toBe('exports-ok');
   });
 
-  it('reports the native engine version, proving the addon actually loaded', () => {
+  it('reports the package version from the built entry points', () => {
     const out = runNode([
       '-e',
       `const sdk = require('./dist/index.cjs');
-       const v = sdk.getVersion();
-       if (typeof v !== 'string' || v.length === 0) throw new Error('no version');
+       const pkg = require('./package.json');
+       if (sdk.getVersion() !== pkg.version) throw new Error('got ' + sdk.getVersion());
        console.log('version-ok');`,
     ]);
     expect(out).toBe('version-ok');
@@ -264,7 +264,7 @@ describe('module loading in a clean process', () => {
          path.join(tmp, 'build', 'Release', 'twilio_video_sdk_node.node'),
        );
        const sdk = await import(path.join(tmp, 'dist', 'index.mjs'));
-       if (typeof sdk.getVersion() !== 'string') throw new Error('addon did not load');
+       sdk.setLogLevel('off');
        console.log('local-build-ok');`,
     ]);
     expect(out).toBe('local-build-ok');
@@ -296,7 +296,7 @@ describe('module loading in a clean process', () => {
          'not a loadable addon',
        );
        const sdk = await import(path.join(tmp, 'dist', 'index.mjs'));
-       if (typeof sdk.getVersion() !== 'string') throw new Error('addon did not load');
+       sdk.setLogLevel('off');
        console.log('precedence-ok');`,
     ]);
     expect(out).toBe('precedence-ok');

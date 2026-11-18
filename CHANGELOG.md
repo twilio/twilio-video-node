@@ -17,6 +17,11 @@ The Linux addon now needs glibc 2.38 or later, libstdc++ `CXXABI_1.3.13` and `GL
 Ubuntu 24.04+ or Debian 13+. Ubuntu 22.04 and Debian 12 are no longer supported; importing the
 SDK on them throws `UnsupportedPlatformError`.
 
+### `getVersion()` returns the package version
+
+`getVersion()` now returns this package's version, such as `1.0.0-beta.3`. It used to return the
+version of the native video engine.
+
 ## Features
 
 ### H.264

@@ -805,7 +805,6 @@ export interface EnableH264Options {
 // Internal: the shape of the native C++ addon
 /** @internal */
 export interface NativeAddon {
-  getVersion(): string;
   setLogLevel(level: LogLevel | number): void;
   connect(token: string, options: Record<string, unknown>): NativeRoom;
   MediaFactory: new () => NativeMediaFactory;

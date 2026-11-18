@@ -28,10 +28,6 @@
 
 namespace twilio_video_node {
 
-Napi::String GetVersion(const Napi::CallbackInfo& info) {
-    return Napi::String::New(info.Env(), twilio::video::getVersion());
-}
-
 void SetLogLevel(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1) {
@@ -226,7 +222,6 @@ Napi::Value EncodeH264Frame(const Napi::CallbackInfo& info) {
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
-    exports.Set("getVersion", Napi::Function::New(env, GetVersion));
     exports.Set("setLogLevel", Napi::Function::New(env, SetLogLevel));
     exports.Set("loadOpenH264", Napi::Function::New(env, LoadOpenH264Binding));
     exports.Set("videoCodecFormats", Napi::Function::New(env, VideoCodecFormats));
