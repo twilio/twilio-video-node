@@ -679,9 +679,9 @@ export const ErrorCode = Object.freeze({
   MEDIA_CONNECTION_ERROR: 53405,
 } as const);
 
-/** The version of the underlying native rtc-cpp engine (distinct from this package's version). */
+/** The version of this package, such as `1.0.0`. */
 export function getVersion(): string {
-  return addon.getVersion();
+  return SDK_VERSION;
 }
 
 /**
