@@ -19,7 +19,7 @@ env:
 
 jobs:
   integration:
-    name: integration
+    name: ${{ matrix.name }}
     # Fork pull requests get no OIDC token.
     if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-x64
@@ -28,6 +28,22 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: integration
+            run: npm run test:integration
+          - name: h264
+            h264: true
+            # Fail rather than skip when the library is missing.
+            run: |
+              if [ ! -s "$OPENH264_PATH" ]; then
+                echo "::error::OPENH264_PATH does not name a downloaded OpenH264 library."
+                exit 1
+              fi
+              npx vitest run test/openh264_encoder.test.ts
+              npm run test:h264
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       # Ahead of the OIDC step so the npm cache is restored before .npmrc points
@@ -61,12 +77,28 @@ jobs:
       # The child-process tests load dist/index.cjs.
       - name: Build the bundle
         run: npm run build:ts
-      - name: Integration tests
+      - name: Download OpenH264
+        id: openh264
+        if: ${{ matrix.h264 }}
+        env:
+          # Matches third_party/openh264.
+          OPENH264_FILE: libopenh264-2.7.0-linux64.8.so
+          OPENH264_SHA256: 1522f873a482923c5ec018a4415e1866898197528828c50f90fd300c94620df3
+        run: |
+          set -euo pipefail
+          curl -sSfL --retry 3 --connect-timeout 10 --max-time 120 \
+            -o "$RUNNER_TEMP/$OPENH264_FILE.bz2" \
+            "https://ciscobinary.openh264.org/$OPENH264_FILE.bz2"
+          bunzip2 "$RUNNER_TEMP/$OPENH264_FILE.bz2"
+          echo "$OPENH264_SHA256  $RUNNER_TEMP/$OPENH264_FILE" | sha256sum -c -
+          echo "path=$RUNNER_TEMP/$OPENH264_FILE" >> "$GITHUB_OUTPUT"
+      - name: Tests
         env:
           VENDOR_URL: ${{ vars.VENDOR_URL_PROD }}
+          OPENH264_PATH: ${{ steps.openh264.outputs.path }}
         run: |
           if [ -z "$VENDOR_URL" ]; then
             echo "::error::vars.VENDOR_URL_PROD is not set for the e2e environment."
             exit 1
           fi
-          npm run test:integration
+          ${{ matrix.run }}
