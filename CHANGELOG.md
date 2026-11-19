@@ -1,6 +1,12 @@
 This SDK is currently in beta. It supports Linux x86-64, and macOS 26+ on arm64 for local
 development only. See the [README](README.md#requirements) for details.
 
+# 1.0.0-rc.5 (In Progress)
+
+## Bug Fixes
+
+- Updated the bundled Twilio Video SDK for C++ to 7.2.4, which includes a WebRTC security fix.
+
 # 1.0.0-rc.4 (November 18, 2026)
 
 ## Breaking Changes
